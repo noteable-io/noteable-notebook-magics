@@ -141,3 +141,4 @@ cython_debug/
 .idea/
 tmp/
 .python-version
+.vscode
