@@ -6,7 +6,7 @@ authors = ["Eli Wilson <eli@noteable.io>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-ipython = "^7.21.0"
+ipython = "7.20.0"
 pandas = "^1.2.3"
 xlrd = "^2.0.1"
 openpyxl = "^3.0.7"
