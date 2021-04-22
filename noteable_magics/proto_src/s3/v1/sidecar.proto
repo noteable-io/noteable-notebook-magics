@@ -16,11 +16,18 @@ message Operation {
     }
 }
 
+enum FileType {
+    FILE_TYPE_UNSPECIFIED = 0;
+    FILE_TYPE_PROJECT = 1;
+    FILE_TYPE_DATASET = 2;
+}
+
 // An operation in S3 to sync files given a prefix back to the local filesystem
 message SyncFromS3Operation {
     // The kernel's local filesystem path to sync.
     // e.g. project/, datasets/research/large.csv
     string prefix = 1;
+    FileType file_type = 2;
 }
 
 // An operation in S3 to sync files given a prefix from the local filesystem to S3
@@ -28,12 +35,14 @@ message SyncToS3Operation {
     // The kernel's local filesystem path to sync.
     // e.g. project/, datasets/research/large.csv
     string prefix = 1;
+    FileType file_type = 2;
 }
 
 message GetRemoteStatusOperation {
     // The kernel's local filesystem path to check.
     // e.g. project/, datasets/research/large.csv
     string prefix = 1;
+    FileType file_type = 2;
 }
 
 message RemoteStatus {
