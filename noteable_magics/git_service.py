@@ -144,5 +144,5 @@ class GitService:
         return GitInit(created=False)
 
     def add_and_commit_all(self, message: Optional[str] = None):
-        self._repo.git.add(A=True)
-        self._repo.git.commit("-m", message or "updated project files", "--allow-empty")
+        self.repo.git.add(A=True)
+        self.repo.git.commit("-m", message or "updated project files", "--allow-empty")
