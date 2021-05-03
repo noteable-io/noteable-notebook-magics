@@ -14,7 +14,7 @@ from traitlets import Int, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
-from .git_service import GitDiff, GitService, GitStatus
+from .git_service import GitDiff, GitService, GitStatus, GitUser
 from .pb.gen.s3.v1.sidecar_pb2 import FileType
 from .s3_sidecar_service import (
     PullResultResponse,
@@ -47,6 +47,13 @@ class NTBLMagic(Magics, Configurable):
         5, config=True, help="The maximum time to wait in seconds for redis results"
     )
 
+    git_user_name = Unicode(
+        "Noteable Kernel", config=True, help="The name of the user creating git commits"
+    )
+    git_user_email = Unicode(
+        "engineering@noteable.io", config=True, help="The email of the user creating git commits"
+    )
+
     @line_cell_magic("ntbl")
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
@@ -56,7 +63,11 @@ class NTBLMagic(Magics, Configurable):
             channel_name=self.redis_channel_name,
             redis_results_max_wait_time_seconds=self.redis_results_max_wait_time_seconds,
         )
-        git_service = GitService(self._get_full_project_path())
+        git_service = GitService(
+            self._get_full_project_path(),
+            # TODO: reload this user details when magic config changes
+            GitUser(name=self.git_user_name, email=self.git_user_email),
+        )
         ctx_obj = ContextObject(s3_sidecar_svc, git_service, self)
 
         try:
@@ -157,7 +168,7 @@ class ProjectRemoteStatusOutput(OutputModel):
 @click.pass_obj
 def project_status(obj: ContextObject, remote: bool):
     if remote:
-        resp = obj.s3_sidecar.request_remote_status("", FileType.FILE_TYPE_PROJECT)
+        resp = obj.s3_sidecar.request_remote_status(FileType.FILE_TYPE_PROJECT)
         remote_status = obj.s3_sidecar.retrieve_remote_status(resp.redis_result_key)
         return ProjectRemoteStatusOutput(status=remote_status)
     return ProjectStatusOutput(status=obj.git.status())
@@ -190,7 +201,7 @@ def project_push(obj: ContextObject, message: Optional[str]):
         rprint("[red]Project push is not supported yet[/red]")
         return None
     obj.git.add_and_commit_all(message)
-    resp = obj.s3_sidecar.request_project_push("", FileType.FILE_TYPE_PROJECT)
+    resp = obj.s3_sidecar.request_project_push(FileType.FILE_TYPE_PROJECT)
     sync_result = obj.s3_sidecar.retrieve_sync_result(resp.redis_result_key)
     return ProjectPushOutput(sync_result=sync_result)
 
@@ -216,7 +227,7 @@ class ProjectPullOutput(OutputModel):
 )
 @click.pass_obj
 def project_pull(obj: ContextObject):
-    resp = obj.s3_sidecar.request_project_pull("", FileType.FILE_TYPE_PROJECT)
+    resp = obj.s3_sidecar.request_project_pull(FileType.FILE_TYPE_PROJECT)
     result = obj.s3_sidecar.retrieve_pull_result(resp.redis_result_key)
     if result.is_ok():
         obj.git.add_and_commit_all("synced changes from s3")

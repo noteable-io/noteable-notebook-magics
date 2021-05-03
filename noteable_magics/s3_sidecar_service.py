@@ -141,25 +141,23 @@ class S3SidecarService:
         self._channel_name = channel_name
         self._redis_results_max_wait_time_seconds = redis_results_max_wait_time_seconds
 
-    def request_project_push(self, prefix: str, file_type: FileType) -> RequestProjectPushResponse:
+    def request_project_push(self, file_type: FileType) -> RequestProjectPushResponse:
         """Sends a message to redis to push the local project file changes to s3"""
-        sync_to_s3_op = SyncToS3Operation(prefix=prefix, file_type=file_type)
+        sync_to_s3_op = SyncToS3Operation(prefix="", file_type=file_type)
         op = with_pb_identifier(Operation(sync_to_s3=sync_to_s3_op))
 
         self._redis.publish(self._channel_name, op.SerializeToString())
-        return RequestProjectPushResponse(prefix=prefix, redis_result_key=op.identifier)
+        return RequestProjectPushResponse(prefix="", redis_result_key=op.identifier)
 
-    def request_project_pull(self, prefix: str, file_type: FileType) -> RequestProjectPullResponse:
+    def request_project_pull(self, file_type: FileType) -> RequestProjectPullResponse:
         """Sends a message to redis to pull the latest s3 files to the local kernel"""
         op = with_pb_identifier(
-            Operation(sync_from_s3=SyncFromS3Operation(prefix=prefix, file_type=file_type))
+            Operation(sync_from_s3=SyncFromS3Operation(prefix="", file_type=file_type))
         )
         self._redis.publish(self._channel_name, op.SerializeToString())
-        return RequestProjectPullResponse(prefix=prefix, redis_result_key=op.identifier)
+        return RequestProjectPullResponse(prefix="", redis_result_key=op.identifier)
 
-    def request_remote_status(
-        self, prefix: str, file_type: FileType
-    ) -> RequestRemoteStatusResponse:
+    def request_remote_status(self, file_type: FileType) -> RequestRemoteStatusResponse:
         """
         Send a request via redis to the s3 sidecar to put the status of the changes
         between the local kernel and s3 in a redis key.
@@ -167,11 +165,11 @@ class S3SidecarService:
         The user of this method should check the returned value's `redis_result_key` value,
         which will be a protobuf encoded result of the status.
         """
-        remote_status_op = GetRemoteStatusOperation(prefix=prefix, file_type=file_type)
+        remote_status_op = GetRemoteStatusOperation(prefix="", file_type=file_type)
         op = with_pb_identifier(Operation(get_remote_status=remote_status_op))
 
         self._redis.publish(self._channel_name, op.SerializeToString())
-        return RequestRemoteStatusResponse(prefix=prefix, redis_result_key=op.identifier)
+        return RequestRemoteStatusResponse(prefix="", redis_result_key=op.identifier)
 
     def retrieve_remote_status(self, identifier: str) -> RemoteStatusResponse:
         """Retrieve the remote status set in redis by the s3 sidecar."""
