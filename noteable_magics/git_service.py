@@ -139,10 +139,16 @@ class GitService:
     def init(self) -> GitInit:
         if self._repo is None:
             self._repo = Repo.init(self._cwd, mkdir=False)
+
+            # Set user name & email config values before committing
+            with self._repo.config_writer() as config:
+                config.set_value("user", "name", "Noteable Kernel")
+                config.set_value("user", "email", "engineering@noteable.io")
+
             self.add_and_commit_all("Initial project setup")
             return GitInit(created=True)
         return GitInit(created=False)
 
     def add_and_commit_all(self, message: Optional[str] = None):
-        self._repo.git.add(A=True)
-        self._repo.git.commit("-m", message or "updated project files", "--allow-empty")
+        self.repo.git.add(A=True)
+        self.repo.git.commit("-m", message or "updated project files", "--allow-empty")
