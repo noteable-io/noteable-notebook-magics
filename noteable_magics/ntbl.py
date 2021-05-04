@@ -10,7 +10,7 @@ from IPython.core.magic_arguments import argument, magic_arguments
 from rich import print as rprint
 from rich.syntax import Syntax
 from rich.table import Table
-from traitlets import Int, Unicode
+from traitlets import Bool, Int, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
@@ -29,7 +29,7 @@ class ContextObject:
     s3_sidecar: S3SidecarService
     git: GitService
     magic: "NTBLMagic"
-    enable_project_push: bool = False
+    enable_project_push: bool
 
 
 @magics_class
@@ -54,6 +54,8 @@ class NTBLMagic(Magics, Configurable):
         "engineering@noteable.io", config=True, help="The email of the user creating git commits"
     )
 
+    enable_project_push = Bool(False, config=True, help="Allow pushing project files to S3")
+
     @line_cell_magic("ntbl")
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
@@ -65,10 +67,11 @@ class NTBLMagic(Magics, Configurable):
         )
         git_service = GitService(
             self._get_full_project_path(),
-            # TODO: reload this user details when magic config changes
             GitUser(name=self.git_user_name, email=self.git_user_email),
         )
-        ctx_obj = ContextObject(s3_sidecar_svc, git_service, self)
+        ctx_obj = ContextObject(
+            s3_sidecar_svc, git_service, magic=self, enable_project_push=self.enable_project_push
+        )
 
         try:
             with ntbl_magic.make_context(

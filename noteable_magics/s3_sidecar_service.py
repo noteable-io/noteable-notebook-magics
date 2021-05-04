@@ -191,7 +191,7 @@ class S3SidecarService:
         @backoff.on_predicate(backoff.constant, max_time=self._redis_results_max_wait_time_seconds)
         def _get_redis_result():
             # This function will run until a truthy value is returned or max_time is reached.
-            if res := self._redis.get(identifier):
+            if (res := self._redis.get(identifier)) is not None:
                 pb_out.ParseFromString(res)
                 return pb_out
             return None
