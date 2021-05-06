@@ -18,9 +18,33 @@ DESCRIPTOR = _descriptor.FileDescriptor(
     package='s3.v1',
     syntax='proto3',
     serialized_options=None,
-    serialized_pb=b'\n\x13s3/v1/sidecar.proto\x12\x05s3.v1\"\x84\x02\n\tOperation\x12\x1e\n\nidentifier\x18\x01 \x01(\tR\nidentifier\x12>\n\x0csync_from_s3\x18\x02 \x01(\x0b\x32\x1a.s3.v1.SyncFromS3OperationH\x00R\nsyncFromS3\x12M\n\x11get_remote_status\x18\x03 \x01(\x0b\x32\x1f.s3.v1.GetRemoteStatusOperationH\x00R\x0fgetRemoteStatus\x12\x38\n\nsync_to_s3\x18\x04 \x01(\x0b\x32\x18.s3.v1.SyncToS3OperationH\x00R\x08syncToS3B\x0e\n\x0cs3_operation\"-\n\x13SyncFromS3Operation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\"+\n\x11SyncToS3Operation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\"2\n\x18GetRemoteStatusOperation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\"b\n\x0cRemoteStatus\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12:\n\x0c\x66ile_changes\x18\x02 \x03(\x0b\x32\x17.s3.v1.RemoteFileChangeR\x0b\x66ileChanges\"d\n\x10RemoteFileChange\x12<\n\x0b\x63hange_type\x18\x01 \x01(\x0e\x32\x1b.s3.v1.RemoteFileChangeTypeR\nchangeType\x12\x12\n\x04path\x18\x02 \x01(\tR\x04path\"x\n\nSyncResult\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12+\n\x06status\x18\x02 \x01(\x0e\x32\x13.s3.v1.ResultStatusR\x06status\x12%\n\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage\"`\n\nPullResult\x12+\n\x06status\x18\x01 \x01(\x0e\x32\x13.s3.v1.ResultStatusR\x06status\x12%\n\x0estatus_message\x18\x02 \x01(\tR\rstatusMessage*\xad\x01\n\x14RemoteFileChangeType\x12\'\n#REMOTE_FILE_CHANGE_TYPE_UNSPECIFIED\x10\x00\x12$\n REMOTE_FILE_CHANGE_TYPE_MODIFIED\x10\x01\x12!\n\x1dREMOTE_FILE_CHANGE_TYPE_ADDED\x10\x02\x12#\n\x1fREMOTE_FILE_CHANGE_TYPE_DELETED\x10\x03*\\\n\x0cResultStatus\x12\x1d\n\x19RESULT_STATUS_UNSPECIFIED\x10\x00\x12\x14\n\x10RESULT_STATUS_OK\x10\x01\x12\x17\n\x13RESULT_STATUS_ERROR\x10\x02\x62\x06proto3',
+    serialized_pb=b'\n\x13s3/v1/sidecar.proto\x12\x05s3.v1\"\x84\x02\n\tOperation\x12\x1e\n\nidentifier\x18\x01 \x01(\tR\nidentifier\x12>\n\x0csync_from_s3\x18\x02 \x01(\x0b\x32\x1a.s3.v1.SyncFromS3OperationH\x00R\nsyncFromS3\x12M\n\x11get_remote_status\x18\x03 \x01(\x0b\x32\x1f.s3.v1.GetRemoteStatusOperationH\x00R\x0fgetRemoteStatus\x12\x38\n\nsync_to_s3\x18\x04 \x01(\x0b\x32\x18.s3.v1.SyncToS3OperationH\x00R\x08syncToS3B\x0e\n\x0cs3_operation\"[\n\x13SyncFromS3Operation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12,\n\tfile_type\x18\x02 \x01(\x0e\x32\x0f.s3.v1.FileTypeR\x08\x66ileType\"Y\n\x11SyncToS3Operation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12,\n\tfile_type\x18\x02 \x01(\x0e\x32\x0f.s3.v1.FileTypeR\x08\x66ileType\"`\n\x18GetRemoteStatusOperation\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12,\n\tfile_type\x18\x02 \x01(\x0e\x32\x0f.s3.v1.FileTypeR\x08\x66ileType\"b\n\x0cRemoteStatus\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12:\n\x0c\x66ile_changes\x18\x02 \x03(\x0b\x32\x17.s3.v1.RemoteFileChangeR\x0b\x66ileChanges\"d\n\x10RemoteFileChange\x12<\n\x0b\x63hange_type\x18\x01 \x01(\x0e\x32\x1b.s3.v1.RemoteFileChangeTypeR\nchangeType\x12\x12\n\x04path\x18\x02 \x01(\tR\x04path\"x\n\nSyncResult\x12\x16\n\x06prefix\x18\x01 \x01(\tR\x06prefix\x12+\n\x06status\x18\x02 \x01(\x0e\x32\x13.s3.v1.ResultStatusR\x06status\x12%\n\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage\"`\n\nPullResult\x12+\n\x06status\x18\x01 \x01(\x0e\x32\x13.s3.v1.ResultStatusR\x06status\x12%\n\x0estatus_message\x18\x02 \x01(\tR\rstatusMessage*S\n\x08\x46ileType\x12\x19\n\x15\x46ILE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11\x46ILE_TYPE_PROJECT\x10\x01\x12\x15\n\x11\x46ILE_TYPE_DATASET\x10\x02*\xad\x01\n\x14RemoteFileChangeType\x12\'\n#REMOTE_FILE_CHANGE_TYPE_UNSPECIFIED\x10\x00\x12$\n REMOTE_FILE_CHANGE_TYPE_MODIFIED\x10\x01\x12!\n\x1dREMOTE_FILE_CHANGE_TYPE_ADDED\x10\x02\x12#\n\x1fREMOTE_FILE_CHANGE_TYPE_DELETED\x10\x03*\\\n\x0cResultStatus\x12\x1d\n\x19RESULT_STATUS_UNSPECIFIED\x10\x00\x12\x14\n\x10RESULT_STATUS_OK\x10\x01\x12\x17\n\x13RESULT_STATUS_ERROR\x10\x02\x62\x06proto3',
 )
 
+_FILETYPE = _descriptor.EnumDescriptor(
+    name='FileType',
+    full_name='s3.v1.FileType',
+    filename=None,
+    file=DESCRIPTOR,
+    values=[
+        _descriptor.EnumValueDescriptor(
+            name='FILE_TYPE_UNSPECIFIED', index=0, number=0, serialized_options=None, type=None
+        ),
+        _descriptor.EnumValueDescriptor(
+            name='FILE_TYPE_PROJECT', index=1, number=1, serialized_options=None, type=None
+        ),
+        _descriptor.EnumValueDescriptor(
+            name='FILE_TYPE_DATASET', index=2, number=2, serialized_options=None, type=None
+        ),
+    ],
+    containing_type=None,
+    serialized_options=None,
+    serialized_start=997,
+    serialized_end=1080,
+)
+_sym_db.RegisterEnumDescriptor(_FILETYPE)
+
+FileType = enum_type_wrapper.EnumTypeWrapper(_FILETYPE)
 _REMOTEFILECHANGETYPE = _descriptor.EnumDescriptor(
     name='RemoteFileChangeType',
     full_name='s3.v1.RemoteFileChangeType',
@@ -58,8 +82,8 @@ _REMOTEFILECHANGETYPE = _descriptor.EnumDescriptor(
     ],
     containing_type=None,
     serialized_options=None,
-    serialized_start=860,
-    serialized_end=1033,
+    serialized_start=1083,
+    serialized_end=1256,
 )
 _sym_db.RegisterEnumDescriptor(_REMOTEFILECHANGETYPE)
 
@@ -82,12 +106,15 @@ _RESULTSTATUS = _descriptor.EnumDescriptor(
     ],
     containing_type=None,
     serialized_options=None,
-    serialized_start=1035,
-    serialized_end=1127,
+    serialized_start=1258,
+    serialized_end=1350,
 )
 _sym_db.RegisterEnumDescriptor(_RESULTSTATUS)
 
 ResultStatus = enum_type_wrapper.EnumTypeWrapper(_RESULTSTATUS)
+FILE_TYPE_UNSPECIFIED = 0
+FILE_TYPE_PROJECT = 1
+FILE_TYPE_DATASET = 2
 REMOTE_FILE_CHANGE_TYPE_UNSPECIFIED = 0
 REMOTE_FILE_CHANGE_TYPE_MODIFIED = 1
 REMOTE_FILE_CHANGE_TYPE_ADDED = 2
@@ -228,6 +255,25 @@ _SYNCFROMS3OPERATION = _descriptor.Descriptor(
             json_name='prefix',
             file=DESCRIPTOR,
         ),
+        _descriptor.FieldDescriptor(
+            name='file_type',
+            full_name='s3.v1.SyncFromS3Operation.file_type',
+            index=1,
+            number=2,
+            type=14,
+            cpp_type=8,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            json_name='fileType',
+            file=DESCRIPTOR,
+        ),
     ],
     extensions=[],
     nested_types=[],
@@ -238,7 +284,7 @@ _SYNCFROMS3OPERATION = _descriptor.Descriptor(
     extension_ranges=[],
     oneofs=[],
     serialized_start=293,
-    serialized_end=338,
+    serialized_end=384,
 )
 
 
@@ -268,6 +314,25 @@ _SYNCTOS3OPERATION = _descriptor.Descriptor(
             json_name='prefix',
             file=DESCRIPTOR,
         ),
+        _descriptor.FieldDescriptor(
+            name='file_type',
+            full_name='s3.v1.SyncToS3Operation.file_type',
+            index=1,
+            number=2,
+            type=14,
+            cpp_type=8,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            json_name='fileType',
+            file=DESCRIPTOR,
+        ),
     ],
     extensions=[],
     nested_types=[],
@@ -277,8 +342,8 @@ _SYNCTOS3OPERATION = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=340,
-    serialized_end=383,
+    serialized_start=386,
+    serialized_end=475,
 )
 
 
@@ -308,6 +373,25 @@ _GETREMOTESTATUSOPERATION = _descriptor.Descriptor(
             json_name='prefix',
             file=DESCRIPTOR,
         ),
+        _descriptor.FieldDescriptor(
+            name='file_type',
+            full_name='s3.v1.GetRemoteStatusOperation.file_type',
+            index=1,
+            number=2,
+            type=14,
+            cpp_type=8,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            json_name='fileType',
+            file=DESCRIPTOR,
+        ),
     ],
     extensions=[],
     nested_types=[],
@@ -317,8 +401,8 @@ _GETREMOTESTATUSOPERATION = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=385,
-    serialized_end=435,
+    serialized_start=477,
+    serialized_end=573,
 )
 
 
@@ -376,8 +460,8 @@ _REMOTESTATUS = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=437,
-    serialized_end=535,
+    serialized_start=575,
+    serialized_end=673,
 )
 
 
@@ -435,8 +519,8 @@ _REMOTEFILECHANGE = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=537,
-    serialized_end=637,
+    serialized_start=675,
+    serialized_end=775,
 )
 
 
@@ -513,8 +597,8 @@ _SYNCRESULT = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=639,
-    serialized_end=759,
+    serialized_start=777,
+    serialized_end=897,
 )
 
 
@@ -572,8 +656,8 @@ _PULLRESULT = _descriptor.Descriptor(
     syntax='proto3',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=761,
-    serialized_end=857,
+    serialized_start=899,
+    serialized_end=995,
 )
 
 _OPERATION.fields_by_name['sync_from_s3'].message_type = _SYNCFROMS3OPERATION
@@ -591,6 +675,9 @@ _OPERATION.fields_by_name['get_remote_status'].containing_oneof = _OPERATION.one
 ]
 _OPERATION.oneofs_by_name['s3_operation'].fields.append(_OPERATION.fields_by_name['sync_to_s3'])
 _OPERATION.fields_by_name['sync_to_s3'].containing_oneof = _OPERATION.oneofs_by_name['s3_operation']
+_SYNCFROMS3OPERATION.fields_by_name['file_type'].enum_type = _FILETYPE
+_SYNCTOS3OPERATION.fields_by_name['file_type'].enum_type = _FILETYPE
+_GETREMOTESTATUSOPERATION.fields_by_name['file_type'].enum_type = _FILETYPE
 _REMOTESTATUS.fields_by_name['file_changes'].message_type = _REMOTEFILECHANGE
 _REMOTEFILECHANGE.fields_by_name['change_type'].enum_type = _REMOTEFILECHANGETYPE
 _SYNCRESULT.fields_by_name['status'].enum_type = _RESULTSTATUS
@@ -603,6 +690,7 @@ DESCRIPTOR.message_types_by_name['RemoteStatus'] = _REMOTESTATUS
 DESCRIPTOR.message_types_by_name['RemoteFileChange'] = _REMOTEFILECHANGE
 DESCRIPTOR.message_types_by_name['SyncResult'] = _SYNCRESULT
 DESCRIPTOR.message_types_by_name['PullResult'] = _PULLRESULT
+DESCRIPTOR.enum_types_by_name['FileType'] = _FILETYPE
 DESCRIPTOR.enum_types_by_name['RemoteFileChangeType'] = _REMOTEFILECHANGETYPE
 DESCRIPTOR.enum_types_by_name['ResultStatus'] = _RESULTSTATUS
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)

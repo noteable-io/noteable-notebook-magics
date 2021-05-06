@@ -105,9 +105,15 @@ class GitInit(BaseModel):
     created: bool
 
 
+class GitUser(BaseModel):
+    name: str
+    email: str
+
+
 class GitService:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, user: GitUser) -> None:
         self._cwd = path
+        self._user = user
 
         try:
             self._repo = Repo(path)
@@ -142,8 +148,8 @@ class GitService:
 
             # Set user name & email config values before committing
             with self._repo.config_writer() as config:
-                config.set_value("user", "name", "Noteable Kernel")
-                config.set_value("user", "email", "engineering@noteable.io")
+                config.set_value("user", "name", self._user.name)
+                config.set_value("user", "email", self._user.email)
 
             self.add_and_commit_all("Initial project setup")
             return GitInit(created=True)
