@@ -76,6 +76,9 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         if self.display_connection_str:
             print(f"Connect with: %sql {conn.name}")
         if self.display_example:
-            print("Create a new SQL cell then run: SELECT * FROM '{tablename}' LIMIT 10")
+            print(
+                "Create a new SQL cell and then input query. "
+                f"Example: \"SELECT * FROM '{tablename}' LIMIT 10\""
+            )
         if self.return_head:
             return tmp_df.head(self.pandas_limit)
