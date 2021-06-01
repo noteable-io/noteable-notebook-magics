@@ -19,7 +19,11 @@ CONN_NAME = f"@{DB_NAME}"
 
 @magics_class
 class NoteableDataLoaderMagic(Magics, Configurable):
-    displaycon = Bool(True, config=True, help="Show connection string after execute")
+    return_head = Bool(
+        True, config=True, help="Return the first N rows from the loaded pandas dataframe"
+    )
+    display_example = Bool(True, config=True, help="Show example SQL query")
+    display_connection_str = Bool(False, config=True, help="Show connection string after execute")
     pandas_limit = Int(10, config=True, help="The limit of rows to returns in the pandas dataframe")
     sqlite_db_location = Unicode(
         "sqlite:////tmp/ntbl.db", config=True, help="Where to store the sqlite database."
@@ -46,7 +50,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         tablename = args.tablename[0]
 
         mimetype, _ = mimetypes.guess_type(source_file_path)
-        if mimetype == "text/csv":
+        if mimetype == "text/csv" or source_file_path.endswith(".csv"):
             tmp_df = pd.read_csv(source_file_path, args.delimeter)
         elif mimetype in EXCEL_MIMETYPES:
             tmp_df = pd.read_excel(source_file_path)
@@ -69,7 +73,9 @@ class NoteableDataLoaderMagic(Magics, Configurable):
 
         tmp_df.to_sql(tablename, conn.session, if_exists="replace")
 
-        if self.displaycon:
-            print(f"Connect with: %sql {conn.name} select * from '{tablename}' limit 10")
-
-        return tmp_df.head(self.pandas_limit)
+        if self.display_connection_str:
+            print(f"Connect with: %sql {conn.name}")
+        if self.display_example:
+            print("Create a new SQL cell then run: SELECT * FROM '{tablename}' LIMIT 10")
+        if self.return_head:
+            return tmp_df.head(self.pandas_limit)
