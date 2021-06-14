@@ -6,15 +6,7 @@ fmt-black:
 fmt-isort:
 	isort .
 
-protoc: buf-gen fmt
-
-buf-gen:
-	buf generate
-
-lint: lint-py lint-proto
-
-lint-proto:
-	buf lint
+lint: lint-py
 
 lint-py:
 	black . --check

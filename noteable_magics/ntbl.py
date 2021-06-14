@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 import click
 from click.exceptions import Abort, Exit
@@ -10,23 +10,19 @@ from IPython.core.magic_arguments import argument, magic_arguments
 from rich import print as rprint
 from rich.syntax import Syntax
 from rich.table import Table
-from traitlets import Bool, Int, Unicode
+from traitlets import Bool, Float, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
 from .git_service import GitDiff, GitService, GitStatus, GitUser
-from .pb.gen.s3.v1.sidecar_pb2 import FileType
-from .s3_sidecar_service import (
-    PullResultResponse,
-    RemoteStatusResponse,
-    S3SidecarService,
-    SyncResultResponse,
-)
+from .planar_ally_client.api import PlanarAllyAPI
+from .planar_ally_client.errors import PlanarAllyError
+from .planar_ally_client.types import FileKind, RemoteStatus, UserMessage
 
 
 @dataclass(frozen=True)
 class ContextObject:
-    s3_sidecar: S3SidecarService
+    planar_ally: PlanarAllyAPI
     git: GitService
     magic: "NTBLMagic"
     enable_project_push: bool
@@ -34,18 +30,13 @@ class ContextObject:
 
 @magics_class
 class NTBLMagic(Magics, Configurable):
-    redis_dsn = Unicode(
-        "redis://:123@0.0.0.0:6379",
-        config=True,
-        help="The Redis DSN to connect to for publishing messages",
+    planar_ally_api_url = Unicode(
+        "http://localhost:7000/api", config=True, help="The URL to connect to for planar-ally"
     )
-    redis_channel_name = Unicode(
-        "s3", config=True, help="The Redis channel name for publishing messages"
+    planar_ally_timeout_seconds = Float(
+        60.0, config=True, help="The total timeout seconds when making a request to planar-ally"
     )
     project_dir = Unicode("project", config=True, help="The project path, relative or absolute")
-    redis_results_max_wait_time_seconds = Int(
-        5, config=True, help="The maximum time to wait in seconds for redis results"
-    )
 
     git_user_name = Unicode(
         "Noteable Kernel", config=True, help="The name of the user creating git commits"
@@ -54,23 +45,21 @@ class NTBLMagic(Magics, Configurable):
         "engineering@noteable.io", config=True, help="The email of the user creating git commits"
     )
 
-    enable_project_push = Bool(False, config=True, help="Allow pushing project files to S3")
+    enable_project_push = Bool(True, config=True, help="Allow pushing project files to S3")
 
     @line_cell_magic("ntbl")
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
     def execute(self, line="", cell=""):
-        s3_sidecar_svc = S3SidecarService(
-            redis_dsn=self.redis_dsn,
-            channel_name=self.redis_channel_name,
-            redis_results_max_wait_time_seconds=self.redis_results_max_wait_time_seconds,
+        planar_ally = PlanarAllyAPI(
+            self.planar_ally_api_url, total_timeout_seconds=self.planar_ally_timeout_seconds
         )
         git_service = GitService(
             self._get_full_project_path(),
             GitUser(name=self.git_user_name, email=self.git_user_email),
         )
         ctx_obj = ContextObject(
-            s3_sidecar_svc, git_service, magic=self, enable_project_push=self.enable_project_push
+            planar_ally, git_service, magic=self, enable_project_push=self.enable_project_push
         )
 
         try:
@@ -85,6 +74,8 @@ class NTBLMagic(Magics, Configurable):
                 raise ex
         except Abort:
             rprint("[red]Aborted[/red]")
+        except PlanarAllyError as e:
+            rprint(f"[red]{e}[/red]")
 
         return None
 
@@ -155,7 +146,7 @@ class ProjectStatusOutput(OutputModel):
 
 
 class ProjectRemoteStatusOutput(OutputModel):
-    status: RemoteStatusResponse
+    status: RemoteStatus
 
     def get_human_readable_output(self) -> Iterable[Any]:
         if self.status.has_changes():
@@ -171,24 +162,18 @@ class ProjectRemoteStatusOutput(OutputModel):
 @click.pass_obj
 def project_status(obj: ContextObject, remote: bool):
     if remote:
-        resp = obj.s3_sidecar.request_remote_status(FileType.FILE_TYPE_PROJECT)
-        remote_status = obj.s3_sidecar.retrieve_remote_status(resp.redis_result_key)
+        remote_status = obj.planar_ally.fs(FileKind.project).get_remote_status("")
         return ProjectRemoteStatusOutput(status=remote_status)
     return ProjectStatusOutput(status=obj.git.status())
 
 
 class ProjectPushOutput(OutputModel):
-    message: str = "Project files are being pushed to S3..."
-    sync_result: SyncResultResponse
+    response: UserMessage
 
     def get_human_readable_output(self) -> Iterable[Any]:
         # TODO: show self.message before the sync result finishes. (generator?)
         #   this sync may take awhile depending on the number of files and their size!
-        if self.sync_result.is_ok():
-            result_message = f"[green]{self.sync_result.status_message}[/green]"
-        else:
-            result_message = f"[red]{self.sync_result.status_message}[/red]"
-        return [self.message, result_message]
+        return [f"[green]{self.response.message}[/green]"]
 
 
 @push.command(
@@ -196,31 +181,23 @@ class ProjectPushOutput(OutputModel):
     help="Push the project file changes to the remote store asynchronously",
     cls=NTBLCommand,
 )
-@click.argument("message", type=click.STRING, required=False)
 @click.pass_obj
-def project_push(obj: ContextObject, message: Optional[str]):
+def project_push(obj: ContextObject):
     if not obj.enable_project_push:
         # disable project push until file reconciliation is in place
         rprint("[red]Project push is not supported yet[/red]")
         return None
-    obj.git.add_and_commit_all(message)
-    resp = obj.s3_sidecar.request_project_push(FileType.FILE_TYPE_PROJECT)
-    sync_result = obj.s3_sidecar.retrieve_sync_result(resp.redis_result_key)
-    return ProjectPushOutput(sync_result=sync_result)
+    resp = obj.planar_ally.fs(FileKind.project).push("")
+    return ProjectPushOutput(response=resp)
 
 
 class ProjectPullOutput(OutputModel):
-    message: str = "Project files are being pulled to your kernel"
-    pull_result: PullResultResponse
+    response: UserMessage
 
     def get_human_readable_output(self) -> Iterable[Any]:
-        # TODO: show self.message before the pull result finishes. (generator?)
-        #   this pull may take awhile depending on the number of files and their size!
-        if self.pull_result.is_ok():
-            result_message = f"[green]{self.pull_result.status_message}[/green]"
-        else:
-            result_message = f"[red]{self.pull_result.status_message}[/red]"
-        return [self.message, result_message]
+        # TODO: show self.message before the sync result finishes. (generator?)
+        #   this sync may take awhile depending on the number of files and their size!
+        return [f"[green]{self.response.message}[/green]"]
 
 
 @pull.command(
@@ -230,11 +207,8 @@ class ProjectPullOutput(OutputModel):
 )
 @click.pass_obj
 def project_pull(obj: ContextObject):
-    resp = obj.s3_sidecar.request_project_pull(FileType.FILE_TYPE_PROJECT)
-    result = obj.s3_sidecar.retrieve_pull_result(resp.redis_result_key)
-    if result.is_ok():
-        obj.git.add_and_commit_all("synced changes from s3")
-    return ProjectPullOutput(pull_result=result)
+    resp = obj.planar_ally.fs(FileKind.project).pull("")
+    return ProjectPullOutput(response=resp)
 
 
 class DiffOutput(OutputModel):

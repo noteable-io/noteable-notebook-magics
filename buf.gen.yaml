@@ -1,6 +1,0 @@
-version: v1beta1
-
-# The plugins to run.
-plugins:
-  - name: python
-    out: noteable_magics/pb/gen
