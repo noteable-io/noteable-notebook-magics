@@ -3,7 +3,7 @@ from typing import Any, Dict
 import requests
 from urllib3.util import Timeout
 
-from .errors import PlanarAllyAPIError, PlanarAllyAPITimeoutError, PlanarAllyBadAPIResponseError
+from . import errors
 from .types import FileKind, RemoteStatus, UserMessage
 
 
@@ -20,6 +20,8 @@ class PlanarAllyAPI:
         self._timeout = Timeout(total=total_timeout_seconds, connect=0.5)
 
     def fs(self, kind: FileKind) -> "FileSystemAPI":
+        if kind is FileKind.dataset:
+            return DatasetFileSystemAPI(self, kind)
         return FileSystemAPI(self, kind)
 
     def post(self, endpoint: str, operation: str) -> Dict[str, Any]:
@@ -38,7 +40,7 @@ class PlanarAllyAPI:
         try:
             resp = self._session.request(method, full_url, **kwargs)
         except requests.Timeout:
-            raise PlanarAllyAPITimeoutError(operation)
+            raise errors.PlanarAllyAPITimeoutError(operation)
 
         return self._check_response(resp, operation)
 
@@ -49,9 +51,9 @@ class PlanarAllyAPI:
             response = resp.text
 
         if resp.status_code != 200:
-            raise PlanarAllyAPIError(resp.status_code, response, operation)
+            raise errors.PlanarAllyAPIError(resp.status_code, response, operation)
         elif isinstance(response, (str, bytes)):
-            raise PlanarAllyBadAPIResponseError()
+            raise errors.PlanarAllyBadAPIResponseError()
 
         return response
 
@@ -81,3 +83,17 @@ class FileSystemAPI:
     def get_remote_status(self, path: str) -> RemoteStatus:
         resp = self._api.get(f"{self._url_prefix}/{path}/status", "get file status")
         return RemoteStatus.parse_obj(resp)
+
+
+class DatasetFileSystemAPI(FileSystemAPI):
+    def __init__(self, api: PlanarAllyAPI, kind: FileKind):
+        super().__init__(api, kind)
+
+    def delete(self, path: str) -> UserMessage:
+        raise errors.PlanarAllyError("delete is not supported for dataset files")
+
+    def move(self, path: str) -> UserMessage:
+        raise errors.PlanarAllyError("move is not supported for dataset files")
+
+    def get_remote_status(self, path: str) -> RemoteStatus:
+        raise errors.PlanarAllyError("get_remote_status is not supported for dataset files")
