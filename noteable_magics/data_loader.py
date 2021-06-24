@@ -4,7 +4,8 @@ import pandas as pd
 import sql.connection
 import sql.magic
 from IPython.core.magic import Magics, line_cell_magic, magics_class
-from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
+from IPython.core.magic_arguments import argument, magic_arguments
+from IPython.utils.process import arg_split
 from traitlets import Bool, Int, Unicode
 from traitlets.config import Configurable
 
@@ -45,7 +46,10 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         "-d", "--delimeter", type=str, default=",", required=False, help="Tabular data delimeter"
     )
     def execute(self, line="", cell=""):
-        args = parse_argstring(self.execute, line)
+        # workaround for https://github.com/ipython/ipython/issues/12729
+        # TODO: switch back to parse_argstring in IPython 8.0
+        argv = arg_split(line, posix=True, strict=False)
+        args = self.execute.parser.parse_args(argv)
         source_file_path = args.filepath[0]
         tablename = args.tablename[0]
 
