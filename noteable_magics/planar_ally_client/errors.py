@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 
@@ -19,6 +20,21 @@ class PlanarAllyAPIError(PlanarAllyError):
         )
 
     def user_error(self) -> str:
+        try:
+            if not isinstance(self.body, dict):
+                self.body = json.loads(self.body)
+
+            if message := self.body.get("detail"):
+                return f"There was an error while doing the {self.operation} operation.\n{message}"
+            if errors := self.body.get("errors"):
+                lines = []
+                for error in errors:
+                    lines.append(f"{' '.join(error['loc'])}: {error['msg']}")
+                message = '\n'.join(lines)
+                return f"There was an error while doing the {self.operation} operation.\n{message}"
+        except json.JSONDecodeError:
+            pass
+
         return (
             f"There was an error while doing the {self.operation} operation. "
             f"Contact support with error code {self.status_code}."

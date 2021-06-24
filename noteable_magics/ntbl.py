@@ -1,10 +1,10 @@
 import os
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, Iterable
+from typing import Any, Iterable, List
 
 import click
-from click.exceptions import Abort, Exit
+from click.exceptions import Abort, Exit, UsageError
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from rich import print as rprint
@@ -64,13 +64,15 @@ class NTBLMagic(Magics, Configurable):
                 obj=ctx_obj,
             ) as ctx:
                 return ntbl_magic.invoke(ctx)
+        except UsageError as e:
+            e.show()
         except Exit as ex:
             if ex.exit_code != 0:
                 raise ex
         except Abort:
             rprint("[red]Aborted[/red]")
         except PlanarAllyError as e:
-            rprint(f"[red]{e}[/red]")
+            rprint(f"[red]{e.user_error()}[/red]")
 
         return None
 
@@ -178,13 +180,15 @@ def project_push(obj: ContextObject):
     return SuccessfulUserMessageOutput(response=resp)
 
 
-@push.command(name="datasets", help="Push dataset files to the remote store", cls=NTBLCommand)
-@click.argument(
-    "path",
-    help="The path of the dataset to push (e.g. \"My first dataset/data.csv\", \"My first dataset\")",
-)
+@push.command(name="datasets", cls=NTBLCommand)
+@click.argument("path", nargs=-1)
 @click.pass_obj
-def datasets_push(obj: ContextObject, path: str):
+def datasets_push(obj: ContextObject, path: List[str]):
+    """Push dataset files to the remote store
+
+    PATH is the path of the dataset to push (e.g. My first dataset/data.csv, My first dataset).
+    """
+    path = " ".join(path)
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
@@ -201,17 +205,19 @@ def project_pull(obj: ContextObject):
     return SuccessfulUserMessageOutput(response=resp)
 
 
-@pull.command(name="datasets", help="Pull dataset files from the remote storage", cls=NTBLCommand)
-@click.argument(
-    "path",
-    help="The path of the dataset to pull (e.g. \"My first dataset/data.csv\", \"My first dataset\")",
-)
+@pull.command(name="datasets", cls=NTBLCommand)
+@click.argument("path", nargs=-1)
 @click.pass_obj
-def datasets_pull(obj: ContextObject, path: str):
+def datasets_pull(obj: ContextObject, path: List[str]):
+    """Push dataset files to the remote store
+
+    PATH is the path of the dataset to pull (e.g. My first dataset/data.csv, My first dataset).
+    """
+    path = " ".join(path)
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.project).pull(path)
+    resp = obj.planar_ally.fs(FileKind.dataset).pull(path)
     return SuccessfulUserMessageOutput(response=resp)
 
 
