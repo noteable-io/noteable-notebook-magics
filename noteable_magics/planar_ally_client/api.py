@@ -41,6 +41,8 @@ class PlanarAllyAPI:
             resp = self._session.request(method, full_url, **kwargs)
         except requests.Timeout:
             raise errors.PlanarAllyAPITimeoutError(operation)
+        except requests.ConnectionError:
+            raise errors.PlanarAllyUnableToConnectError()
 
         return self._check_response(resp, operation)
 

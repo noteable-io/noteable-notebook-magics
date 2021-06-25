@@ -49,3 +49,8 @@ class PlanarAllyBadAPIResponseError(PlanarAllyError):
 class PlanarAllyAPITimeoutError(PlanarAllyError):
     def __init__(self, operation):
         super().__init__(f"Timed out waiting on operation: {operation}")
+
+
+class PlanarAllyUnableToConnectError(PlanarAllyError):
+    def __init__(self):
+        super().__init__("Unable to connect to planar-ally, contact support.")

@@ -7,6 +7,7 @@ import click
 from click.exceptions import Abort, Exit, UsageError
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
+from IPython.utils.process import arg_split
 from rich import print as rprint
 from rich.syntax import Syntax
 from rich.table import Table
@@ -48,6 +49,9 @@ class NTBLMagic(Magics, Configurable):
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
     def execute(self, line="", cell=""):
+        argv = arg_split(line, posix=True, strict=False)
+        argv.extend(arg_split(cell, posix=True, strict=False))
+
         planar_ally = PlanarAllyAPI(
             self.planar_ally_api_url, total_timeout_seconds=self.planar_ally_timeout_seconds
         )
@@ -58,11 +62,7 @@ class NTBLMagic(Magics, Configurable):
         ctx_obj = ContextObject(planar_ally, git_service, magic=self)
 
         try:
-            with ntbl_magic.make_context(
-                info_name="%ntbl",
-                args=[*line.split(), *cell.split()],
-                obj=ctx_obj,
-            ) as ctx:
+            with ntbl_magic.make_context(info_name="%ntbl", args=argv, obj=ctx_obj) as ctx:
                 return ntbl_magic.invoke(ctx)
         except UsageError as e:
             e.show()
