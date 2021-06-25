@@ -18,6 +18,7 @@ python = "^3.8"
 rich = "^10.1.0"
 unidiff = "^0.6.0"
 xlrd = "^2.0.1"
+structlog = "^21.1.0"
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"

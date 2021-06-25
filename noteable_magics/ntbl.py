@@ -4,6 +4,7 @@ from pathlib import PurePath
 from typing import Any, Iterable, List
 
 import click
+import structlog
 from click.exceptions import Abort, Exit, UsageError
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
@@ -19,6 +20,8 @@ from .git_service import GitDiff, GitService, GitStatus, GitUser
 from .planar_ally_client.api import PlanarAllyAPI
 from .planar_ally_client.errors import PlanarAllyError
 from .planar_ally_client.types import FileKind, RemoteStatus, UserMessage
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,7 @@ class NTBLMagic(Magics, Configurable):
         except Abort:
             rprint("[red]Aborted[/red]")
         except PlanarAllyError as e:
+            logger.exception("got an error from planar-ally")
             rprint(f"[red]{e.user_error()}[/red]")
 
         return None

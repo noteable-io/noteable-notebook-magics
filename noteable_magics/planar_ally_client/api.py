@@ -1,10 +1,13 @@
 from typing import Any, Dict
 
 import requests
+import structlog
 from urllib3.util import Timeout
 
 from . import errors
 from .types import FileKind, RemoteStatus, UserMessage
+
+logger = structlog.get_logger(__name__)
 
 
 class PlanarAllyAPI:
@@ -36,13 +39,19 @@ class PlanarAllyAPI:
     def _request(self, method: str, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         full_url = f"{self._base_url}{endpoint}"
         kwargs.setdefault("timeout", self._timeout)
+        logger.debug(
+            "making api request to planar-ally",
+            method=method,
+            endpoint=endpoint,
+            operation=operation,
+        )
 
         try:
             resp = self._session.request(method, full_url, **kwargs)
-        except requests.Timeout:
-            raise errors.PlanarAllyAPITimeoutError(operation)
-        except requests.ConnectionError:
-            raise errors.PlanarAllyUnableToConnectError()
+        except requests.Timeout as e:
+            raise errors.PlanarAllyAPITimeoutError(operation) from e
+        except requests.ConnectionError as e:
+            raise errors.PlanarAllyUnableToConnectError() from e
 
         return self._check_response(resp, operation)
 
