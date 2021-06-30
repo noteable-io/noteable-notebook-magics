@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_or_replace_data_view` handles filenames with spaces (either escaped or
   quoted).
 
+### Added
+- `%ntbl push datasets [PATH]` command
+- `%ntbl pull datasets [PATH]` command
+- Logging to `/var/log/noteable_magics.log` or locally to `/tmp/noteable_magics.log`
+
+
 ## [1.1.0] - 2021-06-14
 ### Changed
 - Updated magics to use `planar-ally` as the sidecar with HTTP+REST

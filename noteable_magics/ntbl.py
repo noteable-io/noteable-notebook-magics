@@ -1,16 +1,18 @@
 import os
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, Iterable
+from typing import Any, Iterable, List
 
 import click
-from click.exceptions import Abort, Exit
+import structlog
+from click.exceptions import Abort, Exit, UsageError
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
+from IPython.utils.process import arg_split
 from rich import print as rprint
 from rich.syntax import Syntax
 from rich.table import Table
-from traitlets import Bool, Float, Unicode
+from traitlets import Float, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
@@ -19,13 +21,14 @@ from .planar_ally_client.api import PlanarAllyAPI
 from .planar_ally_client.errors import PlanarAllyError
 from .planar_ally_client.types import FileKind, RemoteStatus, UserMessage
 
+logger = structlog.get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class ContextObject:
     planar_ally: PlanarAllyAPI
     git: GitService
     magic: "NTBLMagic"
-    enable_project_push: bool
 
 
 @magics_class
@@ -45,12 +48,13 @@ class NTBLMagic(Magics, Configurable):
         "engineering@noteable.io", config=True, help="The email of the user creating git commits"
     )
 
-    enable_project_push = Bool(True, config=True, help="Allow pushing project files to S3")
-
     @line_cell_magic("ntbl")
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
     def execute(self, line="", cell=""):
+        argv = arg_split(line, posix=True, strict=False)
+        argv.extend(arg_split(cell, posix=True, strict=False))
+
         planar_ally = PlanarAllyAPI(
             self.planar_ally_api_url, total_timeout_seconds=self.planar_ally_timeout_seconds
         )
@@ -58,24 +62,21 @@ class NTBLMagic(Magics, Configurable):
             self._get_full_project_path(),
             GitUser(name=self.git_user_name, email=self.git_user_email),
         )
-        ctx_obj = ContextObject(
-            planar_ally, git_service, magic=self, enable_project_push=self.enable_project_push
-        )
+        ctx_obj = ContextObject(planar_ally, git_service, magic=self)
 
         try:
-            with ntbl_magic.make_context(
-                info_name="%ntbl",
-                args=[*line.split(), *cell.split()],
-                obj=ctx_obj,
-            ) as ctx:
+            with ntbl_magic.make_context(info_name="%ntbl", args=argv, obj=ctx_obj) as ctx:
                 return ntbl_magic.invoke(ctx)
+        except UsageError as e:
+            e.show()
         except Exit as ex:
             if ex.exit_code != 0:
                 raise ex
         except Abort:
             rprint("[red]Aborted[/red]")
         except PlanarAllyError as e:
-            rprint(f"[red]{e}[/red]")
+            logger.exception("got an error from planar-ally")
+            rprint(f"[red]{e.user_error()}[/red]")
 
         return None
 
@@ -167,48 +168,61 @@ def project_status(obj: ContextObject, remote: bool):
     return ProjectStatusOutput(status=obj.git.status())
 
 
-class ProjectPushOutput(OutputModel):
+class SuccessfulUserMessageOutput(OutputModel):
     response: UserMessage
 
     def get_human_readable_output(self) -> Iterable[Any]:
-        # TODO: show self.message before the sync result finishes. (generator?)
-        #   this sync may take awhile depending on the number of files and their size!
         return [f"[green]{self.response.message}[/green]"]
 
 
 @push.command(
-    name="project",
-    help="Push the project file changes to the remote store asynchronously",
-    cls=NTBLCommand,
+    name="project", help="Push the project file changes to the remote store", cls=NTBLCommand
 )
 @click.pass_obj
 def project_push(obj: ContextObject):
-    if not obj.enable_project_push:
-        # disable project push until file reconciliation is in place
-        rprint("[red]Project push is not supported yet[/red]")
-        return None
     resp = obj.planar_ally.fs(FileKind.project).push("")
-    return ProjectPushOutput(response=resp)
+    return SuccessfulUserMessageOutput(response=resp)
 
 
-class ProjectPullOutput(OutputModel):
-    response: UserMessage
+@push.command(name="datasets", cls=NTBLCommand)
+@click.argument("path", nargs=-1)
+@click.pass_obj
+def datasets_push(obj: ContextObject, path: List[str]):
+    """Push dataset files to the remote store
 
-    def get_human_readable_output(self) -> Iterable[Any]:
-        # TODO: show self.message before the sync result finishes. (generator?)
-        #   this sync may take awhile depending on the number of files and their size!
-        return [f"[green]{self.response.message}[/green]"]
+    PATH is the path of the dataset to push (e.g. My first dataset/data.csv, My first dataset).
+    """
+    path = " ".join(path)
+    if "/" not in path:
+        # The user is trying to push the whole dataset
+        path = f"{path}/"
+    resp = obj.planar_ally.fs(FileKind.dataset).push(path)
+    return SuccessfulUserMessageOutput(response=resp)
 
 
 @pull.command(
-    name="project",
-    help="Pull the project file changes from the remote store asynchronously",
-    cls=NTBLCommand,
+    name="project", help="Pull the project file changes from the remote store", cls=NTBLCommand
 )
 @click.pass_obj
 def project_pull(obj: ContextObject):
     resp = obj.planar_ally.fs(FileKind.project).pull("")
-    return ProjectPullOutput(response=resp)
+    return SuccessfulUserMessageOutput(response=resp)
+
+
+@pull.command(name="datasets", cls=NTBLCommand)
+@click.argument("path", nargs=-1)
+@click.pass_obj
+def datasets_pull(obj: ContextObject, path: List[str]):
+    """Push dataset files to the remote store
+
+    PATH is the path of the dataset to pull (e.g. My first dataset/data.csv, My first dataset).
+    """
+    path = " ".join(path)
+    if "/" not in path:
+        # The user is trying to push the whole dataset
+        path = f"{path}/"
+    resp = obj.planar_ally.fs(FileKind.dataset).pull(path)
+    return SuccessfulUserMessageOutput(response=resp)
 
 
 class DiffOutput(OutputModel):
