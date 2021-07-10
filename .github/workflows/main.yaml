@@ -1,0 +1,43 @@
+# Builds and tests the planar-ally server
+name: Planar Ally Build
+
+# Trigger the workflow on all pull requests and only pushes to the main branch
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+      - feature/*
+
+jobs:
+  # Runs the build for the planar-ally project
+  build:
+    runs-on: ubuntu-20.04
+    outputs:
+      DEPLOY_TAG: ${{ steps.build-args.outputs.SHA_TAG || steps.build-args.outputs.BRANCH_TAG }}
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v2
+
+      - name: Install tox dependencies
+        run: pip install tox poetry
+
+      # Run all of the tests
+      - name: Flake8 - Style guide enforcement
+        run: tox -e flake8
+
+      - name: Black - Format check
+        run: tox -e black-check
+
+      - name: Isort - Import format check
+        run: tox -e isort-check
+
+      - name: Pytest - Unit tests
+        run: tox -e py39
+
+      - name: Safety - Python dependency vulnerability check
+        run: tox -e safety

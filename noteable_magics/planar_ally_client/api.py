@@ -28,13 +28,13 @@ class PlanarAllyAPI:
         return FileSystemAPI(self, kind)
 
     def post(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
-        return self._request("POST", endpoint, operation)
+        return self._request("POST", endpoint, operation, **kwargs)
 
     def delete(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
-        return self._request("DELETE", endpoint, operation)
+        return self._request("DELETE", endpoint, operation, **kwargs)
 
     def get(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
-        return self._request("GET", endpoint, operation)
+        return self._request("GET", endpoint, operation, **kwargs)
 
     def _request(self, method: str, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         full_url = f"{self._base_url}{endpoint}"

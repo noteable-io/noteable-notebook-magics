@@ -37,7 +37,9 @@ class NTBLMagic(Magics, Configurable):
         "http://localhost:7000/api", config=True, help="The URL to connect to for planar-ally"
     )
     planar_ally_default_timeout_seconds = Float(
-        60.0, config=True, help="The total default timeout seconds when making a request to planar-ally"
+        60.0,
+        config=True,
+        help="The total default timeout seconds when making a request to planar-ally",
     )
     project_dir = Unicode("project", config=True, help="The project path, relative or absolute")
 
@@ -55,14 +57,7 @@ class NTBLMagic(Magics, Configurable):
         argv = arg_split(line, posix=True, strict=False)
         argv.extend(arg_split(cell, posix=True, strict=False))
 
-        planar_ally = PlanarAllyAPI(
-            self.planar_ally_api_url, default_total_timeout_seconds=self.planar_ally_default_timeout_seconds
-        )
-        git_service = GitService(
-            self._get_full_project_path(),
-            GitUser(name=self.git_user_name, email=self.git_user_email),
-        )
-        ctx_obj = ContextObject(planar_ally, git_service, magic=self)
+        ctx_obj = self._build_ctx()
 
         try:
             with ntbl_magic.make_context(info_name="%ntbl", args=argv, obj=ctx_obj) as ctx:
@@ -79,6 +74,17 @@ class NTBLMagic(Magics, Configurable):
             rprint(f"[red]{e.user_error()}[/red]")
 
         return None
+
+    def _build_ctx(self):
+        planar_ally = PlanarAllyAPI(
+            self.planar_ally_api_url,
+            default_total_timeout_seconds=self.planar_ally_default_timeout_seconds,
+        )
+        git_service = GitService(
+            self._get_full_project_path(),
+            GitUser(name=self.git_user_name, email=self.git_user_email),
+        )
+        return ContextObject(planar_ally, git_service, magic=self)
 
     def _get_full_project_path(self) -> str:
         project_dir = PurePath(self.project_dir)
@@ -199,7 +205,7 @@ def datasets_push(obj: ContextObject, path: List[str], timeout: float):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).push(path, timeout=Timeout(total=timeout, connect=0.5))
+    resp = obj.planar_ally.fs(FileKind.dataset).push(path, timeout=(0.5, timeout))
     return SuccessfulUserMessageOutput(response=resp)
 
 
@@ -227,7 +233,7 @@ def datasets_pull(obj: ContextObject, path: List[str], timeout: float):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).pull(path, timeout=Timeout(total=timeout, connect=0.5))
+    resp = obj.planar_ally.fs(FileKind.dataset).pull(path, timeout=(0.5, timeout))
     return SuccessfulUserMessageOutput(response=resp)
 
 
