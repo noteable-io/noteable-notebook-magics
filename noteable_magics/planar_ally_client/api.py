@@ -15,30 +15,30 @@ class PlanarAllyAPI:
         self,
         base_url: str = "http://localhost:7000/api",
         version: str = "v0",
-        total_timeout_seconds: float = 60.0,
+        default_total_timeout_seconds: float = 60.0,
     ):
         self._base_url = f"{base_url}/{version}/"
         self._session = requests.Session()
         self._session.headers["User-Agent"] = "noteable-notebook-magics"
-        self._timeout = Timeout(total=total_timeout_seconds, connect=0.5)
+        self._default_timeout = Timeout(total=default_total_timeout_seconds, connect=0.5)
 
     def fs(self, kind: FileKind) -> "FileSystemAPI":
         if kind is FileKind.dataset:
             return DatasetFileSystemAPI(self, kind)
         return FileSystemAPI(self, kind)
 
-    def post(self, endpoint: str, operation: str) -> Dict[str, Any]:
+    def post(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         return self._request("POST", endpoint, operation)
 
-    def delete(self, endpoint: str, operation: str) -> Dict[str, Any]:
+    def delete(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         return self._request("DELETE", endpoint, operation)
 
-    def get(self, endpoint: str, operation: str) -> Dict[str, Any]:
+    def get(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         return self._request("GET", endpoint, operation)
 
     def _request(self, method: str, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
         full_url = f"{self._base_url}{endpoint}"
-        kwargs.setdefault("timeout", self._timeout)
+        kwargs.setdefault("timeout", self._default_timeout)
         logger.debug(
             "making api request to planar-ally",
             method=method,
@@ -75,24 +75,24 @@ class FileSystemAPI:
         self._kind = kind
         self._url_prefix = f"fs/{self._kind}"
 
-    def pull(self, path: str) -> UserMessage:
-        resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files")
+    def pull(self, path: str, **kwargs) -> UserMessage:
+        resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
         return UserMessage.parse_obj(resp)
 
-    def push(self, path: str) -> UserMessage:
-        resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files")
+    def push(self, path: str, **kwargs) -> UserMessage:
+        resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
         return UserMessage.parse_obj(resp)
 
-    def delete(self, path: str) -> UserMessage:
-        resp = self._api.delete(f"{self._url_prefix}/{path}", "delete files")
+    def delete(self, path: str, **kwargs) -> UserMessage:
+        resp = self._api.delete(f"{self._url_prefix}/{path}", "delete files", **kwargs)
         return UserMessage.parse_obj(resp)
 
-    def move(self, path: str) -> UserMessage:
-        resp = self._api.post(f"{self._url_prefix}/{path}/move", "move files")
+    def move(self, path: str, **kwargs) -> UserMessage:
+        resp = self._api.post(f"{self._url_prefix}/{path}/move", "move files", **kwargs)
         return UserMessage.parse_obj(resp)
 
-    def get_remote_status(self, path: str) -> RemoteStatus:
-        resp = self._api.get(f"{self._url_prefix}/{path}/status", "get file status")
+    def get_remote_status(self, path: str, **kwargs) -> RemoteStatus:
+        resp = self._api.get(f"{self._url_prefix}/{path}/status", "get file status", **kwargs)
         return RemoteStatus.parse_obj(resp)
 
 
@@ -100,11 +100,11 @@ class DatasetFileSystemAPI(FileSystemAPI):
     def __init__(self, api: PlanarAllyAPI, kind: FileKind):
         super().__init__(api, kind)
 
-    def delete(self, path: str) -> UserMessage:
+    def delete(self, path: str, **kwargs) -> UserMessage:
         raise errors.PlanarAllyError("delete is not supported for dataset files")
 
-    def move(self, path: str) -> UserMessage:
+    def move(self, path: str, **kwargs) -> UserMessage:
         raise errors.PlanarAllyError("move is not supported for dataset files")
 
-    def get_remote_status(self, path: str) -> RemoteStatus:
+    def get_remote_status(self, path: str, **kwargs) -> RemoteStatus:
         raise errors.PlanarAllyError("get_remote_status is not supported for dataset files")

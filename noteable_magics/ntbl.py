@@ -36,8 +36,8 @@ class NTBLMagic(Magics, Configurable):
     planar_ally_api_url = Unicode(
         "http://localhost:7000/api", config=True, help="The URL to connect to for planar-ally"
     )
-    planar_ally_timeout_seconds = Float(
-        60.0, config=True, help="The total timeout seconds when making a request to planar-ally"
+    planar_ally_default_timeout_seconds = Float(
+        60.0, config=True, help="The total default timeout seconds when making a request to planar-ally"
     )
     project_dir = Unicode("project", config=True, help="The project path, relative or absolute")
 
@@ -56,7 +56,7 @@ class NTBLMagic(Magics, Configurable):
         argv.extend(arg_split(cell, posix=True, strict=False))
 
         planar_ally = PlanarAllyAPI(
-            self.planar_ally_api_url, total_timeout_seconds=self.planar_ally_timeout_seconds
+            self.planar_ally_api_url, default_total_timeout_seconds=self.planar_ally_default_timeout_seconds
         )
         git_service = GitService(
             self._get_full_project_path(),
@@ -186,8 +186,11 @@ def project_push(obj: ContextObject):
 
 @push.command(name="datasets", cls=NTBLCommand)
 @click.argument("path", nargs=-1)
+# Default to 60 minutes for dataset pulls
+# This gives an upload rate of 11.1 MB/s for a 40 GB file
+@click.option('-t', '--timeout', default=3600, type=float)
 @click.pass_obj
-def datasets_push(obj: ContextObject, path: List[str]):
+def datasets_push(obj: ContextObject, path: List[str], timeout: float):
     """Push dataset files to the remote store
 
     PATH is the path of the dataset to push (e.g. My first dataset/data.csv, My first dataset).
@@ -196,7 +199,7 @@ def datasets_push(obj: ContextObject, path: List[str]):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).push(path)
+    resp = obj.planar_ally.fs(FileKind.dataset).push(path, timeout=Timeout(total=timeout, connect=0.5))
     return SuccessfulUserMessageOutput(response=resp)
 
 
@@ -211,8 +214,11 @@ def project_pull(obj: ContextObject):
 
 @pull.command(name="datasets", cls=NTBLCommand)
 @click.argument("path", nargs=-1)
+# Default to 60 minutes for dataset pulls
+# This gives a download rate of 11.1 MB/s for a 40 GB file
+@click.option('-t', '--timeout', default=3600, type=float)
 @click.pass_obj
-def datasets_pull(obj: ContextObject, path: List[str]):
+def datasets_pull(obj: ContextObject, path: List[str], timeout: float):
     """Push dataset files to the remote store
 
     PATH is the path of the dataset to pull (e.g. My first dataset/data.csv, My first dataset).
@@ -221,7 +227,7 @@ def datasets_pull(obj: ContextObject, path: List[str]):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).pull(path)
+    resp = obj.planar_ally.fs(FileKind.dataset).pull(path, timeout=Timeout(total=timeout, connect=0.5))
     return SuccessfulUserMessageOutput(response=resp)
 
 
