@@ -1,5 +1,5 @@
-# Builds and tests the planar-ally server
-name: Planar Ally Build
+# Builds and tests noteable-notebook-magics
+name: noteable-notebook-magics Build
 
 # Trigger the workflow on all pull requests and only pushes to the main branch
 # yamllint disable-line rule:truthy
@@ -14,7 +14,7 @@ on:
       - feature/*
 
 jobs:
-  # Runs the build for the planar-ally project
+  # Runs the build for the noteable-notebook-magics project
   build:
     runs-on: ubuntu-20.04
     outputs:
