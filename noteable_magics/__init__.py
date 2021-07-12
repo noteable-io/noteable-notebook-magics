@@ -1,4 +1,7 @@
-__version__ = "1.0.0"
+import os
+import pkg_resources
+
+__version__ = pkg_resources.get_distribution("noteable_magics").version
 
 from .data_loader import NoteableDataLoaderMagic
 from .logging import configure_logging
