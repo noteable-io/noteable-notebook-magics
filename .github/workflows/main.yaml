@@ -43,15 +43,19 @@ jobs:
       # Run all of the tests
       - name: Flake8 - Style guide enforcement
         run: tox -e flake8
+        if: ${{ matrix.python-version }} == 3.9
 
       - name: Black - Format check
         run: tox -e black-check
+        if: ${{ matrix.python-version }} == 3.9
 
       - name: Isort - Import format check
         run: tox -e isort-check
+        if: ${{ matrix.python-version }} == 3.9
 
       - name: Pytest - Unit tests
         run: tox -e py${{ matrix.python-version }}
 
       - name: Safety - Python dependency vulnerability check
         run: tox -e safety
+        if: ${{ matrix.python-version }} == 3.9
