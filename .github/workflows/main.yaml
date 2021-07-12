@@ -58,6 +58,6 @@ jobs:
         if: ${{ matrix.python-version == 3.9 }} 
 
       - name: Set env
-        run: echo ::set-output name=tox_py::${matrix.python-version//.}
+        run: echo ::set-output name=tox_py::${matrix.python-version#//.}
       - name: Pytest - Unit tests
         run: tox -e py${{ steps.vars.outputs.tox_py }}
