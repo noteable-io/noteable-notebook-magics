@@ -222,8 +222,8 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
         else:
             rprint(f"[red]No files found in dataset '{path.rstrip('/')}'[/red]")
 
-    for file_name in files_downloaded:
-        rprint(f"[green]{file_name}[/green]")
+    files_names = "\n".join(files_downloaded)
+    rprint(f"[green]{files_names}[/green]")
 
 
 @push.command(name="datasets", cls=NTBLCommand)
