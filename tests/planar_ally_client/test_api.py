@@ -1,9 +1,6 @@
 from unittest import mock
 
-import pytest
-
 from noteable_magics.planar_ally_client.api import DatasetFileSystemAPI, FileSystemAPI
-from noteable_magics.planar_ally_client.errors import PlanarAllyError
 from noteable_magics.planar_ally_client.types import (
     FileKind,
     FileProgressUpdateContent,
