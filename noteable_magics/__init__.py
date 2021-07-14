@@ -1,5 +1,5 @@
-import sql.run
 import pkg_resources
+import sql.run
 
 __version__ = pkg_resources.get_distribution("noteable_magics").version
 
