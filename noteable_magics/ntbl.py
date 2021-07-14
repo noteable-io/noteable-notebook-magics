@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, Iterable, List
+from typing import Any, Dict, Iterable, List
 
 import click
 import structlog
@@ -10,6 +10,7 @@ from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
 from rich import print as rprint
+from rich.progress import Progress, TaskID
 from rich.syntax import Syntax
 from rich.table import Table
 from traitlets import Float, Unicode
@@ -22,6 +23,7 @@ from .planar_ally_client.errors import PlanarAllyError
 from .planar_ally_client.types import (
     FileKind,
     FileProgressEndMessage,
+    FileProgressStartMessage,
     FileProgressUpdateMessage,
     RemoteStatus,
     StreamErrorMessage,
@@ -198,32 +200,45 @@ def project_push(obj: ContextObject):
 
 
 def process_file_update_stream(path: str, stream: DatasetOperationStream):
-    # TODO: prints are not flushed to the notebook as they happen, so messages
-    #   and any future progress bars will not show up without some investigation.
     expect_single_file = not path.endswith("/")
     got_file_update_msg = False
-    files_downloaded = []
+    error_message = None
+    complete_message = None
 
-    for msg in stream:
-        if isinstance(msg, StreamErrorMessage):
-            rprint(f"[red]{msg.content.detail}[/red]")
-            return
-        elif isinstance(msg, FileProgressUpdateMessage):
-            got_file_update_msg = True
+    with Progress() as progress:
+        tasks_by_file_path: Dict[str, TaskID] = {}
 
-            if msg.content.percent_complete == 1.0:
-                files_downloaded.append(msg.content.file_name)
-        elif isinstance(msg, FileProgressEndMessage) and got_file_update_msg:
-            rprint(f"[green]{msg.content.message}[/green]")
+        for msg in stream:
+            if isinstance(msg, StreamErrorMessage):
+                error_message = msg.content.detail
+                break
+            elif isinstance(msg, FileProgressUpdateMessage):
+                got_file_update_msg = True
+
+                if msg.content.file_name not in tasks_by_file_path:
+                    tasks_by_file_path[msg.content.file_name] = progress.add_task(
+                        msg.content.file_name, total=100.0
+                    )
+
+                progress.update(
+                    tasks_by_file_path[msg.content.file_name],
+                    completed=msg.content.percent_complete * 100.0,
+                )
+            elif isinstance(msg, FileProgressStartMessage):
+                progress.console.print(msg.content.message)
+            elif isinstance(msg, FileProgressEndMessage) and got_file_update_msg:
+                complete_message = msg.content.message
+
+    if error_message:
+        rprint(f"[red]{error_message}[/red]")
+    elif complete_message:
+        rprint(f"[green]{complete_message}[/green]")
 
     if not got_file_update_msg:
         if expect_single_file:
             rprint(f"[red]{path} not found[/red]")
         else:
             rprint(f"[red]No files found in dataset '{path.rstrip('/')}'[/red]")
-
-    files_names = "\n".join(files_downloaded)
-    rprint(f"[green]{files_names}[/green]")
 
 
 @push.command(name="datasets", cls=NTBLCommand)
