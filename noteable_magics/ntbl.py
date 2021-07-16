@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, Iterable, List
+from typing import Any, Dict, Iterable, List
 
 import click
 import structlog
@@ -10,6 +10,7 @@ from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
 from rich import print as rprint
+from rich.progress import Progress, TaskID
 from rich.syntax import Syntax
 from rich.table import Table
 from traitlets import Float, Unicode
@@ -17,9 +18,17 @@ from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
 from .git_service import GitDiff, GitService, GitStatus, GitUser
-from .planar_ally_client.api import PlanarAllyAPI
+from .planar_ally_client.api import DatasetOperationStream, PlanarAllyAPI
 from .planar_ally_client.errors import PlanarAllyError
-from .planar_ally_client.types import FileKind, RemoteStatus, UserMessage
+from .planar_ally_client.types import (
+    FileKind,
+    FileProgressEndMessage,
+    FileProgressStartMessage,
+    FileProgressUpdateMessage,
+    RemoteStatus,
+    StreamErrorMessage,
+    UserMessage,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -190,13 +199,52 @@ def project_push(obj: ContextObject):
     return SuccessfulUserMessageOutput(response=resp)
 
 
+def process_file_update_stream(path: str, stream: DatasetOperationStream):
+    expect_single_file = not path.endswith("/")
+    got_file_update_msg = False
+    error_message = None
+    complete_message = None
+
+    with Progress() as progress:
+        tasks_by_file_path: Dict[str, TaskID] = {}
+
+        for msg in stream:
+            if isinstance(msg, StreamErrorMessage):
+                error_message = msg.content.detail
+                break
+            elif isinstance(msg, FileProgressUpdateMessage):
+                got_file_update_msg = True
+
+                if msg.content.file_name not in tasks_by_file_path:
+                    tasks_by_file_path[msg.content.file_name] = progress.add_task(
+                        msg.content.file_name, total=100.0
+                    )
+
+                progress.update(
+                    tasks_by_file_path[msg.content.file_name],
+                    completed=msg.content.percent_complete * 100.0,
+                )
+            elif isinstance(msg, FileProgressStartMessage):
+                progress.console.print(msg.content.message)
+            elif isinstance(msg, FileProgressEndMessage) and got_file_update_msg:
+                complete_message = msg.content.message
+
+    if error_message:
+        rprint(f"[red]{error_message}[/red]")
+    elif complete_message:
+        rprint(f"[green]{complete_message}[/green]")
+
+    if not got_file_update_msg:
+        if expect_single_file:
+            rprint(f"[red]{path} not found[/red]")
+        else:
+            rprint(f"[red]No files found in dataset '{path.rstrip('/')}'[/red]")
+
+
 @push.command(name="datasets", cls=NTBLCommand)
 @click.argument("path", nargs=-1)
-# Default to 60 minutes for dataset pulls
-# This gives an upload rate of 11.1 MB/s for a 40 GB file
-@click.option('-t', '--timeout', default=3600, type=float)
 @click.pass_obj
-def datasets_push(obj: ContextObject, path: List[str], timeout: float):
+def datasets_push(obj: ContextObject, path: List[str]):
     """Push dataset files to the remote store
 
     PATH is the path of the dataset to push (e.g. My first dataset/data.csv, My first dataset).
@@ -205,8 +253,9 @@ def datasets_push(obj: ContextObject, path: List[str], timeout: float):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).push(path, timeout=(0.5, timeout))
-    return SuccessfulUserMessageOutput(response=resp)
+
+    stream = obj.planar_ally.dataset_fs().push(path)
+    process_file_update_stream(path, stream)
 
 
 @pull.command(
@@ -220,11 +269,8 @@ def project_pull(obj: ContextObject):
 
 @pull.command(name="datasets", cls=NTBLCommand)
 @click.argument("path", nargs=-1)
-# Default to 60 minutes for dataset pulls
-# This gives a download rate of 11.1 MB/s for a 40 GB file
-@click.option('-t', '--timeout', default=3600, type=float)
 @click.pass_obj
-def datasets_pull(obj: ContextObject, path: List[str], timeout: float):
+def datasets_pull(obj: ContextObject, path: List[str]):
     """Push dataset files to the remote store
 
     PATH is the path of the dataset to pull (e.g. My first dataset/data.csv, My first dataset).
@@ -233,8 +279,9 @@ def datasets_pull(obj: ContextObject, path: List[str], timeout: float):
     if "/" not in path:
         # The user is trying to push the whole dataset
         path = f"{path}/"
-    resp = obj.planar_ally.fs(FileKind.dataset).pull(path, timeout=(0.5, timeout))
-    return SuccessfulUserMessageOutput(response=resp)
+
+    stream = obj.planar_ally.dataset_fs().pull(path)
+    process_file_update_stream(path, stream)
 
 
 class DiffOutput(OutputModel):

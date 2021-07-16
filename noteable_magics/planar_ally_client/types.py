@@ -1,8 +1,10 @@
 """API types returned and used with planar-ally"""
+import enum
 from enum import Enum, auto
-from typing import List
+from typing import Generic, List, TypeVar
 
 from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
 
 class UserMessage(BaseModel):
@@ -75,3 +77,68 @@ class FileKind(Enum):
 
     def __str__(self):
         return self.value
+
+
+class StreamType(enum.Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return name
+
+    error = enum.auto()
+
+    file_progress_start = enum.auto()
+    file_progress_update = enum.auto()
+    file_progress_end = enum.auto()
+
+
+class StreamHeader(BaseModel):
+    type: StreamType
+
+
+StreamMessageContentT = TypeVar("StreamMessageContentT")
+
+
+class StreamMessage(GenericModel, Generic[StreamMessageContentT]):
+    header: StreamHeader
+    content: StreamMessageContentT
+
+
+class StreamErrorContent(BaseModel):
+    detail: str
+    status_code: int
+
+
+class StreamErrorMessage(StreamMessage[StreamErrorContent]):
+    """An error in the stream processing"""
+
+    header: StreamHeader = StreamHeader(type=StreamType.error)
+
+
+class FileProgressStartMessage(StreamMessage[UserMessage]):
+    """The start of a file progress stream"""
+
+    header: StreamHeader = StreamHeader(type=StreamType.file_progress_start)
+
+    @classmethod
+    def new(cls, message: str) -> "FileProgressStartMessage":
+        return cls(content=UserMessage(message=message))
+
+
+class FileProgressUpdateContent(BaseModel):
+    file_name: str
+    percent_complete: float = Field(description="0.0 to 1.0 percent complete")
+
+
+class FileProgressUpdateMessage(StreamMessage[FileProgressUpdateContent]):
+    """An update from a file progress stream"""
+
+    header: StreamHeader = StreamHeader(type=StreamType.file_progress_update)
+
+
+class FileProgressEndMessage(StreamMessage[UserMessage]):
+    """The end of a file progress stream"""
+
+    header: StreamHeader = StreamHeader(type=StreamType.file_progress_end)
+
+    @classmethod
+    def new(cls, message: str) -> "FileProgressEndMessage":
+        return cls(content=UserMessage(message=message))

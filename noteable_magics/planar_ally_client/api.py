@@ -1,13 +1,25 @@
-from typing import Any, Dict
+import json
+from typing import Any, Dict, Union
 
 import requests
 import structlog
 from urllib3.util import Timeout
 
 from . import errors
-from .types import FileKind, RemoteStatus, UserMessage
+from .types import (
+    FileKind,
+    FileProgressEndMessage,
+    FileProgressStartMessage,
+    FileProgressUpdateMessage,
+    RemoteStatus,
+    StreamErrorMessage,
+    StreamHeader,
+    StreamType,
+    UserMessage,
+)
 
 logger = structlog.get_logger(__name__)
+ResponseType = Union[Dict[str, Any], requests.Response]
 
 
 class PlanarAllyAPI:
@@ -23,20 +35,23 @@ class PlanarAllyAPI:
         self._default_timeout = Timeout(total=default_total_timeout_seconds, connect=0.5)
 
     def fs(self, kind: FileKind) -> "FileSystemAPI":
-        if kind is FileKind.dataset:
-            return DatasetFileSystemAPI(self, kind)
         return FileSystemAPI(self, kind)
 
-    def post(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
+    def dataset_fs(self) -> "DatasetFileSystemAPI":
+        return DatasetFileSystemAPI(self, FileKind.dataset)
+
+    def post(self, endpoint: str, operation: str, **kwargs) -> ResponseType:
         return self._request("POST", endpoint, operation, **kwargs)
 
-    def delete(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
+    def delete(self, endpoint: str, operation: str, **kwargs) -> ResponseType:
         return self._request("DELETE", endpoint, operation, **kwargs)
 
-    def get(self, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
+    def get(self, endpoint: str, operation: str, **kwargs) -> ResponseType:
         return self._request("GET", endpoint, operation, **kwargs)
 
-    def _request(self, method: str, endpoint: str, operation: str, **kwargs) -> Dict[str, Any]:
+    def _request(
+        self, method: str, endpoint: str, operation: str, raw_response=False, **kwargs
+    ) -> ResponseType:
         full_url = f"{self._base_url}{endpoint}"
         kwargs.setdefault("timeout", self._default_timeout)
         logger.debug(
@@ -52,6 +67,11 @@ class PlanarAllyAPI:
             raise errors.PlanarAllyAPITimeoutError(operation) from e
         except requests.ConnectionError as e:
             raise errors.PlanarAllyUnableToConnectError() from e
+
+        if raw_response:
+            if resp.status_code != 200:
+                raise errors.PlanarAllyAPIError(resp.status_code, resp, operation)
+            return resp
 
         return self._check_response(resp, operation)
 
@@ -96,15 +116,42 @@ class FileSystemAPI:
         return RemoteStatus.parse_obj(resp)
 
 
-class DatasetFileSystemAPI(FileSystemAPI):
+class DatasetFileSystemAPI:
     def __init__(self, api: PlanarAllyAPI, kind: FileKind):
-        super().__init__(api, kind)
+        self._api = api
+        self._kind = kind
+        self._url_prefix = f"fs/{self._kind}"
 
-    def delete(self, path: str, **kwargs) -> UserMessage:
-        raise errors.PlanarAllyError("delete is not supported for dataset files")
+    def pull(self, path: str, **kwargs) -> "DatasetOperationStream":
+        kwargs.update({"raw_response": True, "stream": True, "timeout": None})
+        resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
+        return DatasetOperationStream(resp)
 
-    def move(self, path: str, **kwargs) -> UserMessage:
-        raise errors.PlanarAllyError("move is not supported for dataset files")
+    def push(self, path: str, **kwargs) -> "DatasetOperationStream":
+        kwargs.update({"raw_response": True, "stream": True, "timeout": None})
+        resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
+        return DatasetOperationStream(resp)
 
-    def get_remote_status(self, path: str, **kwargs) -> RemoteStatus:
-        raise errors.PlanarAllyError("get_remote_status is not supported for dataset files")
+
+class DatasetOperationStream:
+    _msg_type_lookup = {
+        StreamType.file_progress_start: FileProgressStartMessage,
+        StreamType.file_progress_update: FileProgressUpdateMessage,
+        StreamType.file_progress_end: FileProgressEndMessage,
+        StreamType.error: StreamErrorMessage,
+    }
+
+    def __init__(self, response: requests.Response):
+        self._response = response
+        self._lines = self._response.iter_lines()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while not (line := next(self._lines)):
+            pass
+
+        parsed_line = json.loads(line)
+        header = StreamHeader.parse_obj(parsed_line["header"])
+        return self._msg_type_lookup[header.type].parse_obj(parsed_line)

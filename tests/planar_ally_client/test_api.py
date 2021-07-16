@@ -1,10 +1,13 @@
 from unittest import mock
 
-import pytest
-
 from noteable_magics.planar_ally_client.api import DatasetFileSystemAPI, FileSystemAPI
-from noteable_magics.planar_ally_client.errors import PlanarAllyError
-from noteable_magics.planar_ally_client.types import FileKind, RemoteStatus, UserMessage
+from noteable_magics.planar_ally_client.types import (
+    FileKind,
+    FileProgressUpdateContent,
+    FileProgressUpdateMessage,
+    RemoteStatus,
+    UserMessage,
+)
 
 
 def test_post(api, mock_success):
@@ -36,7 +39,7 @@ def test_fs_fsapi(api):
 
 
 def test_fs_dsapi(api):
-    assert isinstance(api.fs(FileKind.dataset), DatasetFileSystemAPI)
+    assert isinstance(api.dataset_fs(), DatasetFileSystemAPI)
 
 
 def test_fs_pull(fs, mock_success):
@@ -84,34 +87,37 @@ def test_fs_get_remote_status(fs, mock_success):
         assert result == RemoteStatus(file_changes=[{'path': 'foo/bar', 'change_type': 'added'}])
 
 
-def test_ds_pull(ds, mock_success):
-    with mock.patch.object(ds._api._session, 'request', return_value=mock_success) as mock_request:
-        result = ds.pull("foo/bar", timeout=(0.5, 25.0))
+def test_ds_pull(ds, mock_dataset_stream):
+    with mock.patch.object(
+        ds._api._session, 'request', return_value=mock_dataset_stream
+    ) as mock_request:
+        result = ds.pull("foo/bar")
         mock_request.assert_called_with(
-            'POST', 'http://localhost:7000/api/v0/fs/dataset/foo/bar/pull', timeout=(0.5, 25.0)
+            'POST',
+            'http://localhost:7000/api/v0/fs/dataset/foo/bar/pull',
+            timeout=None,
+            stream=True,
         )
-        assert result == UserMessage(message='Success')
+        assert list(result) == [
+            FileProgressUpdateMessage(
+                content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+            )
+        ]
 
 
-def test_ds_push(ds, mock_success):
-    with mock.patch.object(ds._api._session, 'request', return_value=mock_success) as mock_request:
-        result = ds.push("foo/bar", timeout=(0.5, 25.0))
+def test_ds_push(ds, mock_dataset_stream):
+    with mock.patch.object(
+        ds._api._session, 'request', return_value=mock_dataset_stream
+    ) as mock_request:
+        result = ds.push("foo/bar")
         mock_request.assert_called_with(
-            'POST', 'http://localhost:7000/api/v0/fs/dataset/foo/bar/push', timeout=(0.5, 25.0)
+            'POST',
+            'http://localhost:7000/api/v0/fs/dataset/foo/bar/push',
+            timeout=None,
+            stream=True,
         )
-        assert result == UserMessage(message='Success')
-
-
-def test_ds_delete(ds):
-    with pytest.raises(PlanarAllyError):
-        ds.delete("foo/bar", timeout=(0.5, 25.0))
-
-
-def test_ds_move(ds):
-    with pytest.raises(PlanarAllyError):
-        ds.move("foo/bar", timeout=(0.5, 25.0))
-
-
-def test_ds_get_remote_status(ds):
-    with pytest.raises(PlanarAllyError):
-        ds.get_remote_status("foo/bar", timeout=(0.5, 25.0))
+        assert list(result) == [
+            FileProgressUpdateMessage(
+                content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+            )
+        ]
