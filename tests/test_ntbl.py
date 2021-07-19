@@ -5,7 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 from noteable_magics.ntbl import NTBLMagic, datasets_pull, datasets_push
-from noteable_magics.planar_ally_client.types import UserMessage
+from noteable_magics.planar_ally_client.api import DatasetOperationStream
 
 
 @pytest.fixture()
@@ -21,7 +21,7 @@ def context():
 
 @mock.patch(
     'noteable_magics.planar_ally_client.api.DatasetFileSystemAPI.push',
-    return_value=UserMessage(message='Success'),
+    return_value=DatasetOperationStream(iter([]), lambda: None),
 )
 @pytest.mark.parametrize(
     'input_path,expected_path',
@@ -42,7 +42,7 @@ def test_datasets_push(push_mock, input_path, expected_path, runner, context):
 
 @mock.patch(
     'noteable_magics.planar_ally_client.api.DatasetFileSystemAPI.pull',
-    return_value=UserMessage(message='Success'),
+    return_value=DatasetOperationStream(iter([]), lambda: None),
 )
 @pytest.mark.parametrize(
     'input_path,expected_path',

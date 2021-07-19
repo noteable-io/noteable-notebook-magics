@@ -2,7 +2,7 @@
 authors = ["Eli Wilson <eli@noteable.io>"]
 description = "IPython Magics for Noteable"
 name = "noteable_magics"
-version = "1.1.0"
+version = "1.2.0"
 
 [tool.poetry.dependencies]
 GitPython = "^3.1.14"
@@ -19,6 +19,7 @@ rich = "^10.1.0"
 unidiff = "^0.6.0"
 xlrd = "^2.0.1"
 structlog = "^21.1.0"
+httpx = "^0.18.2"
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"

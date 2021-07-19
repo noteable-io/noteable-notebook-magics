@@ -1,7 +1,7 @@
 import json
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Iterator, Callable
 
-import requests
+import httpx
 import structlog
 from urllib3.util import Timeout
 
@@ -19,7 +19,7 @@ from .types import (
 )
 
 logger = structlog.get_logger(__name__)
-ResponseType = Union[Dict[str, Any], requests.Response]
+ResponseType = Union[Dict[str, Any], httpx.Response]
 
 
 class PlanarAllyAPI:
@@ -30,8 +30,8 @@ class PlanarAllyAPI:
         default_total_timeout_seconds: float = 60.0,
     ):
         self._base_url = f"{base_url}/{version}/"
-        self._session = requests.Session()
-        self._session.headers["User-Agent"] = "noteable-notebook-magics"
+        self._client = httpx.Client()
+        self._client.headers["User-Agent"] = "noteable-notebook-magics"
         self._default_timeout = Timeout(total=default_total_timeout_seconds, connect=0.5)
 
     def fs(self, kind: FileKind) -> "FileSystemAPI":
@@ -62,10 +62,10 @@ class PlanarAllyAPI:
         )
 
         try:
-            resp = self._session.request(method, full_url, **kwargs)
-        except requests.Timeout as e:
+            resp = self._client.request(method, full_url, **kwargs)
+        except httpx.TimeoutException as e:
             raise errors.PlanarAllyAPITimeoutError(operation) from e
-        except requests.ConnectionError as e:
+        except httpx.HTTPError as e:
             raise errors.PlanarAllyUnableToConnectError() from e
 
         if raw_response:
@@ -75,7 +75,7 @@ class PlanarAllyAPI:
 
         return self._check_response(resp, operation)
 
-    def _check_response(self, resp: requests.Response, operation: str) -> Dict[str, Any]:
+    def _check_response(self, resp: httpx.Response, operation: str) -> Dict[str, Any]:
         try:
             response = resp.json()
         except ValueError:
@@ -125,12 +125,12 @@ class DatasetFileSystemAPI:
     def pull(self, path: str, **kwargs) -> "DatasetOperationStream":
         kwargs.update({"raw_response": True, "stream": True, "timeout": None})
         resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
-        return DatasetOperationStream(resp)
+        return DatasetOperationStream(resp.iter_lines(), resp.close)
 
     def push(self, path: str, **kwargs) -> "DatasetOperationStream":
         kwargs.update({"raw_response": True, "stream": True, "timeout": None})
         resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
-        return DatasetOperationStream(resp)
+        return DatasetOperationStream(resp.iter_lines(), resp.close)
 
 
 class DatasetOperationStream:
@@ -141,9 +141,15 @@ class DatasetOperationStream:
         StreamType.error: StreamErrorMessage,
     }
 
-    def __init__(self, response: requests.Response):
-        self._response = response
-        self._lines = self._response.iter_lines()
+    def __init__(self, lines: Iterator[str], done: Callable[[], None]):
+        self._lines = lines
+        self._done = done
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._done()
 
     def __iter__(self):
         return self
