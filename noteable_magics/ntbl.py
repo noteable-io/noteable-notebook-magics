@@ -254,8 +254,8 @@ def datasets_push(obj: ContextObject, path: List[str]):
         # The user is trying to push the whole dataset
         path = f"{path}/"
 
-    stream = obj.planar_ally.dataset_fs().push(path)
-    process_file_update_stream(path, stream)
+    with obj.planar_ally.dataset_fs().push(path) as stream:
+        process_file_update_stream(path, stream)
 
 
 @pull.command(
@@ -280,8 +280,8 @@ def datasets_pull(obj: ContextObject, path: List[str]):
         # The user is trying to push the whole dataset
         path = f"{path}/"
 
-    stream = obj.planar_ally.dataset_fs().pull(path)
-    process_file_update_stream(path, stream)
+    with obj.planar_ally.dataset_fs().pull(path) as stream:
+        process_file_update_stream(path, stream)
 
 
 class DiffOutput(OutputModel):

@@ -145,6 +145,12 @@ class DatasetOperationStream:
         self._response = response
         self._lines = self._response.iter_lines()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._response.close()
+
     def __iter__(self):
         return self
 
