@@ -89,35 +89,33 @@ def test_fs_get_remote_status(fs, mock_success):
 
 def test_ds_pull(ds, mock_dataset_stream):
     with mock.patch.object(
-        ds._api._client, 'request', return_value=mock_dataset_stream
+        ds._api._client, 'stream', return_value=mock_dataset_stream
     ) as mock_request:
-        result = ds.pull("foo/bar")
-        mock_request.assert_called_with(
-            'POST',
-            'http://localhost:7000/api/v0/fs/dataset/foo/bar/pull',
-            timeout=None,
-            stream=True,
-        )
-        assert list(result) == [
-            FileProgressUpdateMessage(
-                content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+        with ds.pull("foo/bar") as result:
+            mock_request.assert_called_with(
+                'POST',
+                'http://localhost:7000/api/v0/fs/dataset/foo/bar/pull',
+                timeout=None,
             )
-        ]
+            assert list(result) == [
+                FileProgressUpdateMessage(
+                    content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+                )
+            ]
 
 
 def test_ds_push(ds, mock_dataset_stream):
     with mock.patch.object(
-        ds._api._client, 'request', return_value=mock_dataset_stream
+        ds._api._client, 'stream', return_value=mock_dataset_stream
     ) as mock_request:
-        result = ds.push("foo/bar")
-        mock_request.assert_called_with(
-            'POST',
-            'http://localhost:7000/api/v0/fs/dataset/foo/bar/push',
-            timeout=None,
-            stream=True,
-        )
-        assert list(result) == [
-            FileProgressUpdateMessage(
-                content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+        with ds.push("foo/bar") as result:
+            mock_request.assert_called_with(
+                'POST',
+                'http://localhost:7000/api/v0/fs/dataset/foo/bar/push',
+                timeout=None,
             )
-        ]
+            assert list(result) == [
+                FileProgressUpdateMessage(
+                    content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
+                )
+            ]
