@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Iterator, Callable
 
 import httpx
 import structlog
@@ -125,12 +125,12 @@ class DatasetFileSystemAPI:
     def pull(self, path: str, **kwargs) -> "DatasetOperationStream":
         kwargs.update({"raw_response": True, "stream": True, "timeout": None})
         resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
-        return DatasetOperationStream(resp)
+        return DatasetOperationStream(resp.iter_lines(), resp.close)
 
     def push(self, path: str, **kwargs) -> "DatasetOperationStream":
         kwargs.update({"raw_response": True, "stream": True, "timeout": None})
         resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
-        return DatasetOperationStream(resp)
+        return DatasetOperationStream(resp.iter_lines(), resp.close)
 
 
 class DatasetOperationStream:
@@ -141,15 +141,15 @@ class DatasetOperationStream:
         StreamType.error: StreamErrorMessage,
     }
 
-    def __init__(self, response: httpx.Response):
-        self._response = response
-        self._lines = self._response.iter_lines()
+    def __init__(self, lines: Iterator[str], done: Callable[[], None]):
+        self._lines = lines
+        self._done = done
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc_info):
-        self._response.close()
+        self._done()
 
     def __iter__(self):
         return self
