@@ -45,6 +45,9 @@ class MockResponse:
         else:
             yield self.json_data + "\n"
 
+    def close(self):
+        pass
+
 
 @pytest.fixture()
 def mock_success():
