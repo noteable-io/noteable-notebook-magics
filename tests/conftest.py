@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 
 import pytest
 
@@ -45,8 +46,9 @@ class MockResponse:
         else:
             yield self.json_data + "\n"
 
-    def close(self):
-        pass
+    @contextmanager
+    def stream(self):
+        yield self
 
 
 @pytest.fixture()
@@ -63,4 +65,4 @@ def mock_dataset_stream():
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
         ).json(),
         200,
-    )
+    ).stream()

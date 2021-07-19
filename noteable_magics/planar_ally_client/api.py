@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Union, Iterator, Callable
+from typing import Any, Dict, Union, ContextManager, Optional, Iterator
 
 import httpx
 import structlog
@@ -75,6 +75,25 @@ class PlanarAllyAPI:
 
         return self._check_response(resp, operation)
 
+    def stream(
+        self, method: str, endpoint: str, operation: str, **kwargs
+    ) -> ContextManager[httpx.Response]:
+        full_url = f"{self._base_url}{endpoint}"
+        kwargs.setdefault("timeout", self._default_timeout)
+        logger.debug(
+            "making api request to planar-ally",
+            method=method,
+            endpoint=endpoint,
+            operation=operation,
+        )
+
+        try:
+            return self._client.stream(method, full_url, **kwargs)
+        except httpx.TimeoutException as e:
+            raise errors.PlanarAllyAPITimeoutError(operation) from e
+        except httpx.HTTPError as e:
+            raise errors.PlanarAllyUnableToConnectError() from e
+
     def _check_response(self, resp: httpx.Response, operation: str) -> Dict[str, Any]:
         try:
             response = resp.json()
@@ -123,14 +142,14 @@ class DatasetFileSystemAPI:
         self._url_prefix = f"fs/{self._kind}"
 
     def pull(self, path: str, **kwargs) -> "DatasetOperationStream":
-        kwargs.update({"raw_response": True, "stream": True, "timeout": None})
-        resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
-        return DatasetOperationStream(resp.iter_lines(), resp.close)
+        kwargs.update({"timeout": None})
+        resp = self._api.stream("POST", f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
+        return DatasetOperationStream(resp, "pull files")
 
     def push(self, path: str, **kwargs) -> "DatasetOperationStream":
-        kwargs.update({"raw_response": True, "stream": True, "timeout": None})
-        resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
-        return DatasetOperationStream(resp.iter_lines(), resp.close)
+        kwargs.update({"timeout": None})
+        resp = self._api.stream("POST", f"{self._url_prefix}/{path}/push", "push files", **kwargs)
+        return DatasetOperationStream(resp, "push files")
 
 
 class DatasetOperationStream:
@@ -141,15 +160,21 @@ class DatasetOperationStream:
         StreamType.error: StreamErrorMessage,
     }
 
-    def __init__(self, lines: Iterator[str], done: Callable[[], None]):
-        self._lines = lines
-        self._done = done
+    def __init__(self, resp_ctx_mgr: ContextManager[httpx.Response], operation: str):
+        self._resp_context_manager = resp_ctx_mgr
+        self._operation = operation
+        self._response: Optional[httpx.Response] = None
+        self._lines: Optional[Iterator[str]] = None
 
     def __enter__(self):
+        self._response = self._resp_context_manager.__enter__()
+        if self._response.status_code != 200:
+            raise errors.PlanarAllyAPIError(self._response.status_code, None, self._operation)
+        self._lines = self._response.iter_lines()
         return self
 
     def __exit__(self, *exc_info):
-        self._done()
+        return self._resp_context_manager.__exit__(*exc_info)
 
     def __iter__(self):
         return self
