@@ -3,7 +3,6 @@ from typing import Any, Dict, Union, ContextManager, Optional, Iterator
 
 import httpx
 import structlog
-from urllib3.util import Timeout
 
 from . import errors
 from .types import (
@@ -30,9 +29,9 @@ class PlanarAllyAPI:
         default_total_timeout_seconds: float = 60.0,
     ):
         self._base_url = f"{base_url}/{version}/"
-        self._client = httpx.Client()
+        self._client = httpx.Client(http2=True)
         self._client.headers["User-Agent"] = "noteable-notebook-magics"
-        self._default_timeout = Timeout(total=default_total_timeout_seconds, connect=0.5)
+        self._default_timeout = httpx.Timeout(default_total_timeout_seconds, connect=0.5)
 
     def fs(self, kind: FileKind) -> "FileSystemAPI":
         return FileSystemAPI(self, kind)
@@ -167,7 +166,13 @@ class DatasetOperationStream:
         self._lines: Optional[Iterator[str]] = None
 
     def __enter__(self):
-        self._response = self._resp_context_manager.__enter__()
+        try:
+            self._response = self._resp_context_manager.__enter__()
+        except httpx.TimeoutException as e:
+            raise errors.PlanarAllyAPITimeoutError(self._operation) from e
+        except httpx.HTTPError as e:
+            raise errors.PlanarAllyUnableToConnectError() from e
+
         if self._response.status_code != 200:
             raise errors.PlanarAllyAPIError(self._response.status_code, None, self._operation)
         self._lines = self._response.iter_lines()
