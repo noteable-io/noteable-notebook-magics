@@ -231,9 +231,10 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
 
     if error_message:
         rprint(f"[red]{error_message}[/red]")
-    elif complete_message:
-        rprint(f"[green]{complete_message}[/green]")
+        return
 
+    if complete_message:
+        rprint(f"[green]{complete_message}[/green]")
     if not got_file_update_msg:
         if expect_single_file:
             rprint(f"[red]{path} not found[/red]")
