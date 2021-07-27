@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Union, ContextManager, Optional, Iterator
+from typing import Any, ContextManager, Dict, Iterator, Optional, Union
 
 import httpx
 import structlog
@@ -65,7 +65,7 @@ class PlanarAllyAPI:
         except httpx.TimeoutException as e:
             raise errors.PlanarAllyAPITimeoutError(operation) from e
         except httpx.HTTPError as e:
-            raise errors.PlanarAllyUnableToConnectError() from e
+            raise errors.PlanarAllyUnableToConnectError(operation) from e
 
         if raw_response:
             if resp.status_code != 200:
@@ -91,7 +91,7 @@ class PlanarAllyAPI:
         except httpx.TimeoutException as e:
             raise errors.PlanarAllyAPITimeoutError(operation) from e
         except httpx.HTTPError as e:
-            raise errors.PlanarAllyUnableToConnectError() from e
+            raise errors.PlanarAllyUnableToConnectError(operation) from e
 
     def _check_response(self, resp: httpx.Response, operation: str) -> Dict[str, Any]:
         try:
@@ -171,7 +171,7 @@ class DatasetOperationStream:
         except httpx.TimeoutException as e:
             raise errors.PlanarAllyAPITimeoutError(self._operation) from e
         except httpx.HTTPError as e:
-            raise errors.PlanarAllyUnableToConnectError() from e
+            raise errors.PlanarAllyUnableToConnectError(self._operation) from e
 
         if self._response.status_code != 200:
             raise errors.PlanarAllyAPIError(self._response.status_code, None, self._operation)

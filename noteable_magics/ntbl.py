@@ -29,6 +29,7 @@ from .planar_ally_client.types import (
     StreamErrorMessage,
     UserMessage,
 )
+from .util import catch_em_all
 
 logger = structlog.get_logger(__name__)
 
@@ -59,6 +60,7 @@ class NTBLMagic(Magics, Configurable):
         "engineering@noteable.io", config=True, help="The email of the user creating git commits"
     )
 
+    @catch_em_all
     @line_cell_magic("ntbl")
     @magic_arguments()
     @argument("line", default="", nargs="*", type=str, help="Noteable magic")
@@ -73,14 +75,17 @@ class NTBLMagic(Magics, Configurable):
                 return ntbl_magic.invoke(ctx)
         except UsageError as e:
             e.show()
+            raise
         except Exit as ex:
             if ex.exit_code != 0:
                 raise ex
         except Abort:
             rprint("[red]Aborted[/red]")
+            raise
         except PlanarAllyError as e:
             logger.exception("got an error from planar-ally")
             rprint(f"[red]{e.user_error()}[/red]")
+            raise
 
         return None
 
