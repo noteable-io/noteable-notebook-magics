@@ -12,7 +12,7 @@ def removeprefix(s: str, prefix: str) -> str:
 
 class NtblError(Exception):
     def _render_traceback_(self):
-        return ["Contact support."]
+        return ["Contact support@noteable.io"]
 
 
 def catch_em_all(fn):
