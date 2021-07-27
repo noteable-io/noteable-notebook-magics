@@ -21,7 +21,7 @@ def catch_em_all(fn):
         try:
             return fn(*args, **kwargs)
         except click.UsageError:
-            raise IPythonUsageError() from None
+            raise IPythonUsageError("See above and correct your command.") from None
         except:  # noqa
             raise NtblError() from None
 
