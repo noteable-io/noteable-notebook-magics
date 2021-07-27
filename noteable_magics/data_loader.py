@@ -45,6 +45,12 @@ class NoteableDataLoaderMagic(Magics, Configurable):
     @argument(
         "-d", "--delimeter", type=str, default=",", required=False, help="Tabular data delimeter"
     )
+    @argument(
+        "-i",
+        "--include-index",
+        action="store_true",
+        help="Store index column from dataframe in sql",
+    )
     def execute(self, line="", cell=""):
         # workaround for https://github.com/ipython/ipython/issues/12729
         # TODO: switch back to parse_argstring in IPython 8.0
@@ -75,7 +81,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             conn = sql.connection.Connection.connections[CONN_NAME]
 
-        tmp_df.to_sql(tablename, conn.session, if_exists="replace")
+        tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
 
         if self.display_connection_str:
             print(f"Connect with: %sql {conn.name}")
