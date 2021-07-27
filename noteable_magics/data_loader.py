@@ -55,7 +55,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
 
         mimetype, _ = mimetypes.guess_type(source_file_path)
         if mimetype == "text/csv" or source_file_path.endswith(".csv"):
-            tmp_df = pd.read_csv(source_file_path, args.delimeter)
+            tmp_df = pd.read_csv(source_file_path, sep=args.delimeter)
         elif mimetype in EXCEL_MIMETYPES:
             tmp_df = pd.read_excel(source_file_path)
         elif mimetype == "application/json":
