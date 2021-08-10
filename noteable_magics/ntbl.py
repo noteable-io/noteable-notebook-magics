@@ -102,6 +102,7 @@ class NTBLMagic(Magics, Configurable):
 
     def _get_full_project_path(self) -> str:
         project_dir = PurePath(self.project_dir)
+        project_dir.mkdir(parents=True, exist_ok=True)
         if project_dir.is_absolute():
             return str(project_dir)
         return os.path.join(os.getcwd(), self.project_dir)
