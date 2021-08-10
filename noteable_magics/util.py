@@ -1,7 +1,10 @@
 from functools import wraps
 
 import click
+import structlog
 from IPython.core.error import UsageError as IPythonUsageError
+
+logger = structlog.get_logger(__name__)
 
 
 def removeprefix(s: str, prefix: str) -> str:
@@ -23,6 +26,7 @@ def catch_em_all(fn):
         except click.UsageError:
             raise IPythonUsageError("See above and correct your command.") from None
         except:  # noqa
+            logger.exception("Got an unexpected error")
             raise NtblError() from None
 
     return wrapped
