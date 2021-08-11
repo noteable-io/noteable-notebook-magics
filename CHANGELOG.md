@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2021-08-10
+### Added
+- Log unexpected errors in the catch_em_all decorator
+
+### Fixed
+- %ntbl magic now ensures that the project directory exists instead of crashing when it doesn't
+
 ## [1.2.2] - 2021-07-27
 ### Fixed
 - Explicitly use `sep=` kwarg for `pd.read_csv` to remove `FutureWarning`

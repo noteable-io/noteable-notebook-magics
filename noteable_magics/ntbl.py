@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 import click
@@ -101,7 +101,8 @@ class NTBLMagic(Magics, Configurable):
         return ContextObject(planar_ally, git_service, magic=self)
 
     def _get_full_project_path(self) -> str:
-        project_dir = PurePath(self.project_dir)
+        project_dir = Path(self.project_dir)
+        project_dir.mkdir(parents=True, exist_ok=True)
         if project_dir.is_absolute():
             return str(project_dir)
         return os.path.join(os.getcwd(), self.project_dir)
