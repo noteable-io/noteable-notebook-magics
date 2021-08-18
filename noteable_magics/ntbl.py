@@ -44,7 +44,7 @@ class ContextObject:
 @magics_class
 class NTBLMagic(Magics, Configurable):
     planar_ally_api_url = Unicode(
-        "http://localhost:7000/api", config=True, help="The URL to connect to for planar-ally"
+        "http://localhost:7000", config=True, help="The URL to connect to for planar-ally"
     )
     planar_ally_default_timeout_seconds = Float(
         60.0,
@@ -111,6 +111,14 @@ class NTBLMagic(Magics, Configurable):
 @click.group(name="%ntbl", help="Noteable magic")
 def ntbl_magic():
     pass
+
+
+@ntbl_magic.command(help="Change planar-ally log level", cls=NTBLCommand, hidden=True)
+@click.option("--app-level", help="New application log level", required=True, type=click.STRING)
+@click.option("--ext-level", help="New external log level", required=False, type=click.STRING)
+@click.pass_obj
+def change_log_level(obj: ContextObject, app_level, ext_level):
+    obj.planar_ally.change_log_level(app_log_level=app_level, ext_log_level=ext_level)
 
 
 @ntbl_magic.group(help="Commands related to this file's status")

@@ -24,11 +24,12 @@ ResponseType = Union[Dict[str, Any], httpx.Response]
 class PlanarAllyAPI:
     def __init__(
         self,
-        base_url: str = "http://localhost:7000/api",
+        base_url: str = "http://localhost:7000",
         version: str = "v0",
         default_total_timeout_seconds: float = 60.0,
     ):
-        self._base_url = f"{base_url}/{version}/"
+        self._base_url = base_url
+        self._api_url = f"{base_url}/api/{version}/"
         self._client = httpx.Client(http2=True)
         self._client.headers["User-Agent"] = "noteable-notebook-magics"
         self._default_timeout = httpx.Timeout(default_total_timeout_seconds, connect=0.5)
@@ -38,6 +39,17 @@ class PlanarAllyAPI:
 
     def dataset_fs(self) -> "DatasetFileSystemAPI":
         return DatasetFileSystemAPI(self, FileKind.dataset)
+
+    def change_log_level(self, app_log_level: str, ext_log_level: Optional[str] = None) -> None:
+        self.post(
+            "logs",
+            "change log level",
+            json={
+                "new_app_level": app_log_level,
+                "new_ext_level": ext_log_level,
+            },
+            base_url=f"{self._base_url}/instance/",
+        )
 
     def post(self, endpoint: str, operation: str, **kwargs) -> ResponseType:
         return self._request("POST", endpoint, operation, **kwargs)
@@ -51,7 +63,7 @@ class PlanarAllyAPI:
     def _request(
         self, method: str, endpoint: str, operation: str, raw_response=False, **kwargs
     ) -> ResponseType:
-        full_url = f"{self._base_url}{endpoint}"
+        full_url = f"{kwargs.pop('base_url', self._api_url)}{endpoint}"
         kwargs.setdefault("timeout", self._default_timeout)
         logger.debug(
             "making api request to planar-ally",
@@ -77,7 +89,7 @@ class PlanarAllyAPI:
     def stream(
         self, method: str, endpoint: str, operation: str, **kwargs
     ) -> ContextManager[httpx.Response]:
-        full_url = f"{self._base_url}{endpoint}"
+        full_url = f"{self._api_url}{endpoint}"
         kwargs.setdefault("timeout", self._default_timeout)
         logger.debug(
             "making api request to planar-ally",
