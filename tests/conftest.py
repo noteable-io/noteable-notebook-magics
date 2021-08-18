@@ -59,6 +59,11 @@ def mock_success():
 
 
 @pytest.fixture()
+def mock_no_content():
+    return MockResponse(None, 204)
+
+
+@pytest.fixture()
 def mock_dataset_stream():
     return MockResponse(
         FileProgressUpdateMessage(

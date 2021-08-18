@@ -18,7 +18,7 @@ from .types import (
 )
 
 logger = structlog.get_logger(__name__)
-ResponseType = Union[Dict[str, Any], httpx.Response]
+ResponseType = Optional[Union[Dict[str, Any], httpx.Response]]
 
 
 class PlanarAllyAPI:
@@ -105,7 +105,10 @@ class PlanarAllyAPI:
         except httpx.HTTPError as e:
             raise errors.PlanarAllyUnableToConnectError(operation) from e
 
-    def _check_response(self, resp: httpx.Response, operation: str) -> Dict[str, Any]:
+    def _check_response(self, resp: httpx.Response, operation: str) -> Optional[Dict[str, Any]]:
+        if resp.status_code == 204:
+            return None
+
         try:
             response = resp.json()
         except ValueError:
