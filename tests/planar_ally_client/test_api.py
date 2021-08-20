@@ -1,5 +1,8 @@
 from unittest import mock
 
+import pytest
+from httpx import Timeout
+
 from noteable_magics.planar_ally_client.api import DatasetFileSystemAPI, FileSystemAPI
 from noteable_magics.planar_ally_client.types import (
     FileKind,
@@ -119,3 +122,15 @@ def test_ds_push(ds, mock_dataset_stream):
                     content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
                 )
             ]
+
+
+@pytest.mark.parametrize("ext_level", [None, "DEBUG"])
+def test_change_log_level(api, mock_no_content, ext_level):
+    with mock.patch.object(api._client, 'request', return_value=mock_no_content) as mock_request:
+        api.change_log_level("DEBUG", ext_log_level=ext_level)
+        mock_request.assert_called_with(
+            'POST',
+            'http://localhost:7000/instance/logs',
+            json={'new_app_level': 'DEBUG', 'new_ext_level': ext_level},
+            timeout=Timeout(connect=0.5, read=60.0, write=60.0, pool=60.0),
+        )
