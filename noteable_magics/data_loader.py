@@ -6,7 +6,7 @@ import sql.magic
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
-from traitlets import Bool, Int, Unicode
+from traitlets import Bool, Int
 from traitlets.config import Configurable
 
 ENV_VAR_PREFIX = "SQL"
@@ -16,6 +16,18 @@ EXCEL_MIMETYPES = {
 }
 DB_NAME = "noteable"
 CONN_NAME = f"@{DB_NAME}"
+sqlite_db_location = "sqlite:////tmp/ntbl.db"
+
+
+def get_connection(db_location: str = sqlite_db_location):
+    if CONN_NAME not in sql.connection.Connection.connections:
+        conn = sql.connection.Connection.set(db_location, displaycon=False)
+        conn.name = CONN_NAME
+        sql.connection.Connection.connections[conn.name] = conn
+        sql.connection.Connection.connections.pop(db_location)
+    else:
+        conn = sql.connection.Connection.connections[CONN_NAME]
+    return conn
 
 
 @magics_class
@@ -26,9 +38,6 @@ class NoteableDataLoaderMagic(Magics, Configurable):
     display_example = Bool(True, config=True, help="Show example SQL query")
     display_connection_str = Bool(False, config=True, help="Show connection string after execute")
     pandas_limit = Int(10, config=True, help="The limit of rows to returns in the pandas dataframe")
-    sqlite_db_location = Unicode(
-        "sqlite:////tmp/ntbl.db", config=True, help="Where to store the sqlite database."
-    )
 
     @line_cell_magic("create_or_replace_data_view")
     @magic_arguments()
@@ -73,14 +82,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             raise ValueError(f"File mimetype {mimetype} is not supported")
 
-        if CONN_NAME not in sql.connection.Connection.connections:
-            conn = sql.connection.Connection.set(self.sqlite_db_location, displaycon=False)
-            conn.name = CONN_NAME
-            sql.connection.Connection.connections[conn.name] = conn
-            sql.connection.Connection.connections.pop(self.sqlite_db_location)
-        else:
-            conn = sql.connection.Connection.connections[CONN_NAME]
-
+        conn = get_connection()
         tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
 
         if self.display_connection_str:
