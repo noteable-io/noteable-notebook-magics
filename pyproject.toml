@@ -9,7 +9,7 @@ GitPython = "^3.1.14"
 backoff = "^1.10.0"
 click = "^7.0.0"
 httpx = {extras = ["http2"], version = "^0.18.2"}
-ipython = "^7.20.0"
+ipython = "^7.31.1"
 ipython-sql = "^0.4.0"
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
