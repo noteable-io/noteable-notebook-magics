@@ -1,4 +1,3 @@
-from distutils.command.config import config
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,8 +51,12 @@ class NTBLMagic(Magics, Configurable):
         config=True,
         help="The total default timeout seconds when making a request to planar-ally",
     )
-    project_dir = Unicode("/etc/noteable/project", config=True, help="The project path, relative or absolute")
-    project_git_dir = Unicode("/var/noteable/project-data", config=True, help="The project git data directory")
+    project_dir = Unicode(
+        "/etc/noteable/project", config=True, help="The project path, relative or absolute"
+    )
+    project_git_dir = Unicode(
+        "/var/noteable/project-data", config=True, help="The project git data directory"
+    )
 
     git_user_name = Unicode(
         "Noteable Kernel", config=True, help="The name of the user creating git commits"
