@@ -2,7 +2,7 @@
 authors = ["Eli Wilson <eli@noteable.io>"]
 description = "IPython Magics for Noteable"
 name = "noteable_magics"
-version = "1.2.4"
+version = "1.3.0"
 
 [tool.poetry.dependencies]
 GitPython = "^3.1.14"

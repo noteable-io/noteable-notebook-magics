@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2022-03-14
+### Added
+- `NTBLMagic.project_git_dir` config for the git directory
+
 ## [1.2.4] - 2021-09-01
 ### Added
 - Added `change-log-level` command to change planar-ally's log level via API call
