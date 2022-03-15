@@ -15,7 +15,6 @@ from traitlets import Float, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
-from .git_service import GitService, GitUser
 from .planar_ally_client.api import DatasetOperationStream, PlanarAllyAPI
 from .planar_ally_client.errors import PlanarAllyError
 from .planar_ally_client.types import (
@@ -34,7 +33,6 @@ logger = structlog.get_logger(__name__)
 @dataclass(frozen=True)
 class ContextObject:
     planar_ally: PlanarAllyAPI
-    git: GitService
     magic: "NTBLMagic"
 
 
@@ -96,11 +94,7 @@ class NTBLMagic(Magics, Configurable):
             self.planar_ally_api_url,
             default_total_timeout_seconds=self.planar_ally_default_timeout_seconds,
         )
-        git_service = GitService(
-            self.project_git_dir,
-            GitUser(name=self.git_user_name, email=self.git_user_email),
-        )
-        return ContextObject(planar_ally, git_service, magic=self)
+        return ContextObject(planar_ally, magic=self)
 
     def _get_full_project_path(self) -> str:
         project_dir = Path(self.project_dir)
@@ -121,16 +115,6 @@ def ntbl_magic():
 @click.pass_obj
 def change_log_level(obj: ContextObject, app_level, ext_level):
     obj.planar_ally.change_log_level(app_log_level=app_level, ext_log_level=ext_level)
-
-
-@ntbl_magic.group(help="Commands related to this file's status")
-def status():
-    pass
-
-
-@ntbl_magic.group(help="Show the full changes made to the local file system")
-def diff():
-    pass
 
 
 @ntbl_magic.group(help="Push local updates to a remote store")
