@@ -144,7 +144,7 @@ class GitService:
 
     def init(self) -> GitInit:
         if self._repo is None:
-            self._repo = Repo.init(self._cwd, mkdir=False)
+            self._repo = Repo.init(self._cwd, mkdir=True)
 
             # Set user name & email config values before committing
             with self._repo.config_writer() as config:
