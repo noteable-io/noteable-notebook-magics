@@ -49,16 +49,6 @@ class NTBLMagic(Magics, Configurable):
     project_dir = Unicode(
         "/etc/noteable/project", config=True, help="The project path, relative or absolute"
     )
-    project_git_dir = Unicode(
-        "/var/noteable/project-data", config=True, help="The project git data directory"
-    )
-
-    git_user_name = Unicode(
-        "Noteable Kernel", config=True, help="The name of the user creating git commits"
-    )
-    git_user_email = Unicode(
-        "engineering@noteable.io", config=True, help="The email of the user creating git commits"
-    )
 
     @catch_em_all
     @line_cell_magic("ntbl")
