@@ -11,13 +11,11 @@ from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
 from rich import print as rprint
 from rich.progress import Progress, TaskID
-from rich.syntax import Syntax
-from rich.table import Table
 from traitlets import Float, Unicode
 from traitlets.config import Configurable
 
 from .command import NTBLCommand, OutputModel
-from .git_service import GitDiff, GitService, GitStatus, GitUser
+from .git_service import GitService, GitUser
 from .planar_ally_client.api import DatasetOperationStream, PlanarAllyAPI
 from .planar_ally_client.errors import PlanarAllyError
 from .planar_ally_client.types import (
@@ -25,7 +23,6 @@ from .planar_ally_client.types import (
     FileProgressEndMessage,
     FileProgressStartMessage,
     FileProgressUpdateMessage,
-    RemoteStatus,
     StreamErrorMessage,
     UserMessage,
 )
@@ -146,62 +143,6 @@ def pull():
     pass
 
 
-git_table_kwargs = {
-    "show_header": False,
-    "show_lines": True,
-    "expand": True,
-}
-
-
-class ProjectStatusOutput(OutputModel):
-    status: GitStatus
-
-    def get_human_readable_output(self) -> Iterable[Any]:
-        if self.status.has_changes():
-            results = ["To push your changes use: %ntbl push project"]
-            if self.status.changes_staged_for_commit:
-                staged_table = Table(title="Changes staged", **git_table_kwargs)
-                for change in self.status.changes_staged_for_commit:
-                    staged_table.add_row(change.type.name.lower(), change.path, style="green")
-                results.append(staged_table)
-
-            if self.status.changes_not_staged_for_commit:
-                not_staged_table = Table(title="Changes not staged", **git_table_kwargs)
-                for change in self.status.changes_not_staged_for_commit:
-                    not_staged_table.add_row(change.type.name.lower(), change.path, style="red")
-                results.append(not_staged_table)
-
-            if self.status.untracked_files:
-                untracked_table = Table(title="Untracked files", **git_table_kwargs)
-                for filename in self.status.untracked_files:
-                    untracked_table.add_row(filename, style="red")
-                results.append(untracked_table)
-            return results
-        return ["Up to date"]
-
-
-class ProjectRemoteStatusOutput(OutputModel):
-    status: RemoteStatus
-
-    def get_human_readable_output(self) -> Iterable[Any]:
-        if self.status.has_changes():
-            changes = Table(title="Changes in S3 compared to local file system", **git_table_kwargs)
-            for change in self.status.file_changes:
-                changes.add_row(change.change_prefix, change.path, style=change.style)
-            return ["To pull remote changes use: %ntbl pull project", changes]
-        return ["Up to date"]
-
-
-@status.command(name="project", help="Get the status about the current project", cls=NTBLCommand)
-@click.option("--remote", help="Show the remote status compared to the local kernel", is_flag=True)
-@click.pass_obj
-def project_status(obj: ContextObject, remote: bool):
-    if remote:
-        remote_status = obj.planar_ally.fs(FileKind.project).get_remote_status("")
-        return ProjectRemoteStatusOutput(status=remote_status)
-    return ProjectStatusOutput(status=obj.git.status())
-
-
 class SuccessfulUserMessageOutput(OutputModel):
     response: UserMessage
 
@@ -302,16 +243,3 @@ def datasets_pull(obj: ContextObject, path: List[str]):
 
     with obj.planar_ally.dataset_fs().pull(path) as stream:
         process_file_update_stream(path, stream)
-
-
-class DiffOutput(OutputModel):
-    diff: GitDiff
-
-    def get_human_readable_output(self) -> Iterable[Any]:
-        return [Syntax(self.diff.raw, "diff", theme="ansi_light")]
-
-
-@diff.command(name="project", help="Show the full file changes for project files", cls=NTBLCommand)
-@click.pass_obj
-def project_diff(obj: ContextObject):
-    return DiffOutput(diff=obj.git.diff())

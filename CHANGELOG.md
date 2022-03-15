@@ -6,13 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.0] - 2022-03-14
+## [2.0.0] - 2022-03-15
 ### Added
 - `NTBLMagic.project_git_dir` config for the git directory
 
 ### Changed
 - Upgrade `ipython` to `^7.31.1` for security fix
 - Upgrade `numpy` to `^1.22.2` for security fix
+
+### Removed
+- Remove `%ntbl` commands that interact with `git` directly. This will need to be added to the planar-ally api now. 
+  - Remove `%ntbl diff project`
+  - Remove `%ntbl status project`
 
 ## [1.2.4] - 2021-09-01
 ### Added
