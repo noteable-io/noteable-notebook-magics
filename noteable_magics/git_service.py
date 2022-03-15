@@ -2,7 +2,7 @@ import enum
 import itertools
 from typing import List, Optional
 
-from git import Diff, InvalidGitRepositoryError, Repo
+from git import Diff, InvalidGitRepositoryError, NoSuchPathError, Repo
 from pydantic import BaseModel
 from unidiff import PatchedFile, PatchSet
 
@@ -117,7 +117,7 @@ class GitService:
 
         try:
             self._repo = Repo(path)
-        except InvalidGitRepositoryError:
+        except (InvalidGitRepositoryError, NoSuchPathError):
             self._repo = None
 
     @property
