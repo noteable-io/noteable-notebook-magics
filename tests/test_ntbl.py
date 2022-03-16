@@ -20,8 +20,7 @@ def runner():
 
 @pytest.fixture()
 def context():
-    with mock.patch('noteable_magics.ntbl.GitService'):
-        yield NTBLMagic()._build_ctx()
+    yield NTBLMagic()._build_ctx()
 
 
 @pytest.mark.parametrize(
