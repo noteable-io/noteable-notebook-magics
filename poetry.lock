@@ -727,7 +727,7 @@ python-versions = ">=3.5"
 
 [[package]]
 name = "notebook"
-version = "6.4.9"
+version = "6.4.10"
 description = "A web-based notebook environment for interactive computing"
 category = "dev"
 optional = false
@@ -1457,7 +1457,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "6defc6a415ea5605f6365ee57ba5ad47f58b39e5b2f4661ceac5f44778797eda"
+content-hash = "fde3524252a1830bcc16a94a5bd4b5f2d586038b71dcf573f2d344866c1ad19a"
 
 [metadata.files]
 anyio = [
@@ -1913,8 +1913,8 @@ nest-asyncio = [
     {file = "nest_asyncio-1.5.4.tar.gz", hash = "sha256:f969f6013a16fadb4adcf09d11a68a4f617c6049d7af7ac2c676110169a63abd"},
 ]
 notebook = [
-    {file = "notebook-6.4.9-py3-none-any.whl", hash = "sha256:14ebcde55100176d677385deabf4b3c60e97d82cab0ae76d93241872bc368274"},
-    {file = "notebook-6.4.9.tar.gz", hash = "sha256:64d898f0efcec7def4607b686e25d175670f51c701966373b2c5d7b38281d522"},
+    {file = "notebook-6.4.10-py3-none-any.whl", hash = "sha256:49cead814bff0945fcb2ee07579259418672ac175d3dc3d8102a4b0a656ed4df"},
+    {file = "notebook-6.4.10.tar.gz", hash = "sha256:2408a76bc6289283a8eecfca67e298ec83c67db51a4c2e1b713dd180bb39e90e"},
 ]
 numpy = [
     {file = "numpy-1.22.3-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:92bfa69cfbdf7dfc3040978ad09a48091143cffb778ec3b03fa170c494118d75"},
