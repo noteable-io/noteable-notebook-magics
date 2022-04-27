@@ -1,13 +1,14 @@
 """External datasource / database connection management bridging Noteable and ipython-sql"""
-
+import subprocess
+import sys
 import json
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import pkg_resources
+
 # ipython-sql thinks mighty highly of isself with this package name.
 import sql.connection
-from pip._internal.cli.main import main as pipmain
 from sql.run import add_commit_blacklist_dialect
 from sqlalchemy.engine import URL
 
@@ -54,7 +55,9 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
     bootstrap_datasource(basename, meta_json, dsn_json, connect_args_json)
 
 
-def bootstrap_datasource(datasource_id: str, meta_json: str, dsn_json: str, connect_args_json: str):
+def bootstrap_datasource(
+    datasource_id: str, meta_json: str, dsn_json: Optional[str], connect_args_json: Optional[str]
+):
     """Bootstrap this single datasource from its three json definition JSON sections"""
     metadata = json.loads(meta_json)
 
@@ -67,7 +70,9 @@ def bootstrap_datasource(datasource_id: str, meta_json: str, dsn_json: str, conn
     )
 
     # Prepare connection URL string.
-    dsn_dict = json.loads(dsn_json)
+
+    # Yes, bigquery connections may end up with nothing in dns_json.
+    dsn_dict = json.loads(dsn_json) if dsn_json else {}
     # 'drivername' comes in via metadata, because reasons.
     dsn_dict['drivername'] = metadata['drivername']
     url_obj = URL.create(**dsn_dict)
@@ -78,7 +83,7 @@ def bootstrap_datasource(datasource_id: str, meta_json: str, dsn_json: str, conn
     if not metadata['sqlmagic_autocommit']:
         add_commit_blacklist_dialect(metadata['drivername'])
 
-    connect_args = json.loads(connect_args_json)
+    connect_args = json.loads(connect_args_json) if connect_args_json else {}
 
     name = f'@{datasource_id}'
 
@@ -93,7 +98,7 @@ def bootstrap_datasource(datasource_id: str, meta_json: str, dsn_json: str, conn
 ##
 
 
-def ensure_requirements(datasource_id, requirements: list[str], allowed_to_install: bool):
+def ensure_requirements(datasource_id: str, requirements: list[str], allowed_to_install: bool):
     """Ensure he required driver packages are installed already, or, if allowed,
     install them on the fly.
     """
@@ -119,11 +124,17 @@ def is_package_installed(pkg_name: str) -> bool:
     except pkg_resources.VersionConflict:
         return False
 
+    return False
+
 
 def install_package(pkg_name: str) -> None:
     """Install `pkg_name` using pip"""
 
-    pipmain(["install", pkg_name])
+    run_pip(["install", pkg_name])
+
+
+def run_pip(pip_args: list[str]):
+    subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
 
 
 def _read_path(path: Path):
