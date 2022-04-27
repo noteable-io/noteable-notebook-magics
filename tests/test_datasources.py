@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from noteable_magics import datasources
+from sql.run import _COMMIT_BLACKLIST_DIALECTS
 
 
 @pytest.fixture
@@ -65,10 +66,9 @@ class DatasourceJSONs:
             return json.dumps(self.connect_args_dict)
 
 
-class TestBootstrapDatasource:
-    def test_success(self, datasource_id, mocker):
-        # Maybe parameterize the buggers
-        case_data = DatasourceJSONs(
+class SampleData:
+    samples = {
+        'simple-postgres': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2-binary'],
                 'allow_datasource_dialect_autoinstall': True,
@@ -84,6 +84,22 @@ class TestBootstrapDatasource:
             },
             connect_args_dict=None,
         )
+    }
+
+    @classmethod
+    def get_sample(cls, name: str) -> DatasourceJSONs:
+        return cls.samples[name]
+
+    @classmethod
+    def all_sample_names(cls) -> list[str]:
+        # Sorted so that if tests are run in parallel test discovery is stable.
+        return sorted(cls.samples.keys())
+
+
+class TestBootstrapDatasource:
+    @pytest.mark.parametrize('sample_name', SampleData.all_sample_names())
+    def test_success(self, sample_name, datasource_id, mocker):
+        case_data = SampleData.get_sample(sample_name)
 
         # ipython-sql ends up trying to eagerly connect to the datasource; not just creating the engine.
         # XXX perhaps we want to adjust to delay connecting until first use?
@@ -91,8 +107,20 @@ class TestBootstrapDatasource:
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
-        breakpoint()
-        assert patched_connect.assert_called_once()
+
+        patched_connect.assert_called_once()
+
+        assert all(
+            datasources.is_package_installed(pkg_name)
+            for pkg_name in case_data.meta_dict['required_python_modules']
+        )
+
+        # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the drivername
+        # mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
+        drivername = case_data.meta_dict['drivername']
+        assert (drivername in _COMMIT_BLACKLIST_DIALECTS) == (
+            not case_data.meta_dict['sqlmagic_autocommit']
+        )
 
 
 class TestEnsureRequirements:
