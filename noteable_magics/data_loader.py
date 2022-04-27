@@ -19,12 +19,9 @@ CONN_NAME = f"@{DB_NAME}"
 sqlite_db_location = "sqlite:////tmp/ntbl.db"
 
 
-def get_connection(db_location: str = sqlite_db_location):
+def get_local_db_connection(db_location: str = sqlite_db_location):
     if CONN_NAME not in sql.connection.Connection.connections:
-        conn = sql.connection.Connection.set(db_location, displaycon=False)
-        conn.name = CONN_NAME
-        sql.connection.Connection.connections[conn.name] = conn
-        sql.connection.Connection.connections.pop(db_location)
+        conn = sql.connection.Connection.set(db_location, displaycon=False, name=CONN_NAME)
     else:
         conn = sql.connection.Connection.connections[CONN_NAME]
     return conn
@@ -82,7 +79,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             raise ValueError(f"File mimetype {mimetype} is not supported")
 
-        conn = get_connection()
+        conn = get_local_db_connection()
         tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
 
         if self.display_connection_str:
