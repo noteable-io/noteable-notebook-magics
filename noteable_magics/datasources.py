@@ -25,7 +25,7 @@ def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
         secrets_dir = Path(secrets_dir)
 
     # Look for *.meta.json files.
-    for ds_meta_json_path in secrets_dir.glob('*.meta.json'):
+    for ds_meta_json_path in secrets_dir.glob('*.meta_js'):
         # Derive filenames for the expected related files
 
         bootstrap_datasource_from_files(ds_meta_json_path)
@@ -36,20 +36,20 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
 
     Assumes the other two files are peers in the directory and named accordingly
     """
-    # '/foo/bar/345345345345.meta.json' -> '345345345345'
-    basename = ds_meta_json_path.name[: ds_meta_json_path.name.index('.')]
+    # '/foo/bar/345345345345.meta_js' -> '345345345345'
+    basename = ds_meta_json_path.stem
 
     # Always present.
     meta_json = ds_meta_json_path.read_text()
 
     # The other two end up being optionally present.
-    dsn_json_path = ds_meta_json_path.parent / (basename + '.dsn.json')
+    dsn_json_path = ds_meta_json_path.parent / (basename + '.dsn_js')
     if dsn_json_path.exists():
         dsn_json = dsn_json_path.read_text()
     else:
         dsn_json = None
 
-    connect_args_json_path = ds_meta_json_path.parent / (basename + '.ca.json')
+    connect_args_json_path = ds_meta_json_path.parent / (basename + '.ca_js')
     if connect_args_json_path.exists():
         connect_args_json = connect_args_json_path.read_text()
     else:
