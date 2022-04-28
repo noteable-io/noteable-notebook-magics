@@ -1,12 +1,11 @@
 """External datasource / database connection management bridging Noteable and ipython-sql"""
+import json
 import subprocess
 import sys
-import json
 from pathlib import Path
 from typing import Optional, Union
 
 import pkg_resources
-
 # ipython-sql thinks mighty highly of isself with this package name.
 import sql.connection
 from sql.run import add_commit_blacklist_dialect

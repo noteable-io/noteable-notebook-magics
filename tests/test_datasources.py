@@ -1,18 +1,18 @@
 """ Tests over datasource bootstrapping """
 
-from dataclasses import dataclass
 import json
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
-import sys
 from uuid import uuid4
 
-import pytest
 import pkg_resources
+import pytest
+from sql.connection import Connection
+from sql.run import _COMMIT_BLACKLIST_DIALECTS
 
 from noteable_magics import datasources
-from sql.run import _COMMIT_BLACKLIST_DIALECTS
-from sql.connection import Connection
 
 
 @pytest.fixture

@@ -4,7 +4,6 @@ __version__ = pkg_resources.get_distribution("noteable_magics").version
 
 from sql.run import add_commit_blacklist_dialect
 
-
 from .data_loader import NoteableDataLoaderMagic, get_local_db_connection
 from .datasources import bootstrap_datasources
 from .logging import configure_logging
