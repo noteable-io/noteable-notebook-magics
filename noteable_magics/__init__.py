@@ -1,24 +1,27 @@
 import pkg_resources
-import sql.run
 
 __version__ = pkg_resources.get_distribution("noteable_magics").version
 
-from .data_loader import NoteableDataLoaderMagic, get_connection
+from sql.run import add_commit_blacklist_dialect
+
+from .data_loader import NoteableDataLoaderMagic, get_local_db_connection
+from .datasources import bootstrap_datasources
 from .logging import configure_logging
 from .ntbl import NTBLMagic
 
 
 def load_ipython_extension(ipython):
-    sql.run._COMMIT_BLACKLIST_DIALECTS = (
-        "athena",
-        "bigquery",
-        "clickhouse",
-        "ingres",
-        "mssql",
-        "teradata",
-        "vertica",
-    )
-    # initialize the noteable database connection
-    get_connection()
+
+    # Initialize any remote datasource connections
+    bootstrap_datasources()
+
+    # Always prevent sql-magic from trying to autocommit bigquery,
+    # for the legacy datasource support for Expel and whomever.
+    add_commit_blacklist_dialect('bigquery')
+
+    # Initialize the noteable local (sqlite) database connection
+    get_local_db_connection()
+
     configure_logging(False, "INFO", "DEBUG")
+
     ipython.register_magics(NoteableDataLoaderMagic, NTBLMagic)
