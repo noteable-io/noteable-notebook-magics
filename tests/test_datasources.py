@@ -92,9 +92,7 @@ class DatasourceJSONs:
 
 
 class SampleData:
-    """
-    XXX also make some negative tests.
-    """
+    """Test case fodder"""
 
     samples = {
         'simple-postgres': DatasourceJSONs(
@@ -189,9 +187,9 @@ class TestBootstrapDatasources:
         datasources.bootstrap_datasources(tmp_path)
 
         # Should now have len(id_and_samples) connections in there!
+        assert len(Connection.connections) == len(id_and_samples)
 
         # (Let test TestBootstrapDatasource focus on the finer-grained details)
-        assert len(Connection.connections) == len(id_and_samples)
 
 
 class TestBootstrapDatasource:
@@ -199,8 +197,6 @@ class TestBootstrapDatasource:
     def test_success(self, sample_name, datasource_id):
         case_data = SampleData.get_sample(sample_name)
 
-        # ipython-sql ends up trying to eagerly connect to the datasource; not just creating the engine.
-        # XXX perhaps we want to adjust to delay connecting until first use?
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
