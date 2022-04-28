@@ -4,9 +4,11 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any, Callable, Optional
+import sys
 from uuid import uuid4
 
 import pytest
+import pkg_resources
 
 from noteable_magics import datasources
 from sql.run import _COMMIT_BLACKLIST_DIALECTS
@@ -26,11 +28,10 @@ def not_installed_packages() -> list[str]:
         if datasources.is_package_installed(pkgname):
             datasources.run_pip(['uninstall', '-y', pkgname])
 
-    yield pkgnames
+    # Get pkg_resources to forget it existed too.
+    pkg_resources.working_set.by_key.clear()
 
-    for pkgname in pkgnames:
-        if datasources.is_package_installed(pkgname):
-            datasources.run_pip(['uninstall', '-y', pkgname])
+    yield pkgnames
 
 
 @pytest.fixture
