@@ -80,9 +80,9 @@ class DatasourceJSONs:
         """
 
         json_str_and_paths = [
-            (self.meta_json, tmpdir / f'{datasource_id}.meta.json'),
-            (self.dsn_json, tmpdir / f'{datasource_id}.dsn.json'),
-            (self.connect_args_json, tmpdir / f'{datasource_id}.ca.json'),
+            (self.meta_json, tmpdir / f'{datasource_id}.meta_js'),
+            (self.dsn_json, tmpdir / f'{datasource_id}.dsn_js'),
+            (self.connect_args_json, tmpdir / f'{datasource_id}.ca_js'),
         ]
 
         for json_str, path in json_str_and_paths:
