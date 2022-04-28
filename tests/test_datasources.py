@@ -87,8 +87,7 @@ class DatasourceJSONs:
 
         for json_str, path in json_str_and_paths:
             if json_str:
-                with open(path, 'w') as json_file:
-                    json_file.write(json_str)
+                path.write_text(json_str)
 
 
 class SampleData:
