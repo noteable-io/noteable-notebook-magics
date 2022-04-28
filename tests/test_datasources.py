@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from uuid import uuid4
 
 import pytest
@@ -42,8 +42,16 @@ def not_installed_package(not_installed_packages: list[str]) -> str:
 
 
 @pytest.fixture
-def datasource_id() -> str:
-    return uuid4().hex
+def datasource_id_factory() -> Callable[[], str]:
+    def factory_datasource_id():
+        return uuid4().hex
+
+    return factory_datasource_id
+
+
+@pytest.fixture
+def datasource_id(datasource_id_factory) -> str:
+    return datasource_id_factory()
 
 
 @dataclass
@@ -66,11 +74,26 @@ class DatasourceJSONs:
         if self.connect_args_dict:
             return json.dumps(self.connect_args_dict)
 
+    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path):
+        """Save our json strings to a tmpdir so can be used to test
+        bootstrap_datasource_from_files or bootstrap_datasources
+        """
+
+        json_str_and_paths = [
+            (self.meta_json, tmpdir / f'{datasource_id}.meta.json'),
+            (self.dsn_json, tmpdir / f'{datasource_id}.dsn.json'),
+            (self.connect_args_json, tmpdir / f'{datasource_id}.ca.json'),
+        ]
+
+        for json_str, path in json_str_and_paths:
+            if json_str:
+                with open(path, 'w') as json_file:
+                    json_file.write(json_str)
+
 
 class SampleData:
     """
     XXX also make some negative tests.
-    XXX teach DatasourceJSONs to have a method to save to tmpdir then can test higher layers
     """
 
     samples = {
@@ -125,7 +148,7 @@ class SampleData:
                 'required_python_modules': ['trino[sqlalchemy]'],
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'trino',
-                'sqlmagic_autocommit': False,
+                'sqlmagic_autocommit': False,  # This one is special!
             },
             dsn_dict={
                 'username': 'ssm-user',
@@ -145,20 +168,42 @@ class SampleData:
         # Sorted so that if tests are run in parallel test discovery is stable.
         return sorted(cls.samples.keys())
 
+    @classmethod
+    def all_samples(cls) -> list[DatasourceJSONs]:
+        return list(cls.samples.values())
+
+
+class TestBootstrapDatasources:
+    def test_bootstrap_datasources(self, datasource_id_factory, tmp_path: Path):
+        """Test that we bootstrap all of our samples from json files properly."""
+        id_and_samples = [(datasource_id_factory(), sample) for sample in SampleData.all_samples()]
+
+        # Scribble them all out into tmpdir as if on kernel launch
+        for ds_id, sample in id_and_samples:
+            sample.json_to_tmpdir(ds_id, tmp_path)
+
+        # Ensure ipython-sql's little mind is clear and will be focused
+        # on just this task.
+        Connection.connections.clear()
+
+        datasources.bootstrap_datasources(tmp_path)
+
+        # Should now have len(id_and_samples) connections in there!
+
+        # (Let test TestBootstrapDatasource focus on the finer-grained details)
+        assert len(Connection.connections) == len(id_and_samples)
+
 
 class TestBootstrapDatasource:
     @pytest.mark.parametrize('sample_name', SampleData.all_sample_names())
-    def test_success(self, sample_name, datasource_id, mocker):
+    def test_success(self, sample_name, datasource_id):
         case_data = SampleData.get_sample(sample_name)
 
         # ipython-sql ends up trying to eagerly connect to the datasource; not just creating the engine.
         # XXX perhaps we want to adjust to delay connecting until first use?
-        patched_connect = mocker.patch('sqlalchemy.engine.base.Engine.connect')
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
-
-        patched_connect.assert_called_once()
 
         # Check over the created 'Connection' instance.
         expected_name = f'@{datasource_id}'

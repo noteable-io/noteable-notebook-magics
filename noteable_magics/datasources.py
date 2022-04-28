@@ -39,18 +39,21 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
     # '/foo/bar/345345345345.meta.json' -> '345345345345'
     basename = ds_meta_json_path.name[: ds_meta_json_path.name.index('.')]
 
-    dsn_json_path = ds_meta_json_path.parent / basename + '.dsn.json'
-    if not dsn_json_path.exists():
-        raise Exception(f'Could not find {dsn_json_path}')
-
-    connect_args_json_path = ds_meta_json_path.parent / basename + '.ca.json'
-    if not connect_args_json_path.exists():
-        raise Exception(f'Could not find {connect_args_json_path}')
-
-    # Load 'em all as JSON strings, pass down to next step.
+    # Always present.
     meta_json = _read_path(ds_meta_json_path)
-    dsn_json = _read_path(dsn_json_path)
-    connect_args_json = _read_path(connect_args_json_path)
+
+    # The other two end up being optionally present.
+    dsn_json_path = ds_meta_json_path.parent / (basename + '.dsn.json')
+    if dsn_json_path.exists():
+        dsn_json = _read_path(dsn_json_path)
+    else:
+        dsn_json = None
+
+    connect_args_json_path = ds_meta_json_path.parent / (basename + '.ca.json')
+    if connect_args_json_path.exists():
+        connect_args_json = _read_path(connect_args_json_path)
+    else:
+        connect_args_json = None
 
     bootstrap_datasource(basename, meta_json, dsn_json, connect_args_json)
 
