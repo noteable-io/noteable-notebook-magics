@@ -40,18 +40,18 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
     basename = ds_meta_json_path.name[: ds_meta_json_path.name.index('.')]
 
     # Always present.
-    meta_json = _read_path(ds_meta_json_path)
+    meta_json = ds_meta_json_path.read_text()
 
     # The other two end up being optionally present.
     dsn_json_path = ds_meta_json_path.parent / (basename + '.dsn.json')
     if dsn_json_path.exists():
-        dsn_json = _read_path(dsn_json_path)
+        dsn_json = dsn_json_path.read_text()
     else:
         dsn_json = None
 
     connect_args_json_path = ds_meta_json_path.parent / (basename + '.ca.json')
     if connect_args_json_path.exists():
-        connect_args_json = _read_path(connect_args_json_path)
+        connect_args_json = connect_args_json_path.read_text()
     else:
         connect_args_json = None
 
@@ -138,8 +138,3 @@ def install_package(pkg_name: str) -> None:
 
 def run_pip(pip_args: list[str]):
     subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
-
-
-def _read_path(path: Path):
-    with open(path) as f:
-        return f.read()
