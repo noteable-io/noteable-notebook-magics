@@ -1,10 +1,9 @@
 """ Tests over datasource bootstrapping """
 
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Optional
 from uuid import uuid4
 
 import pkg_resources
@@ -16,7 +15,7 @@ from noteable_magics import datasources
 
 
 @pytest.fixture
-def not_installed_packages() -> list[str]:
+def not_installed_packages() -> List[str]:
     """Yield a few not currently installed packages, uninstall them as needed
     upon cleanup.
     """
@@ -35,7 +34,7 @@ def not_installed_packages() -> list[str]:
 
 
 @pytest.fixture
-def not_installed_package(not_installed_packages: list[str]) -> str:
+def not_installed_package(not_installed_packages: List[str]) -> str:
     """Yield a package name that is definitely not currently installed, then uninstall
     it upon cleanup if needed.
     """
@@ -165,12 +164,12 @@ class SampleData:
         return cls.samples[name]
 
     @classmethod
-    def all_sample_names(cls) -> list[str]:
+    def all_sample_names(cls) -> List[str]:
         # Sorted so that if tests are run in parallel test discovery is stable.
         return sorted(cls.samples.keys())
 
     @classmethod
-    def all_samples(cls) -> list[DatasourceJSONs]:
+    def all_samples(cls) -> List[DatasourceJSONs]:
         return list(cls.samples.values())
 
 
