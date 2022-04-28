@@ -3,9 +3,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import pkg_resources
+
 # ipython-sql thinks mighty highly of isself with this package name.
 import sql.connection
 from sql.run import add_commit_blacklist_dialect
@@ -100,7 +101,7 @@ def bootstrap_datasource(
 ##
 
 
-def ensure_requirements(datasource_id: str, requirements: list[str], allowed_to_install: bool):
+def ensure_requirements(datasource_id: str, requirements: List[str], allowed_to_install: bool):
     """Ensure he required driver packages are installed already, or, if allowed,
     install them on the fly.
     """
@@ -135,5 +136,5 @@ def install_package(pkg_name: str) -> None:
     run_pip(["install", pkg_name])
 
 
-def run_pip(pip_args: list[str]):
+def run_pip(pip_args: List[str]):
     subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
