@@ -10,10 +10,10 @@ backoff = "^1.10.0"
 click = "^7.0.0"
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
-ipython-sql = "^0.4.0"
+ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="0e0a33e29aa32d831163cc9c180902d1e6a8ab83"}
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
-pyarrow = "^7.0.0"
+pyarrow = "^5.0.0"
 pydantic = "^1.7.3"
 python = "^3.8"
 rich = "10.13.0"  # Upgrading breaks progress bars
