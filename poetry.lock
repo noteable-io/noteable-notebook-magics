@@ -523,8 +523,8 @@ sqlparse = "*"
 [package.source]
 type = "git"
 url = "https://github.com/noteable-io/ipython-sql-noteable.git"
-reference = "0e0a33e29aa32d831163cc9c180902d1e6a8ab83"
-resolved_reference = "0e0a33e29aa32d831163cc9c180902d1e6a8ab83"
+reference = "43935e171a70ab9dfe12571811650570e0ab8071"
+resolved_reference = "43935e171a70ab9dfe12571811650570e0ab8071"
 
 [[package]]
 name = "isort"
@@ -1485,7 +1485,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "a2636c014741dfc691a3e2e72faa0fc41ed5191e3ec9b601891b5e3b6f8e3334"
+content-hash = "cf66bf919a438b66ae52a2243bf3cd1723059dc89538e9ed0cccd5a0bb6f4076"
 
 [metadata.files]
 anyio = [

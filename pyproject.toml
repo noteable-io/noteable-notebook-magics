@@ -10,7 +10,7 @@ backoff = "^1.10.0"
 click = "^7.0.0"
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
-ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="0e0a33e29aa32d831163cc9c180902d1e6a8ab83"}
+ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="43935e171a70ab9dfe12571811650570e0ab8071"}
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
 pyarrow = "^5.0.0"
