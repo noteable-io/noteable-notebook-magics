@@ -10,6 +10,7 @@ import pytest
 
 from noteable_magics import datasources
 from sql.run import _COMMIT_BLACKLIST_DIALECTS
+from sql.connection import Connection
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def datasource_id() -> str:
 class DatasourceJSONs:
     meta_dict: dict[str, Any]
     dsn_dict: Optional[dict[str, str]]
-    connect_args_dict: Optional[dict[str, any]]
+    connect_args_dict: Optional[dict[str, any]] = None
 
     @property
     def meta_json(self) -> str:
@@ -67,6 +68,11 @@ class DatasourceJSONs:
 
 
 class SampleData:
+    """
+    XXX also make some negative tests.
+    XXX teach DatasourceJSONs to have a method to save to tmpdir then can test higher layers
+    """
+
     samples = {
         'simple-postgres': DatasourceJSONs(
             meta_dict={
@@ -82,8 +88,52 @@ class SampleData:
                 'port': 5432,
                 'database': 'postgres',
             },
-            connect_args_dict=None,
-        )
+        ),
+        'postgres-require-ssl': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['psycopg2-binary'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'postgresql',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'scott',
+                'password': 'tiger',
+                'host': 'localhost',
+                'port': 5432,
+                'database': 'postgres',
+            },
+            connect_args_dict={'sslmode': 'require'},
+        ),
+        'redshift': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-redshift', 'redshift_connector'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'redshift+redshift_connector',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'scott',
+                'password': 'tiger',
+                'host': 'localhost',
+                'port': 5439,
+                'database': 'postgres',
+            },
+        ),
+        'trino': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['trino[sqlalchemy]'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'trino',
+                'sqlmagic_autocommit': False,
+            },
+            dsn_dict={
+                'username': 'ssm-user',
+                'host': 'vpce-049c85e5d9fef046c-ygwkxhb9.vpce-svc-04e6878855b5a4174.us-west-2.vpce.amazonaws.com',
+                'port': 18889,
+                'database': 'hive',
+            },
+        ),
     }
 
     @classmethod
@@ -110,6 +160,13 @@ class TestBootstrapDatasource:
 
         patched_connect.assert_called_once()
 
+        # Check over the created 'Connection' instance.
+        expected_name = f'@{datasource_id}'
+        the_conn = Connection.connections[expected_name]
+        assert the_conn.name == expected_name
+        assert the_conn.connect_args == (case_data.connect_args_dict or {})
+
+        # Ensure the required packages are installed.
         assert all(
             datasources.is_package_installed(pkg_name)
             for pkg_name in case_data.meta_dict['required_python_modules']
