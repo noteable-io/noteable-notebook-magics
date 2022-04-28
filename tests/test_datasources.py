@@ -3,7 +3,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 import pkg_resources
@@ -56,9 +56,9 @@ def datasource_id(datasource_id_factory) -> str:
 
 @dataclass
 class DatasourceJSONs:
-    meta_dict: dict[str, Any]
-    dsn_dict: Optional[dict[str, str]]
-    connect_args_dict: Optional[dict[str, any]] = None
+    meta_dict: Dict[str, Any]
+    dsn_dict: Optional[Dict[str, str]]
+    connect_args_dict: Optional[Dict[str, any]] = None
 
     @property
     def meta_json(self) -> str:
