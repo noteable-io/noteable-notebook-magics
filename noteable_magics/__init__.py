@@ -2,6 +2,7 @@ import pkg_resources
 
 __version__ = pkg_resources.get_distribution("noteable_magics").version
 
+import dx
 from sql.run import add_commit_blacklist_dialect
 
 from .data_loader import NoteableDataLoaderMagic, get_local_db_connection
@@ -21,6 +22,9 @@ def load_ipython_extension(ipython):
 
     # Initialize the noteable local (sqlite) database connection
     get_local_db_connection()
+
+    # Update the default display output for pandas DataFrames
+    dx.register(ipython_shell=ipython)
 
     configure_logging(False, "INFO", "DEBUG")
 
