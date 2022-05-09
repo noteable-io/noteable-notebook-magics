@@ -21,6 +21,7 @@ structlog = "^21.1.0"
 unidiff = "^0.6.0"
 xlrd = "^2.0.1"
 numpy = "^1.22.2"
+dx = ">=1.0.4"
 
 [tool.poetry.dev-dependencies]
 black = "^22.1.0"
