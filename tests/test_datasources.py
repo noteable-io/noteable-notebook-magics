@@ -154,6 +154,22 @@ class SampleData:
                 'database': 'hive',
             },
         ),
+        'databricks': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-databricks'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'databricks+connector',
+                'sqlmagic_autocommit': False,  # This one is special!
+            },
+            dsn_dict={
+                'username': 'token',
+                'host': 'dbc-1bab80fc-a74b.cloud.databricks.com","password":"dapie372d57cefdc078d8ce3936fcb0e22ee',
+                'password': 'foonlybar',
+            },
+            connect_args_dict={
+                "http_path": "sql/protocolv1/o/2414094324684936/0125-220758-m9pfb4c7"
+            },
+        ),
     }
 
     @classmethod
@@ -212,10 +228,10 @@ class TestBootstrapDatasource:
             for pkg_name in case_data.meta_dict['required_python_modules']
         )
 
-        # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the drivername
-        # mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
-        drivername = case_data.meta_dict['drivername']
-        assert (drivername in _COMMIT_BLACKLIST_DIALECTS) == (
+        # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the dialect portion of
+        # drivername mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
+        dialect = case_data.meta_dict['drivername'].split('+')[0]
+        assert (dialect in _COMMIT_BLACKLIST_DIALECTS) == (
             not case_data.meta_dict['sqlmagic_autocommit']
         )
 

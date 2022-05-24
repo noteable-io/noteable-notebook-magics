@@ -10,7 +10,7 @@ backoff = "^1.10.0"
 click = "^8.0.4" # pinned until black is updated to not use internal module that was removed by click in 8.1.0; https://github.com/psf/black/issues/2964
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
-ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="43935e171a70ab9dfe12571811650570e0ab8071"}
+ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="526f88c1f748ba63355d4a2bf8a1a10303c4af7a"}
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
 pyarrow = "^5.0.0"

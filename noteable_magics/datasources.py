@@ -84,7 +84,11 @@ def bootstrap_datasource(
     # Do we need to tell sql-magic to not try to emit a COMMIT after each statement
     # according to the needs of this driver?
     if not metadata['sqlmagic_autocommit']:
-        add_commit_blacklist_dialect(metadata['drivername'])
+        # A sqlalchemy drivername may be comprised of 'dialect+drivername', such as
+        # 'databricks+connector'.
+        # If so, then we must only pass along the LHS of the '+'.
+        dialect = metadata['drivername'].split('+')[0]
+        add_commit_blacklist_dialect(dialect)
 
     connect_args = json.loads(connect_args_json) if connect_args_json else {}
 
