@@ -170,18 +170,6 @@ class SampleData:
                 "http_path": "sql/protocolv1/o/2414094324684936/0125-220758-m9pfb4c7"
             },
         ),
-        'bigquery-with-credential_file_contents': DatasourceJSONs(
-            meta_dict={
-                'required_python_modules': ['sqlalchemy-bigquery'],
-                'allow_datasource_dialect_autoinstall': True,
-                'drivername': 'bigquery',
-                'sqlmagic_autocommit': True,
-            },
-            connect_args_dict={
-                # b64 encoding of '{"foo": "bar"}'
-                'credential_file_contents': 'eyJmb28iOiAiYmFyIn0='
-            },
-        ),
     }
 
     @classmethod
@@ -232,7 +220,6 @@ class TestBootstrapDatasource:
         expected_name = f'@{datasource_id}'
         the_conn = Connection.connections[expected_name]
         assert the_conn.name == expected_name
-        assert the_conn.connect_args == (case_data.connect_args_dict or {})
 
         # Ensure the required packages are installed.
         assert all(
@@ -252,7 +239,23 @@ class TestBootstrapDatasource:
         become its own file, and (indirectly) that we promote all elements in
         connect_args to be toplevel create_engine_kwargs
         """
-        case_data = SampleData.get_sample('bigquery-with-credential_file_contents')
+
+        # Not a general sample in the main list because with these credential_file_contents,
+        # the call to create_engine ultimately fails because isn't a real google cred file.
+        # That's fine though, because the nature of the exception is such that we know we
+        # have it's attention properly.
+        case_data = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-bigquery'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'bigquery',
+                'sqlmagic_autocommit': True,
+            },
+            connect_args_dict={
+                # b64 encoding of '{"foo": "bar"}'
+                'credential_file_contents': 'eyJmb28iOiAiYmFyIn0='
+            },
+        )
 
         # Expect the ultimate call to sqlalchemy.create_engine() to fail, because
         # we're not really feeding it a legit google credentials file at this time
