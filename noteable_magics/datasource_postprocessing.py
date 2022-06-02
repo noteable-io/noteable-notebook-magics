@@ -1,11 +1,11 @@
 import functools
-from typing import Callable, Any
+from typing import Any, Callable, Dict
 from base64 import b64decode
 from pathlib import Path
 
 # Dict of drivername -> post-processor function that accepts (datasource_id, create_engine_kwargs
 # dict) pair and is expected to mutate create_engine_kwargs as needed.
-post_processor_by_drivername: dict[str, Callable[[str, dict, Path], None]] = {}
+post_processor_by_drivername: Dict[str, Callable[[str, dict, Path], None]] = {}
 
 
 def register_postprocessor(drivername: str):
@@ -32,7 +32,7 @@ def register_postprocessor(drivername: str):
 
 
 @register_postprocessor('bigquery')
-def postprocess_bigquery(datasource_id: str, create_engine_kwargs: dict[str, Any]) -> None:
+def postprocess_bigquery(datasource_id: str, create_engine_kwargs: Dict[str, Any]) -> None:
     """
     Set up create_engine_kwargs for BigQuery.
 
