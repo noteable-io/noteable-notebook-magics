@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Callable
 
 import pkg_resources
 
@@ -13,6 +13,8 @@ from sql.run import add_commit_blacklist_dialect
 from sqlalchemy.engine import URL
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
+
+from noteable_magics.datasource_postprocessing import post_processor_by_drivername
 
 
 def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
@@ -74,10 +76,11 @@ def bootstrap_datasource(
 
     # Prepare connection URL string.
 
-    # Yes, bigquery connections may end up with nothing in dns_json.
+    # Yes, bigquery connections may end up with nothing in dsn_json.
     dsn_dict = json.loads(dsn_json) if dsn_json else {}
     # 'drivername' comes in via metadata, because reasons.
-    dsn_dict['drivername'] = metadata['drivername']
+    drivername = metadata['drivername']
+    dsn_dict['drivername'] = drivername
     url_obj = URL.create(**dsn_dict)
     connection_url = str(url_obj)
 
@@ -92,11 +95,16 @@ def bootstrap_datasource(
 
     connect_args = json.loads(connect_args_json) if connect_args_json else {}
 
-    name = f'@{datasource_id}'
+    create_engine_kwargs = {'connect_args': connect_args}
+
+    # Per-drivername customization needs?
+    if drivername in post_processor_by_drivername:
+        post_processor: Callable[[str, dict], None] = post_processor_by_drivername[drivername]
+        post_processor(datasource_id, create_engine_kwargs)
 
     # Teach ipython-sql about it!
     sql.connection.Connection.set(
-        connection_url, displaycon=False, connect_args=connect_args, name=name
+        connection_url, name=f'@{datasource_id}', displaycon=False, **create_engine_kwargs
     )
 
 

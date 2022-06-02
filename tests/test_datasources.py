@@ -57,7 +57,7 @@ def datasource_id(datasource_id_factory) -> str:
 @dataclass
 class DatasourceJSONs:
     meta_dict: Dict[str, Any]
-    dsn_dict: Optional[Dict[str, str]]
+    dsn_dict: Optional[Dict[str, str]] = None
     connect_args_dict: Optional[Dict[str, any]] = None
 
     @property
@@ -170,6 +170,18 @@ class SampleData:
                 "http_path": "sql/protocolv1/o/2414094324684936/0125-220758-m9pfb4c7"
             },
         ),
+        'bigquery-with-credential_file_contents': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-bigquery'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'bigquery',
+                'sqlmagic_autocommit': True,
+            },
+            connect_args_dict={
+                # b64 encoding of '{"foo": "bar"}'
+                'credential_file_contents': 'eyJmb28iOiAiYmFyIn0='
+            },
+        ),
     }
 
     @classmethod
@@ -234,6 +246,35 @@ class TestBootstrapDatasource:
         assert (dialect in _COMMIT_BLACKLIST_DIALECTS) == (
             not case_data.meta_dict['sqlmagic_autocommit']
         )
+
+    def test_bigquery_particulars(self, datasource_id):
+        """Ensure that we convert connect_args['credential_file_contents'] to
+        become its own file, and (indirectly) that we promote all elements in
+        connect_args to be toplevel create_engine_kwargs
+        """
+        case_data = SampleData.get_sample('bigquery-with-credential_file_contents')
+
+        # Expect the ultimate call to sqlalchemy.create_engine() to fail, because
+        # we're not really feeding it a legit google credentials file at this time
+        # (the 'credentials_file_contents' in the sample data is really just {"foo": "bar"}).
+        #
+        # Had postprocess_bigquery() not done the promotion from connect_args -> create_engine_kwargs, would
+        # die a very different death, complaining about cannot find any credentials anywhere
+        # since not passed in and the google magic env var isn't set.
+        with pytest.raises(ValueError, match='Service account info was not in the expected format'):
+            datasources.bootstrap_datasource(
+                datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            )
+
+        # But we do expect the postprocessor to have run, and to have created this
+        # file properly....
+
+        # /tmp/{datasource_id}_bigquery_credentials.json should now exist and
+        # contain '{"foo": "bar"}' due to consiracy in
+        # datasource_postprocessing.postprocess_bigquery
+        with open(f'/tmp/{datasource_id}_bigquery_credentials.json') as inf:
+            from_json = json.load(inf)
+            assert from_json == {'foo': 'bar'}
 
 
 class TestEnsureRequirements:
