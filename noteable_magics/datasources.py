@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Union
 
 import pkg_resources
+
 # ipython-sql thinks mighty highly of isself with this package name.
 import sql.connection
 from sql.run import add_commit_blacklist_dialect
