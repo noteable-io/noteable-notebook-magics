@@ -3,8 +3,8 @@ from typing import Callable, Any
 from base64 import b64decode
 from pathlib import Path
 
-# Dict of drivername -> post-processor function that accepts a connect_args
-# dict and mutates it.
+# Dict of drivername -> post-processor function that accepts (datasource_id, create_engine_kwargs
+# dict) pair and is expected to mutate create_engine_kwargs as needed.
 post_processor_by_drivername: dict[str, Callable[[str, dict, Path], None]] = {}
 
 
