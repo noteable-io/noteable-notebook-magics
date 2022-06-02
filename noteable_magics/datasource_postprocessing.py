@@ -12,15 +12,11 @@ def register_postprocessor(drivername: str):
     """Decorator to register a create_engine_kwargs post-processor"""
 
     def decorator_outer(func):
-        @functools.wraps(func)
-        def decorator_inner(*args, **kwargs):
-            func(*args, **kwargs)
-
         assert drivername not in post_processor_by_drivername, f'{drivername} already registered!'
 
         post_processor_by_drivername[drivername] = func
 
-        return decorator_inner
+        return func
 
     return decorator_outer
 
@@ -71,29 +67,10 @@ def postprocess_bigquery(datasource_id: str, create_engine_kwargs: Dict[str, Any
         contents: bytes = b64decode(encoded_contents)
 
         # 2.2. Write out to a file based on datasource_id (user could have multiple BQ datasources!)
-        path = _determine_writeable_path(f'{datasource_id}_bigquery_credentials.json')
+        path = Path('/tmp') / f'{datasource_id}_bigquery_credentials.json'
         with path.open('wb') as outfile:
             outfile.write(contents)
 
         # 2.3. Record pathname as new key in create_engine_kwargs. Yay, BQ connections
         # might work now!
         create_engine_kwargs['credentials_path'] = path.as_posix()
-
-
-def _determine_writeable_path(filename: str) -> Path:
-    """Determine a writeable pathname to store a file by this name.
-
-    When being run inside noteable kernels, /vault/secrets will exist and be
-    writeable. Otherwise err on /tmp.
-    """
-    for possible_parent in [Path('/vault/secrets'), Path('/tmp')]:
-        if possible_parent.is_dir():
-            fully_qualified_attempt = possible_parent / filename
-            try:
-                with fully_qualified_attempt.open('w'):
-                    pass
-                return fully_qualified_attempt
-            except Exception:
-                continue
-
-    raise ValueError('Cannot determine a suitable place where I can write files!')
