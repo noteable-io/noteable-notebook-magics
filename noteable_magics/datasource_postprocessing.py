@@ -1,4 +1,3 @@
-import functools
 from base64 import b64decode
 from pathlib import Path
 from typing import Any, Callable, Dict
