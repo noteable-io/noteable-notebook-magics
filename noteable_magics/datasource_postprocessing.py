@@ -93,7 +93,7 @@ def _determine_writeable_path(filename: str) -> Path:
                 with fully_qualified_attempt.open('w'):
                     pass
                 return fully_qualified_attempt
-            except:
+            except Exception:
                 continue
 
     raise ValueError('Cannot determine a suitable place where I can write files!')
