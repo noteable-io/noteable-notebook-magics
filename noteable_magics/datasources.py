@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import pkg_resources
 
@@ -66,6 +66,27 @@ def bootstrap_datasource(
     """Bootstrap this single datasource from its three json definition JSON sections"""
     metadata = json.loads(meta_json)
 
+    # Yes, bigquery connections may end up with nothing in dsn_json.
+    dsn_dict = json.loads(dsn_json) if dsn_json else {}
+
+    connect_args = json.loads(connect_args_json) if connect_args_json else {}
+
+    create_engine_kwargs = {'connect_args': connect_args}
+
+    # 'drivername' comes in via metadata, because reasons.
+    drivername = metadata['drivername']
+    dsn_dict['drivername'] = drivername
+
+    # Generally pre-process dsn_dict by in-place eroding away any KV pair where the value is
+    # the empty string.
+    pre_process_dict(dsn_dict)
+
+    # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
+    # before we make use of any of their contents.
+    if drivername in post_processor_by_drivername:
+        post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[drivername]
+        post_processor(datasource_id, dsn_dict, create_engine_kwargs)
+
     # Ensure the required driver packages are installed already, or, if allowed,
     # install them on the fly.
     ensure_requirements(
@@ -75,12 +96,6 @@ def bootstrap_datasource(
     )
 
     # Prepare connection URL string.
-
-    # Yes, bigquery connections may end up with nothing in dsn_json.
-    dsn_dict = json.loads(dsn_json) if dsn_json else {}
-    # 'drivername' comes in via metadata, because reasons.
-    drivername = metadata['drivername']
-    dsn_dict['drivername'] = drivername
     url_obj = URL.create(**dsn_dict)
     connection_url = str(url_obj)
 
@@ -92,15 +107,6 @@ def bootstrap_datasource(
         # If so, then we must only pass along the LHS of the '+'.
         dialect = metadata['drivername'].split('+')[0]
         add_commit_blacklist_dialect(dialect)
-
-    connect_args = json.loads(connect_args_json) if connect_args_json else {}
-
-    create_engine_kwargs = {'connect_args': connect_args}
-
-    # Per-drivername customization needs?
-    if drivername in post_processor_by_drivername:
-        post_processor: Callable[[str, dict], None] = post_processor_by_drivername[drivername]
-        post_processor(datasource_id, create_engine_kwargs)
 
     # Teach ipython-sql about it!
     sql.connection.Connection.set(
@@ -150,3 +156,10 @@ def install_package(pkg_name: str) -> None:
 
 def run_pip(pip_args: List[str]):
     subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
+
+
+def pre_process_dict(dsn_dict: Dict[str, Any]) -> None:
+    """Pre-process the dns_dict by removing any KV pair where V is empty string"""
+    for k, v in list(dsn_dict.items()):
+        if v == '':
+            del dsn_dict[k]

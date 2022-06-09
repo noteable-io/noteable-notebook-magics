@@ -13,7 +13,7 @@ ipython = "^7.31.1"
 ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="2e6b3fcc265629197d5c12d4cff2c275198fc90a"}
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
-pyarrow = "^5.0.0"
+pyarrow = "^6.0.1" # Snowflake driver wants 6.0.X series as of June 2022.
 pydantic = "^1.7.3"
 python = "^3.8"
 rich = "10.13.0"  # Upgrading breaks progress bars
