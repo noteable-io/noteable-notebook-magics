@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict
 
 # Dict of drivername -> post-processor function that accepts (datasource_id, create_engine_kwargs
 # dict) pair and is expected to mutate create_engine_kwargs as needed.
-post_processor_by_drivername: Dict[str, Callable[[str, dict, Path], None]] = {}
+post_processor_by_drivername: Dict[str, Callable[[str, dict, dict], None]] = {}
 
 
 def register_postprocessor(drivername: str):
@@ -27,7 +27,9 @@ def register_postprocessor(drivername: str):
 
 
 @register_postprocessor('bigquery')
-def postprocess_bigquery(datasource_id: str, create_engine_kwargs: Dict[str, Any]) -> None:
+def postprocess_bigquery(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
     """
     Set up create_engine_kwargs for BigQuery.
 
@@ -73,3 +75,24 @@ def postprocess_bigquery(datasource_id: str, create_engine_kwargs: Dict[str, Any
         # 2.3. Record pathname as new key in create_engine_kwargs. Yay, BQ connections
         # might work now!
         create_engine_kwargs['credentials_path'] = path.as_posix()
+
+
+@register_postprocessor('snowflake')
+def postprocess_snowflake(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Format database + possible schema from dsn_dict into new value for database.
+
+    Snowflake dsn_dict may end up with a 'schema' member in dsn_dict. If present, we should pop
+    it out and reformat database to be 'f{database}/{schema}', in that ipython-sql will
+    end up using good old base class sqlalchemy.engine.URL to digest this dict.
+
+    https://github.com/snowflakedb/snowflake-sqlalchemy#connection-parameters
+
+    """
+
+    if 'schema' in dsn_dict:
+        schema = dsn_dict.pop('schema')
+        db = dsn_dict['database']
+
+        dsn_dict['database'] = f'{db}/{schema}'

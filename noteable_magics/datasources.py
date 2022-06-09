@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import pkg_resources
 
@@ -66,6 +66,28 @@ def bootstrap_datasource(
     """Bootstrap this single datasource from its three json definition JSON sections"""
     metadata = json.loads(meta_json)
 
+    # Yes, bigquery connections may end up with nothing in dsn_json.
+    dsn_dict = json.loads(dsn_json) if dsn_json else {}
+
+    connect_args = json.loads(connect_args_json) if connect_args_json else {}
+
+    create_engine_kwargs = {'connect_args': connect_args}
+
+    # 'drivername' comes in via metadata, because reasons.
+    drivername = metadata['drivername']
+    dsn_dict['drivername'] = drivername
+
+    # Generally pre-process the end-user-editable dicts brought to us by vault
+    # by in-place eroding away any KV pair where the value is the empty string.
+    pre_process_dict(dsn_dict)
+    pre_process_dict(connect_args)
+
+    # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
+    # before we make use of any of their contents.
+    if drivername in post_processor_by_drivername:
+        post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[drivername]
+        post_processor(datasource_id, dsn_dict, create_engine_kwargs)
+
     # Ensure the required driver packages are installed already, or, if allowed,
     # install them on the fly.
     ensure_requirements(
@@ -75,12 +97,6 @@ def bootstrap_datasource(
     )
 
     # Prepare connection URL string.
-
-    # Yes, bigquery connections may end up with nothing in dsn_json.
-    dsn_dict = json.loads(dsn_json) if dsn_json else {}
-    # 'drivername' comes in via metadata, because reasons.
-    drivername = metadata['drivername']
-    dsn_dict['drivername'] = drivername
     url_obj = URL.create(**dsn_dict)
     connection_url = str(url_obj)
 
@@ -92,15 +108,6 @@ def bootstrap_datasource(
         # If so, then we must only pass along the LHS of the '+'.
         dialect = metadata['drivername'].split('+')[0]
         add_commit_blacklist_dialect(dialect)
-
-    connect_args = json.loads(connect_args_json) if connect_args_json else {}
-
-    create_engine_kwargs = {'connect_args': connect_args}
-
-    # Per-drivername customization needs?
-    if drivername in post_processor_by_drivername:
-        post_processor: Callable[[str, dict], None] = post_processor_by_drivername[drivername]
-        post_processor(datasource_id, create_engine_kwargs)
 
     # Teach ipython-sql about it!
     sql.connection.Connection.set(
@@ -145,8 +152,31 @@ def is_package_installed(pkg_name: str) -> bool:
 def install_package(pkg_name: str) -> None:
     """Install `pkg_name` using pip"""
 
-    run_pip(["install", pkg_name])
+    run_pip(["install", pkg_name], timeout=120)
 
 
-def run_pip(pip_args: List[str]):
-    subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
+def run_pip(pip_args: List[str], timeout=60):
+    subprocess.check_call([sys.executable, "-m", "pip"] + pip_args, timeout=timeout)
+
+
+def pre_process_dict(the_dict: Dict[str, Any]) -> None:
+    """Pre-process the given dict by removing any KV pair where V is empty string.
+
+    We do this because when Geas POSTs datasource, optional
+    fields may well be left blank, or when PATCHing the most we
+    can 'unset' an optional field is to overwrite a prior value
+    with a blank. But down here when we're about to pass down into
+    create_engine(), we need to finally honor the intent of those blanks
+    as 'unset'.
+    """
+    for k, v in list(the_dict.items()):
+        if v == '':
+            del the_dict[k]
+        if isinstance(v, dict):
+            # connect_args dicts may not be flat. But they do end, eventually,
+            # otherwise they'd not be JSON-able to make it this far.
+            pre_process_dict(v)
+            # That could have possibly removed *everything* from that dict. If
+            # so, then remove it from our dict also.
+            if len(v) == 0:
+                del the_dict[k]

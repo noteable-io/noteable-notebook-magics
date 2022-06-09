@@ -11,7 +11,7 @@ import pytest
 from sql.connection import Connection
 from sql.run import _COMMIT_BLACKLIST_DIALECTS
 
-from noteable_magics import datasources
+from noteable_magics import datasource_postprocessing, datasources
 
 
 @pytest.fixture
@@ -170,6 +170,79 @@ class SampleData:
                 "http_path": "sql/protocolv1/o/2414094324684936/0125-220758-m9pfb4c7"
             },
         ),
+        ##
+        # Looking for BigQuery?
+        # Bigquery tested down in test_bigquery_particulars
+        ##
+        'snowflake-required': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['snowflake-sqlalchemy'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'snowflake',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'brittle-snowflake',
+                'password': 'sdfsdf',
+                'host': 'sdfsfetr.us-east-1',
+            },
+            connect_args_dict={
+                'warehouse': 'xxxxxxxxlarge',
+            },
+        ),
+        'snowflake-with-database': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['snowflake-sqlalchemy'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'snowflake',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'brittle-snowflake',
+                'password': 'sdfsdf',
+                'host': 'sdfsfetr.us-east-1',
+                'database': 'mydb',
+            },
+            connect_args_dict={
+                'warehouse': 'xxxxxxxxlarge',
+            },
+        ),
+        'snowflake-with-database-and-schema': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['snowflake-sqlalchemy'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'snowflake',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'brittle-snowflake',
+                'password': 'sdfsdf',
+                'host': 'sdfsfetr.us-east-1',
+                'database': 'mydb',
+                'schema': 'my_schema',
+            },
+            connect_args_dict={
+                'warehouse': 'xxxxxxxxlarge',
+            },
+        ),
+        'snowflake-with-empty-db-and-schema': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['snowflake-sqlalchemy'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'snowflake',
+                'sqlmagic_autocommit': True,
+            },
+            dsn_dict={
+                'username': 'brittle-snowflake',
+                'password': 'sdfsdf',
+                'host': 'sdfsfetr.us-east-1',
+                'database': '',
+                'schema': '',
+            },
+            connect_args_dict={
+                'warehouse': 'xxxxxxxxlarge',
+            },
+        ),
     }
 
     @classmethod
@@ -321,3 +394,57 @@ class TestIsPackageInstalled:
 
     def test_yes(self):
         assert datasources.is_package_installed('pip')
+
+
+@pytest.mark.parametrize(
+    'test_dict,expected',
+    [
+        (
+            # Should erode database and schema away from a snowflake-esque
+            # dsn dict
+            {
+                'host': 'sdfsfetr.us-east-1',
+                'database': '',
+                'schema': '',
+            },
+            {'host': 'sdfsfetr.us-east-1'},
+        ),
+        (
+            # Hypothetical nested connect_args dict
+            {
+                'foo': 'bar',
+                'blammo': {
+                    'blat': 'blarg',
+                    'blummo': '',  # should disappear
+                    'quux': {
+                        'foo': ''
+                    },  # whole subdict should disappear since sole member disappears
+                },
+            },
+            {'foo': 'bar', 'blammo': {'blat': 'blarg'}},
+        ),
+    ],
+)
+def test_pre_process_dict(test_dict, expected):
+    """Prove that pre_process_dict strips out empty string values / empty sub-dicts properly"""
+    datasources.pre_process_dict(test_dict)
+
+    assert test_dict == expected
+
+
+@pytest.mark.parametrize(
+    'dsn_dict,expected',
+    [
+        # Both should be merged, schema popped.
+        ({'database': 'foo', 'schema': 'bar'}, {'database': 'foo/bar'}),
+        # database only is fine.
+        ({'database': 'foo'}, {'database': 'foo'}),
+        # Neither are fine also.
+        ({'host': 'sdfsdf'}, {'host': 'sdfsdf'}),
+    ],
+)
+def test_postprocess_snowflake(dsn_dict, expected):
+    """Prove handling of database, schema -> 'database/schema'"""
+
+    datasource_postprocessing.postprocess_snowflake(None, dsn_dict, {})
+    assert dsn_dict == expected
