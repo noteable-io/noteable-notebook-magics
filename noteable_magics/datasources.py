@@ -152,11 +152,11 @@ def is_package_installed(pkg_name: str) -> bool:
 def install_package(pkg_name: str) -> None:
     """Install `pkg_name` using pip"""
 
-    run_pip(["install", pkg_name])
+    run_pip(["install", pkg_name], timeout=120)
 
 
-def run_pip(pip_args: List[str]):
-    subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
+def run_pip(pip_args: List[str], timeout=60):
+    subprocess.check_call([sys.executable, "-m", "pip"] + pip_args, timeout=timeout)
 
 
 def pre_process_dict(the_dict: Dict[str, Any]) -> None:
