@@ -396,17 +396,40 @@ class TestIsPackageInstalled:
         assert datasources.is_package_installed('pip')
 
 
-def test_pre_process_dict():
-    """Prove that pre_process_dict strips out empty string values properly"""
-    dsn_dict = {
-        'host': 'sdfsfetr.us-east-1',
-        'database': '',
-        'schema': '',
-    }
+@pytest.mark.parametrize(
+    'test_dict,expected',
+    [
+        (
+            # Should erode database and schema away from a snowflake-esque
+            # dsn dict
+            {
+                'host': 'sdfsfetr.us-east-1',
+                'database': '',
+                'schema': '',
+            },
+            {'host': 'sdfsfetr.us-east-1'},
+        ),
+        (
+            # Hypothetical nested connect_args dict
+            {
+                'foo': 'bar',
+                'blammo': {
+                    'blat': 'blarg',
+                    'blummo': '',  # should disappear
+                    'quux': {
+                        'foo': ''
+                    },  # whole subdict should disappear since sole member disappears
+                },
+            },
+            {'foo': 'bar', 'blammo': {'blat': 'blarg'}},
+        ),
+    ],
+)
+def test_pre_process_dict(test_dict, expected):
+    """Prove that pre_process_dict strips out empty string values / empty sub-dicts properly"""
+    datasources.pre_process_dict(test_dict)
 
-    datasources.pre_process_dict(dsn_dict)
-
-    assert dsn_dict == {'host': 'sdfsfetr.us-east-1'}
+    assert test_dict == expected
 
 
 @pytest.mark.parametrize(

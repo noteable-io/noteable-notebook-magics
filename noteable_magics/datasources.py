@@ -77,9 +77,10 @@ def bootstrap_datasource(
     drivername = metadata['drivername']
     dsn_dict['drivername'] = drivername
 
-    # Generally pre-process dsn_dict by in-place eroding away any KV pair where the value is
-    # the empty string.
+    # Generally pre-process the end-user-editable dicts brought to us by vault
+    # by in-place eroding away any KV pair where the value is the empty string.
     pre_process_dict(dsn_dict)
+    pre_process_dict(connect_args)
 
     # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
     # before we make use of any of their contents.
@@ -158,8 +159,24 @@ def run_pip(pip_args: List[str]):
     subprocess.check_call([sys.executable, "-m", "pip"] + pip_args)
 
 
-def pre_process_dict(dsn_dict: Dict[str, Any]) -> None:
-    """Pre-process the dns_dict by removing any KV pair where V is empty string"""
-    for k, v in list(dsn_dict.items()):
+def pre_process_dict(the_dict: Dict[str, Any]) -> None:
+    """Pre-process the given dict by removing any KV pair where V is empty string.
+
+    We do this because when Geas POSTs datasource, optional
+    fields may well be left blank, or when PATCHing the most we
+    can 'unset' an optional field is to overwrite a prior value
+    with a blank. But down here when we're about to pass down into
+    create_engine(), we need to finally honor the intent of those blanks
+    as 'unset'.
+    """
+    for k, v in list(the_dict.items()):
         if v == '':
-            del dsn_dict[k]
+            del the_dict[k]
+        if isinstance(v, dict):
+            # connect_args dicts may not be flat. But they do end, eventually,
+            # otherwise they'd not be JSON-able to make it this far.
+            pre_process_dict(v)
+            # That could have possibly removed *everything* from that dict. If
+            # so, then remove it from our dict also.
+            if len(v) == 0:
+                del the_dict[k]
