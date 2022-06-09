@@ -11,7 +11,7 @@ import pytest
 from sql.connection import Connection
 from sql.run import _COMMIT_BLACKLIST_DIALECTS
 
-from noteable_magics import datasources, datasource_postprocessing
+from noteable_magics import datasource_postprocessing, datasources
 
 
 @pytest.fixture
