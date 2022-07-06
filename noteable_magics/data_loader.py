@@ -87,7 +87,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         if self.display_example:
             print(
                 """Create a "Local Database" SQL cell and then input query. """
-                f"Example: \"SELECT * FROM '{tablename}' LIMIT 10\""
+                f"Example: \"SELECT * FROM \"{tablename}\" LIMIT 10\""
             )
         if self.return_head:
             return tmp_df.head(self.pandas_limit)
