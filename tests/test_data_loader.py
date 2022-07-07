@@ -1,12 +1,12 @@
 """ Tests over the data loading magic, "create_or_replace_data_view" """
 
-import pytest
 from pathlib import Path
 
+import pytest
 from sql.connection import Connection
 from sqlalchemy import text
 
-from noteable_magics import get_db_connection, LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic
+from noteable_magics import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
 
 
 @pytest.fixture
