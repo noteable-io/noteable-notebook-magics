@@ -60,7 +60,7 @@ def data_loader() -> NoteableDataLoaderMagic:
 
 
 @pytest.fixture
-def alternate_datasource_handle():
+def alternate_datasource_handle_and_human_name():
     """Empty out the current set of sql magic Connections, then make an @foo SQLite connection
     to simulate a non-default bootstrapped datasource.
     """
@@ -70,9 +70,10 @@ def alternate_datasource_handle():
 
     # We likey memory-only sqlite dbs.
     handle = '@foo'
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle)
+    human_name = "My Shiny Connection"
+    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
 
-    yield handle
+    yield handle, human_name
 
     Connection.connections = preexisting_connections
 
@@ -110,13 +111,13 @@ class TestDataLoaderMagic:
                 text('select (select count(*) from my_table) = (select count(*) from my_table2)')
             ).scalar_one()
 
-    def test_can_specify_alternate_sql_cell_handle(
-        self, csv_file, data_loader, alternate_datasource_handle
+    def test_can_specify_alternate_connection_via_handle(
+        self, csv_file, data_loader, alternate_datasource_handle_and_human_name
     ):
+        """Test specifying non-default connection via --connection @sql_cell_handle"""
+        alternate_datasource_handle, human_name = alternate_datasource_handle_and_human_name
         assert alternate_datasource_handle != '@noteable'
-        df = data_loader.execute(
-            f"{csv_file} the_table --sql-cell-handle {alternate_datasource_handle}"
-        )
+        df = data_loader.execute(f"{csv_file} the_table --connection {alternate_datasource_handle}")
 
         assert len(df) == 2
 
@@ -131,12 +132,34 @@ class TestDataLoaderMagic:
                 ).scalar_one()
             )
 
+    def test_can_specify_alternate_connection_via_human_name(
+        self, csv_file, data_loader, alternate_datasource_handle_and_human_name
+    ):
+        """Test specifying non-default connection via --connection 'Human given datasource name'"""
+        _, human_name = alternate_datasource_handle_and_human_name
+
+        # human_name from fixture gots spaces in it, so must wrap in quotes.
+        df = data_loader.execute(f"{csv_file} the_table --connection '{human_name}'")
+
+        assert len(df) == 2
+
+        assert len(Connection.connections) == 1
+        engine = Connection.get_engine(human_name)
+        session = engine.connect()
+        with session.begin():
+            assert (
+                21
+                == session.execute(
+                    text('select sum(a) + sum(b) + sum(c) from the_table')
+                ).scalar_one()
+            )
+
     @pytest.mark.usefixtures("with_empty_connections")
     def test_cannot_load_into_unknown_handle(self, csv_file, data_loader):
 
         with pytest.raises(
             ValueError, match="Could not find datasource identified by '@nonexistenthandle'"
         ):
-            data_loader.execute(f"{csv_file} the_table --sql-cell-handle @nonexistenthandle")
+            data_loader.execute(f"{csv_file} the_table --connection @nonexistenthandle")
 
         assert len(Connection.connections) == 0

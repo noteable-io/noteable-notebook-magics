@@ -17,8 +17,9 @@ LOCAL_DB_CONN_HANDLE = "@noteable"
 sqlite_db_location = "sqlite:////tmp/ntbl.db"
 
 
-def get_db_connection(sql_cell_handle: str) -> Optional['Connection']:
-    """Return the sql.connection.Connection corresponding to the requested datasource sql_cell_handle.
+def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connection']:
+    """Return the sql.connection.Connection corresponding to the requested
+        datasource sql_cell_handle or human name.
 
     If the cell handle happens to correspond to the 'local database' SQLite database,
     then we will bootstrap it upon demand. Otherwise, try to find and return
@@ -27,9 +28,12 @@ def get_db_connection(sql_cell_handle: str) -> Optional['Connection']:
     Will return None if the given handle isn't @noteable and isn't present in
     the connections dict already (created after this kernel was launched?)
     """
-    if sql_cell_handle == LOCAL_DB_CONN_HANDLE and sql_cell_handle not in Connection.connections:
+    if (
+        sql_cell_handle_or_human_name == LOCAL_DB_CONN_HANDLE
+        and sql_cell_handle_or_human_name not in Connection.connections
+    ):
         # Bootstrap the SQLite database if asked and needed.
-        conn = Connection.set(
+        return Connection.set(
             sqlite_db_location,
             human_name="Local Database",
             displaycon=False,
@@ -38,9 +42,12 @@ def get_db_connection(sql_cell_handle: str) -> Optional['Connection']:
     else:
         # If, say, they created the datasource *after* this kernel was launched, then
         # this will come up empty and the caller should handle gracefully.
-        conn = Connection.connections.get(sql_cell_handle)
-
-    return conn
+        for conn in Connection.connections.values():
+            if (
+                conn.name == sql_cell_handle_or_human_name
+                or conn.human_name == sql_cell_handle_or_human_name
+            ):
+                return conn
 
 
 @magics_class
@@ -74,12 +81,12 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         help="Store index column from dataframe in sql",
     )
     @argument(
-        "-s",
-        "--sql-cell-handle",
+        "-c",
+        "--connection",
         type=str,
         default=LOCAL_DB_CONN_HANDLE,
         required=False,
-        help="SQL cell handle identifying the datasource to populate. Defaults to local SQLite datasource.",
+        help="Connection name or handle identifying the datasource to populate. Defaults to local SQLite datasource.",
     )
     def execute(self, line="", cell=""):
         # workaround for https://github.com/ipython/ipython/issues/12729
@@ -103,10 +110,10 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             raise ValueError(f"File mimetype {mimetype} is not supported")
 
-        conn = get_db_connection(args.sql_cell_handle)
+        conn = get_db_connection(args.connection)
         if not conn:
             raise ValueError(
-                f"Could not find datasource identified by {args.sql_cell_handle!r}. Perhaps restart the kernel?"
+                f"Could not find datasource identified by {args.connection!r}. Perhaps restart the kernel?"
             )
 
         tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
