@@ -51,7 +51,7 @@ class TestGetDbConnection:
         assert len(Connection.connections) == 1
 
     def test_returns_none_on_non_local_db_handle_miss(self):
-        assert None == get_db_connection("@456567567343456567")
+        assert get_db_connection("@456567567343456567") is None
 
 
 @pytest.fixture
@@ -134,8 +134,9 @@ class TestDataLoaderMagic:
     @pytest.mark.usefixtures("with_empty_connections")
     def test_cannot_load_into_unknown_handle(self, csv_file, data_loader, capsys):
         # Grr. The ValueError raised gets translated into stdout by the ipythonery.
-        assert None == data_loader.execute(
-            f"{csv_file} the_table --sql-cell-handle @nonexistenthandle"
+        assert (
+            data_loader.execute(f"{csv_file} the_table --sql-cell-handle @nonexistenthandle")
+            is None
         )
         # But we can still get at the message we expect.
         captured = capsys.readouterr()
