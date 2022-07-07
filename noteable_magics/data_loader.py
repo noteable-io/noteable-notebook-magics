@@ -1,30 +1,53 @@
 import mimetypes
+from typing import Optional
 
 import pandas as pd
-import sql.connection
-import sql.magic
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
+from sql.connection import Connection
 from traitlets import Bool, Int
 from traitlets.config import Configurable
 
-ENV_VAR_PREFIX = "SQL"
 EXCEL_MIMETYPES = {
     "application/vnd.ms-excel",  # .xls
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
 }
-DB_NAME = "noteable"
-CONN_NAME = f"@{DB_NAME}"
+LOCAL_DB_CONN_HANDLE = "@noteable"
 sqlite_db_location = "sqlite:////tmp/ntbl.db"
 
 
-def get_local_db_connection(db_location: str = sqlite_db_location):
-    if CONN_NAME not in sql.connection.Connection.connections:
-        conn = sql.connection.Connection.set(db_location, displaycon=False, name=CONN_NAME)
+def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connection']:
+    """Return the sql.connection.Connection corresponding to the requested
+        datasource sql_cell_handle or human name.
+
+    If the cell handle happens to correspond to the 'local database' SQLite database,
+    then we will bootstrap it upon demand. Otherwise, try to find and return
+    the connection.
+
+    Will return None if the given handle isn't @noteable and isn't present in
+    the connections dict already (created after this kernel was launched?)
+    """
+    if (
+        sql_cell_handle_or_human_name == LOCAL_DB_CONN_HANDLE
+        and sql_cell_handle_or_human_name not in Connection.connections
+    ):
+        # Bootstrap the SQLite database if asked and needed.
+        return Connection.set(
+            sqlite_db_location,
+            human_name="Local Database",
+            displaycon=False,
+            name=LOCAL_DB_CONN_HANDLE,
+        )
     else:
-        conn = sql.connection.Connection.connections[CONN_NAME]
-    return conn
+        # If, say, they created the datasource *after* this kernel was launched, then
+        # this will come up empty and the caller should handle gracefully.
+        for conn in Connection.connections.values():
+            if (
+                conn.name == sql_cell_handle_or_human_name
+                or conn.human_name == sql_cell_handle_or_human_name
+            ):
+                return conn
 
 
 @magics_class
@@ -57,6 +80,14 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         action="store_true",
         help="Store index column from dataframe in sql",
     )
+    @argument(
+        "-c",
+        "--connection",
+        type=str,
+        default=LOCAL_DB_CONN_HANDLE,
+        required=False,
+        help="Connection name or handle identifying the datasource to populate. Defaults to local SQLite datasource.",
+    )
     def execute(self, line="", cell=""):
         # workaround for https://github.com/ipython/ipython/issues/12729
         # TODO: switch back to parse_argstring in IPython 8.0
@@ -79,15 +110,27 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             raise ValueError(f"File mimetype {mimetype} is not supported")
 
-        conn = get_local_db_connection()
+        conn = get_db_connection(args.connection)
+        if not conn:
+            raise ValueError(
+                f"Could not find datasource identified by {args.connection!r}. Perhaps restart the kernel?"
+            )
+
         tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
 
         if self.display_connection_str:
             print(f"Connect with: %sql {conn.name}")
+
         if self.display_example:
+            if conn.human_name:
+                noun = f'{conn.human_name!r}'
+            else:
+                # Hmm. "Legacy" created datasource. Err on the engine's dialect name?
+                noun = conn._engine.dialect.name
             print(
-                """Create a "Local Database" SQL cell and then input query. """
+                f"""Create a {noun} SQL cell and then input query. """
                 f"Example: 'SELECT * FROM \"{tablename}\" LIMIT 10'"
             )
+
         if self.return_head:
             return tmp_df.head(self.pandas_limit)
