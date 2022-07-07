@@ -4,7 +4,7 @@ __version__ = pkg_resources.get_distribution("noteable_magics").version
 
 from sql.run import add_commit_blacklist_dialect
 
-from .data_loader import NoteableDataLoaderMagic, get_local_db_connection
+from .data_loader import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
 from .datasources import bootstrap_datasources
 from .logging import configure_logging
 from .ntbl import NTBLMagic
@@ -20,7 +20,7 @@ def load_ipython_extension(ipython):
     add_commit_blacklist_dialect('bigquery')
 
     # Initialize the noteable local (sqlite) database connection
-    get_local_db_connection()
+    get_db_connection(LOCAL_DB_CONN_HANDLE)
 
     configure_logging(False, "INFO", "DEBUG")
 
