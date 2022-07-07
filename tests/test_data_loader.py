@@ -50,7 +50,7 @@ class TestGetDbConnection:
         assert conn2 is conn
         assert len(Connection.connections) == 1
 
-    def test_returns_non_on_non_sqlite_miss(self):
+    def test_returns_none_on_non_local_db_handle_miss(self):
         assert None == get_db_connection("@456567567343456567")
 
 
@@ -130,3 +130,17 @@ class TestDataLoaderMagic:
                     text('select sum(a) + sum(b) + sum(c) from the_table')
                 ).scalar_one()
             )
+
+    @pytest.mark.usefixtures("with_empty_connections")
+    def test_cannot_load_into_unknown_handle(self, csv_file, data_loader, capsys):
+        # Grr. The ValueError raised gets translated into stdout by the ipythonery.
+        assert None == data_loader.execute(
+            f"{csv_file} the_table --sql-cell-handle @nonexistenthandle"
+        )
+        # But we can still get at the message we expect.
+        captured = capsys.readouterr()
+        assert captured.out.startswith(
+            "Could not find datasource identified by '@nonexistenthandle'"
+        )
+
+        assert len(Connection.connections) == 0
