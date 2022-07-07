@@ -124,4 +124,9 @@ class TestDataLoaderMagic:
         conn = Connection.connections[alternate_datasource_handle]
         session = conn.session
         with session.begin():
-            assert 2 == session.execute(text('select count(*) from the_table')).scalar_one()
+            assert (
+                21
+                == session.execute(
+                    text('select sum(a) + sum(b) + sum(c) from the_table')
+                ).scalar_one()
+            )
