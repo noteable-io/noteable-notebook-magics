@@ -28,8 +28,13 @@ def get_db_connection(sql_cell_handle: str) -> Optional['Connection']:
     the connections dict already (created after this kernel was launched?)
     """
     if sql_cell_handle == LOCAL_DB_CONN_HANDLE and sql_cell_handle not in Connection.connections:
-        # Bootstrap the SQLite database if asked and needed
-        conn = Connection.set(sqlite_db_location, displaycon=False, name=LOCAL_DB_CONN_HANDLE)
+        # Bootstrap the SQLite database if asked and needed.
+        conn = Connection.set(
+            sqlite_db_location,
+            human_name="Local Database",
+            displaycon=False,
+            name=LOCAL_DB_CONN_HANDLE,
+        )
     else:
         # If, say, they created the datasource *after* this kernel was launched, then
         # this will come up empty and the caller should handle gracefully.
@@ -76,14 +81,6 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         required=False,
         help="SQL cell handle identifying the datasource to populate. Defaults to local SQLite datasource.",
     )
-    @argument(
-        "-n",
-        "--datasource-name",
-        type=str,
-        default="Local Database",
-        required=False,
-        help="SQL Datasource name",
-    )
     def execute(self, line="", cell=""):
         # workaround for https://github.com/ipython/ipython/issues/12729
         # TODO: switch back to parse_argstring in IPython 8.0
@@ -108,10 +105,9 @@ class NoteableDataLoaderMagic(Magics, Configurable):
 
         conn = get_db_connection(args.sql_cell_handle)
         if not conn:
-            print(
+            raise ValueError(
                 f"Could not find datasource identified by {args.sql_cell_handle!r}. Perhaps restart the kernel?"
             )
-            return None
 
         tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
 
@@ -119,8 +115,13 @@ class NoteableDataLoaderMagic(Magics, Configurable):
             print(f"Connect with: %sql {conn.name}")
 
         if self.display_example:
+            if conn.human_name:
+                noun = f'{conn.human_name!r}'
+            else:
+                # Hmm. "Legacy" created datasource. Err on the engine's dialect name?
+                noun = conn._engine.dialect.name
             print(
-                f"""Create a "{args.datasource_name}" SQL cell and then input query. """
+                f"""Create a {noun} SQL cell and then input query. """
                 f"Example: 'SELECT * FROM \"{tablename}\" LIMIT 10'"
             )
 

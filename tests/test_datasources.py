@@ -100,6 +100,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
+                'name': 'My PostgreSQL',
             },
             dsn_dict={
                 'username': 'scott',
@@ -115,6 +116,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
+                'name': 'My PostgreSQL SSL',
             },
             dsn_dict={
                 'username': 'scott',
@@ -131,6 +133,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'redshift+redshift_connector',
                 'sqlmagic_autocommit': True,
+                'name': 'My RedShift',
             },
             dsn_dict={
                 'username': 'scott',
@@ -146,6 +149,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'trino',
                 'sqlmagic_autocommit': False,  # This one is special!
+                # And explicitly no name assigned, 'legacy'.
             },
             dsn_dict={
                 'username': 'ssm-user',
@@ -160,6 +164,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'databricks+connector',
                 'sqlmagic_autocommit': False,  # This one is special!
+                'name': 'My Databricks',
             },
             dsn_dict={
                 'username': 'token',
@@ -180,6 +185,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
+                'name': 'My Snowflake',
             },
             dsn_dict={
                 'username': 'brittle-snowflake',
@@ -196,6 +202,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
+                'name': 'My Snowflake with database',
             },
             dsn_dict={
                 'username': 'brittle-snowflake',
@@ -213,6 +220,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
+                'name': 'Snowflake with database and schema',
             },
             dsn_dict={
                 'username': 'brittle-snowflake',
@@ -231,6 +239,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': True,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
+                'name': 'Snowflake with empty db and schema',
             },
             dsn_dict={
                 'username': 'brittle-snowflake',
@@ -283,6 +292,13 @@ class TestBootstrapDatasources:
 class TestBootstrapDatasource:
     @pytest.mark.parametrize('sample_name', SampleData.all_sample_names())
     def test_success(self, sample_name, datasource_id):
+
+        # Clear out connections at the onset, else the get_engine() portion
+        # gets confused over human-name conflicts when we've bootstrapped
+        # the same sample data repeatedly, namely through having first
+        # run TestBootstrapDatasources.test_bootstrap_datasources().
+        Connection.connections = {}
+
         case_data = SampleData.get_sample(sample_name)
 
         datasources.bootstrap_datasource(
@@ -290,9 +306,21 @@ class TestBootstrapDatasource:
         )
 
         # Check over the created 'Connection' instance.
-        expected_name = f'@{datasource_id}'
-        the_conn = Connection.connections[expected_name]
-        assert the_conn.name == expected_name
+
+        # Alas, in Connection parlance, 'name' == 'sql_cell_handle', and 'human_name'
+        # is the human-assigned name for the datasource. Sigh.
+        expected_sql_cell_handle_name = f'@{datasource_id}'
+        the_conn = Connection.connections[expected_sql_cell_handle_name]
+        assert the_conn.name == expected_sql_cell_handle_name
+        # Might be None in the meta_json.
+        expected_human_name = case_data.meta_dict.get('name')
+        assert the_conn.human_name == expected_human_name
+
+        # Test Connection.get_engine() while here,
+        assert the_conn._engine is Connection.get_engine(expected_sql_cell_handle_name)
+        if expected_human_name:
+            # Can only work this way also if the datasource name was present in meta-json.
+            assert the_conn._engine is Connection.get_engine(expected_human_name)
 
         # Ensure the required packages are installed.
         assert all(

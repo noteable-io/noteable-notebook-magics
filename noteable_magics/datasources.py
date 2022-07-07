@@ -109,9 +109,17 @@ def bootstrap_datasource(
         dialect = metadata['drivername'].split('+')[0]
         add_commit_blacklist_dialect(dialect)
 
+    # human-given name for the datasource is more likely than not present in the metadata
+    # ('old' datasources in integration, staging, app.noteable.world may lack)
+    human_name = metadata.get('name')
+
     # Teach ipython-sql about it!
     sql.connection.Connection.set(
-        connection_url, name=f'@{datasource_id}', displaycon=False, **create_engine_kwargs
+        connection_url,
+        name=f'@{datasource_id}',
+        human_name=human_name,
+        displaycon=False,
+        **create_engine_kwargs,
     )
 
 

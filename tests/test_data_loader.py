@@ -115,7 +115,7 @@ class TestDataLoaderMagic:
     ):
         assert alternate_datasource_handle != '@noteable'
         df = data_loader.execute(
-            f"{csv_file} the_table --sql-cell-handle {alternate_datasource_handle} --datasource-name 'my shiny connection'"
+            f"{csv_file} the_table --sql-cell-handle {alternate_datasource_handle}"
         )
 
         assert len(df) == 2
@@ -132,16 +132,11 @@ class TestDataLoaderMagic:
             )
 
     @pytest.mark.usefixtures("with_empty_connections")
-    def test_cannot_load_into_unknown_handle(self, csv_file, data_loader, capsys):
-        # Grr. The ValueError raised gets translated into stdout by the ipythonery.
-        assert (
+    def test_cannot_load_into_unknown_handle(self, csv_file, data_loader):
+
+        with pytest.raises(
+            ValueError, match="Could not find datasource identified by '@nonexistenthandle'"
+        ):
             data_loader.execute(f"{csv_file} the_table --sql-cell-handle @nonexistenthandle")
-            is None
-        )
-        # But we can still get at the message we expect.
-        captured = capsys.readouterr()
-        assert captured.out.startswith(
-            "Could not find datasource identified by '@nonexistenthandle'"
-        )
 
         assert len(Connection.connections) == 0
