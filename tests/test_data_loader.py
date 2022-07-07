@@ -124,5 +124,4 @@ class TestDataLoaderMagic:
         conn = Connection.connections[alternate_datasource_handle]
         session = conn.session
         with session.begin():
-            # rowcounts better be equal between the two tables!
             assert 2 == session.execute(text('select count(*) from the_table')).scalar_one()
