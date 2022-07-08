@@ -10,7 +10,7 @@ backoff = "^1.10.0"
 click = "^8.0.4" # pinned until black is updated to not use internal module that was removed by click in 8.1.0; https://github.com/psf/black/issues/2964
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
-ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="e3c38b510908ecfca350c42029fcc06942c0389c"}
+ipython-sql-noteable = { git= "https://github.com/noteable-io/ipython-sql-noteable.git", rev="08d8d9cc8785b3cee5cd210fa58c01d8391d38e2"}
 openpyxl = "^3.0.7"
 pandas = "^1.2.1"
 pyarrow = "^6.0.1" # Snowflake driver wants 6.0.X series as of June 2022.
