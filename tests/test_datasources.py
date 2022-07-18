@@ -8,10 +8,10 @@ from uuid import uuid4
 
 import pkg_resources
 import pytest
-from sql.connection import Connection
-from sql.run import _COMMIT_BLACKLIST_DIALECTS
 
 from noteable_magics import datasource_postprocessing, datasources
+from noteable_magics.sql.connection import Connection
+from noteable_magics.sql.run import _COMMIT_BLACKLIST_DIALECTS
 
 
 @pytest.fixture

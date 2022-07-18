@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from sql.connection import Connection
 from sqlalchemy import text
 
 from noteable_magics import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
+from noteable_magics.sql.connection import Connection
 
 
 @pytest.fixture
