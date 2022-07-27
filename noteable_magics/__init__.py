@@ -2,12 +2,12 @@ import pkg_resources
 
 __version__ = pkg_resources.get_distribution("noteable_magics").version
 
-from sql.run import add_commit_blacklist_dialect
-
 from .data_loader import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
 from .datasources import bootstrap_datasources
 from .logging import configure_logging
 from .ntbl import NTBLMagic
+from .sql.magic import SqlMagic
+from .sql.run import add_commit_blacklist_dialect
 
 
 def load_ipython_extension(ipython):
@@ -24,4 +24,4 @@ def load_ipython_extension(ipython):
 
     configure_logging(False, "INFO", "DEBUG")
 
-    ipython.register_magics(NoteableDataLoaderMagic, NTBLMagic)
+    ipython.register_magics(NoteableDataLoaderMagic, NTBLMagic, SqlMagic)

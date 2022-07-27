@@ -5,9 +5,10 @@ import pandas as pd
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
-from sql.connection import Connection
 from traitlets import Bool, Int
 from traitlets.config import Configurable
+
+from noteable_magics.sql.connection import Connection
 
 EXCEL_MIMETYPES = {
     "application/vnd.ms-excel",  # .xls

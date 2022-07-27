@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import pkg_resources
+from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-import sql.connection
-from sql.run import add_commit_blacklist_dialect
-from sqlalchemy.engine import URL
+import noteable_magics.sql.connection
+from noteable_magics.sql.run import add_commit_blacklist_dialect
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
@@ -114,7 +114,7 @@ def bootstrap_datasource(
     human_name = metadata.get('name')
 
     # Teach ipython-sql about it!
-    sql.connection.Connection.set(
+    noteable_magics.sql.connection.Connection.set(
         connection_url,
         name=f'@{datasource_id}',
         human_name=human_name,
