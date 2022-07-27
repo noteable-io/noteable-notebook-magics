@@ -100,7 +100,7 @@ class Connection(object):
 
     @classmethod
     def set(cls, descriptor, displaycon, name=None, **create_engine_kwargs):
-        "Sets the current database connection"
+        """Sets the current database connection"""
 
         if descriptor:
             if isinstance(descriptor, Connection):
