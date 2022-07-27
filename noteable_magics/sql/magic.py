@@ -116,7 +116,7 @@ class SqlMagic(Magics, Configurable):
         help="specify dictionary of connection arguments to pass to SQL driver",
     )
     @argument("-f", "--file", type=str, help="Run SQL from file at this path")
-    def execute(self, line="", cell="", local_ns={}):
+    def execute(self, line="", cell="", local_ns={}):  # noqa: C901
         """Runs SQL statement against a database, specified by SQLAlchemy connect string.
 
         If no database connection has been established, first word
