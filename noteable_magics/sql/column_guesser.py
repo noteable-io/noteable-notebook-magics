@@ -6,7 +6,8 @@ makes guesses about the role of each column for plotting purposes
 
 
 class Column(list):
-    "Store a column of tabular data; record its name and whether it is numeric"
+    """Store a column of tabular data; record its name and whether it is numeric"""
+
     is_quantity = True
     name = ""
 
