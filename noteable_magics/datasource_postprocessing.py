@@ -43,6 +43,15 @@ def postprocess_postgresql(
 
     https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
     (as of Aug 2022)
+
+    This was discovered from expecting that other people have complained about this
+    issue, and lo and behold, https://github.com/psycopg/psycopg2/issues/333, with bottom
+    line:
+
+        For people finding this from the Internet, on recent versions of the library, use this:
+            psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+    Thanks, internet stranger!
     """
 
     # We don't do anything with the datasorce / dicts. Just need to install this
