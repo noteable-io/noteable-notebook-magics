@@ -392,8 +392,8 @@ class TestBootstrapDatasource:
         # and then having another thread or whatnot deliver SIGINT while waiting for query
         # results. Or just go clicktest it in integration.
 
-        import psycopg2.extras
         import psycopg2.extensions
+        import psycopg2.extras
 
         assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
 
