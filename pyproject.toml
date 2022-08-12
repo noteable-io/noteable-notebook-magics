@@ -37,6 +37,7 @@ requests = "<2.28.0,>=2.27.1?" # redshift-connector wants < 2.28.0 as of Jun 9, 
 setuptools = "^57.1.0"
 tox = "^3.23.1"
 psycopg2-binary = "^2.9.3"
+sqlalchemy-databricks = "^0.2.0"
 
 
 [build-system]
