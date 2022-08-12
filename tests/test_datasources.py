@@ -323,10 +323,14 @@ class TestBootstrapDatasource:
             assert the_conn._engine is Connection.get_engine(expected_human_name)
 
         # Ensure the required packages are installed.
+        expected_packages = case_data.meta_dict['required_python_modules']
+        pkg_to_installed = {
+            pkg_name: datasources.is_package_installed(pkg_name) for pkg_name in expected_packages
+        }
+
         assert all(
-            datasources.is_package_installed(pkg_name)
-            for pkg_name in case_data.meta_dict['required_python_modules']
-        )
+            pkg_to_installed.values()
+        ), f'Not all packages smell installed! {pkg_to_installed}'
 
         # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the dialect portion of
         # drivername mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
@@ -379,6 +383,23 @@ class TestBootstrapDatasource:
         with open(f'/tmp/{datasource_id}_bigquery_credentials.json') as inf:
             from_json = json.load(inf)
             assert from_json == {'foo': 'bar'}
+
+    def test_postprocess_postgresql(self, datasource_id):
+        pg_details = SampleData.get_sample('simple-postgres')
+
+        datasources.bootstrap_datasource(
+            datasource_id, pg_details.meta_json, pg_details.dsn_json, pg_details.connect_args_json
+        )
+
+        # At least look for signs of the side-effect. Can't test it actually does the
+        # right thing here w/o actually making a postgresql connection, firing off a query,
+        # and then having another thread or whatnot deliver SIGINT while waiting for query
+        # results. Or just go clicktest it in integration.
+
+        import psycopg2.extensions
+        import psycopg2.extras
+
+        assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
 
 
 class TestEnsureRequirements:
