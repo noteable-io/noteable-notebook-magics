@@ -323,10 +323,14 @@ class TestBootstrapDatasource:
             assert the_conn._engine is Connection.get_engine(expected_human_name)
 
         # Ensure the required packages are installed.
+        expected_packages = case_data.meta_dict['required_python_modules']
+        pkg_to_installed = {
+            pkg_name: datasources.is_package_installed(pkg_name) for pkg_name in expected_packages
+        }
+
         assert all(
-            datasources.is_package_installed(pkg_name)
-            for pkg_name in case_data.meta_dict['required_python_modules']
-        )
+            pkg_to_installed.values()
+        ), f'Not all packages smell installed! {pkg_to_installed}'
 
         # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the dialect portion of
         # drivername mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
