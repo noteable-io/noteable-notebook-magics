@@ -26,6 +26,35 @@ def register_postprocessor(drivername: str):
 ##
 
 
+@register_postprocessor('postgresql')
+def postprocess_postgresql(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Install fix for ENG-4327 (cannot interrupt kernels doing SQL queries)
+    for PostgreSQL.
+
+    psycopg2 is ultimately a wrapper around libpq, which when performing a
+    query, ends up blocking delivery of KeyboardInterrupt aka SIGINT.
+
+    However, registering a `wait_callback`, will cause psycopg2 to use
+    libpq's nonblocking query interface, which in conjunction with
+    `wait_select` will allow KeyboardInterrupt to, well, interrupt long-running
+    queries.
+
+    https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
+    (as of Aug 2022)
+    """
+
+    # We don't do anything with the datasorce / dicts. Just need to install this
+    # extra behavior into the driver as side-effect so that interrupting the
+    # kernel does what we expect.
+
+    import psycopg2.extras
+    import psycopg2.extensions
+
+    psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+
 @register_postprocessor('bigquery')
 def postprocess_bigquery(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]

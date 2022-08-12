@@ -380,6 +380,23 @@ class TestBootstrapDatasource:
             from_json = json.load(inf)
             assert from_json == {'foo': 'bar'}
 
+    def test_postprocess_postgresql(self, datasource_id):
+        pg_details = SampleData.get_sample('simple-postgres')
+
+        datasources.bootstrap_datasource(
+            datasource_id, pg_details.meta_json, pg_details.dsn_json, pg_details.connect_args_json
+        )
+
+        # At least look for signs of the side-effect. Can't test it actually does the
+        # right thing here w/o actually making a postgresql connection, firing off a query,
+        # and then having another thread or whatnot deliver SIGINT while waiting for query
+        # results. Or just go clicktest it in integration.
+
+        import psycopg2.extras
+        import psycopg2.extensions
+
+        assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
+
 
 class TestEnsureRequirements:
     def test_already_installed(self, datasource_id):
