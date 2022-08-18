@@ -52,7 +52,7 @@ class PlanarAllyAPI:
             json={
                 "new_app_level": app_log_level,
                 "new_ext_level": ext_log_level,
-                'rtu_level': rtu_log_level,
+                "rtu_log_level": rtu_log_level,
             },
             base_url=f"{self._base_url}/instance/",
         )
