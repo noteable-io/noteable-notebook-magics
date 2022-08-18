@@ -104,8 +104,10 @@ def ntbl_magic():
 @click.option("--ext-level", help="New external log level", required=False, type=click.STRING)
 @click.option('--rtu-level', help="Set RTU-related log level", required=False, type=click.STRING)
 @click.pass_obj
-def change_log_level(obj: ContextObject, app_level, ext_level):
-    obj.planar_ally.change_log_level(app_log_level=app_level, ext_log_level=ext_level)
+def change_log_level(obj: ContextObject, app_level, ext_level, rtu_level):
+    obj.planar_ally.change_log_level(
+        app_log_level=app_level, ext_log_level=ext_level, rtu_level=rtu_level
+    )
 
 
 @ntbl_magic.group(help="Push local updates to a remote store")
