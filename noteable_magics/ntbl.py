@@ -100,8 +100,9 @@ def ntbl_magic():
 
 
 @ntbl_magic.command(help="Change planar-ally log level", cls=NTBLCommand, hidden=True)
-@click.option("--app-level", help="New application log level", required=True, type=click.STRING)
+@click.option("--app-level", help="New application log level", required=False, type=click.STRING)
 @click.option("--ext-level", help="New external log level", required=False, type=click.STRING)
+@click.option('--rtu-level', help="Set RTU-related log level", required=False, type=click.STRING)
 @click.pass_obj
 def change_log_level(obj: ContextObject, app_level, ext_level):
     obj.planar_ally.change_log_level(app_log_level=app_level, ext_log_level=ext_level)
