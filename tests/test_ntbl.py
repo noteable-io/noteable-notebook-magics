@@ -85,4 +85,6 @@ def test_change_log_level(runner, context):
     ) as change_mock:
         result = runner.invoke(change_log_level, ["--app-level", "DEBUG"], obj=context)
         assert result.exit_code == 0, ''.join(traceback.format_exception(*result.exc_info))
-        change_mock.assert_called_with(app_log_level="DEBUG", ext_log_level=None)
+        change_mock.assert_called_with(
+            app_log_level="DEBUG", ext_log_level=None, rtu_log_level=None
+        )
