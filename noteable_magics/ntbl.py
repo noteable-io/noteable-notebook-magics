@@ -106,7 +106,7 @@ def ntbl_magic():
 @click.pass_obj
 def change_log_level(obj: ContextObject, app_level, ext_level, rtu_level):
     obj.planar_ally.change_log_level(
-        app_log_level=app_level, ext_log_level=ext_level, rtu_level=rtu_level
+        app_log_level=app_level, ext_log_level=ext_level, rtu_log_level=rtu_level
     )
 
 
