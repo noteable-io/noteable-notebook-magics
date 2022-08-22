@@ -131,6 +131,6 @@ def test_change_log_level(api, mock_no_content, ext_level):
         mock_request.assert_called_with(
             'POST',
             'http://localhost:7000/instance/logs',
-            json={'new_app_level': 'DEBUG', 'new_ext_level': ext_level},
+            json={'new_app_level': 'DEBUG', 'new_ext_level': ext_level, 'rtu_log_level': None},
             timeout=Timeout(connect=0.5, read=60.0, write=60.0, pool=60.0),
         )

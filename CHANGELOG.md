@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `%ntbl change-log-level --rtu-level DEBUG` will update relevant Sending, PA, and Origami libraries to render useful debug logs related to RTU processing in PA
+
+### Changed
+- `%ntbl change-log-level` no longer requires `--app-level` arg. If it's not passed in, it won't change PA `planar_ally.*` log level from wherever it's currently set
 
 ## [2.0.0] - 2022-03-15
 ### Changed
