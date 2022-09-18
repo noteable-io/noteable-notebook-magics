@@ -19,7 +19,7 @@ def load_ipython_extension(ipython):
     # for the legacy datasource support for Expel and whomever.
     add_commit_blacklist_dialect('bigquery')
 
-    # Initialize the noteable local (sqlite) database connection
+    # Initialize the noteable local (duck_db) database connection
     get_db_connection(LOCAL_DB_CONN_HANDLE)
 
     configure_logging(False, "INFO", "DEBUG")

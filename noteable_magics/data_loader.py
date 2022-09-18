@@ -15,7 +15,7 @@ EXCEL_MIMETYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
 }
 LOCAL_DB_CONN_HANDLE = "@noteable"
-sqlite_db_location = "sqlite:////tmp/ntbl.db"
+duckdb_location = "duckdb:///:memory:"
 
 
 def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connection']:
@@ -35,7 +35,7 @@ def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connectio
     ):
         # Bootstrap the SQLite database if asked and needed.
         return Connection.set(
-            sqlite_db_location,
+            duckdb_location,
             human_name="Local Database",
             displaycon=False,
             name=LOCAL_DB_CONN_HANDLE,
