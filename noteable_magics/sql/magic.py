@@ -235,14 +235,11 @@ class SqlMagic(Magics, Configurable):
 
                 return None
             else:
-
                 if parsed["result_var"]:
-                    result_var = parsed["result_var"]
-                    print("Returning data to local variable {}".format(result_var))
-                    self.shell.user_ns.update({result_var: result})
-                    return None
+                    # Silently assign the result to this named variable, ENG-4711.
+                    self.shell.user_ns.update({parsed["result_var"]: result})
 
-                # Return results into the default ipython _ variable
+                # Always return query results into the default ipython _ variable
                 return result
 
         except (

@@ -2,6 +2,7 @@ import os
 from typing import Optional
 
 import sqlalchemy
+import sqlalchemy.engine.base
 from sqlalchemy.engine import Engine
 
 
@@ -91,11 +92,16 @@ class Connection(object):
         Connection.current = self
 
     @property
-    def session(self):
-        """Lazily connect to the database."""
+    def session(self) -> sqlalchemy.engine.base.Connection:
+        """Lazily connect to the database.
+
+        Despite the name, this is a SQLA Connection, not a Session. And 'Connection'
+        is highly overused term around here.
+        """
 
         if not self._session:
             self._session = self._engine.connect()
+
         return self._session
 
     @classmethod

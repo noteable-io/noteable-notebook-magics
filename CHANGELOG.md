@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `%ntbl change-log-level` no longer requires `--app-level` arg. If it's not passed in, it won't change PA `planar_ally.*` log level from wherever it's currently set
-- `@noteable` magic changed to use duckdb
+- `@noteable` magic changed to use duckdb, away from sqlite.
+- `%%sql @e456456 my_df << select a, b, c from foo` variable assignment syntax will now always return the resulting dataframe as well as silently assign to the interpreter variable (`my_df` in this case) as side-effect. Previously would only assign to the interpreter variable and announce the fact with a print(), while having no return result.
 
 ## [2.0.0] - 2022-03-15
 ### Changed

@@ -10,6 +10,7 @@ from noteable_magics.planar_ally_client.types import (
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )
+from noteable_magics.sql.connection import Connection
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -71,3 +72,34 @@ def mock_dataset_stream():
         ).json(),
         200,
     ).stream()
+
+
+@pytest.fixture
+def with_empty_connections():
+    """Empty out the current set of sql magic Connections"""
+    preexisting_connections = Connection.connections
+
+    Connection.connections = {}
+
+    yield
+
+    Connection.connections = preexisting_connections
+
+
+@pytest.fixture
+def foo_database_connection(with_empty_connections):
+    """Make an @foo SQLite connection to simulate a non-default bootstrapped datasource."""
+
+    handle = '@foo'
+    human_name = "My Shiny Connection"
+    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+
+    yield handle, human_name
+
+
+@pytest.fixture
+def populated_foo_database(foo_database_connection):
+    connection = Connection.connections['@foo']
+    db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
+    db.execute('create table int_table(a int, b int, c int)')
+    db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')

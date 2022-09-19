@@ -58,8 +58,8 @@ def postprocess_postgresql(
     # extra behavior into the driver as side-effect so that interrupting the
     # kernel does what we expect.
 
-    import psycopg2.extras
     import psycopg2.extensions
+    import psycopg2.extras
 
     psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
 
