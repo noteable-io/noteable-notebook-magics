@@ -34,13 +34,13 @@ def csv_file(tmp_path: Path) -> Path:
 
 @pytest.mark.usefixtures("with_empty_connections")
 class TestGetDbConnection:
-    def test_populate_sqlite_conn_if_needed(self):
+    def test_populate_duckdb_conn_if_needed(self):
         assert len(Connection.connections) == 0
 
         conn = get_db_connection(LOCAL_DB_CONN_HANDLE)
 
         assert conn.name == LOCAL_DB_CONN_HANDLE
-        assert str(conn._engine.url) == "sqlite:////tmp/ntbl.db"
+        assert str(conn._engine.url) == "duckdb:///:memory:"
 
         assert len(Connection.connections) == 1
 
@@ -68,10 +68,10 @@ def alternate_datasource_handle_and_human_name():
 
     Connection.connections = {}
 
-    # We likey memory-only sqlite dbs.
+    # Add a memory-only duckdb dbs.
     handle = '@foo'
     human_name = "My Shiny Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+    Connection.set("duckdb:///:memory:", displaycon=False, name=handle, human_name=human_name)
 
     yield handle, human_name
 
@@ -88,7 +88,7 @@ class TestDataLoaderMagic:
         assert df.columns.tolist() == ['a', 'b', 'c']
         assert len(df) == 2
 
-        # Shoulda populated into @notable sqlite
+        # Shoulda populated into @notable duckdb
         assert len(Connection.connections) == 1
         conn = Connection.connections['@noteable']
         session = conn.session
@@ -101,7 +101,7 @@ class TestDataLoaderMagic:
         data_loader.execute(f"{csv_file} my_table")
         data_loader.execute(f"{csv_file} my_table2")
 
-        # Shoulda populated into @notable sqlite
+        # Shoulda populated into @notable duckdb
         assert len(Connection.connections) == 1
         conn = Connection.connections['@noteable']
         session = conn.session

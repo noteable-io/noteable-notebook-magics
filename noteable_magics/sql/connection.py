@@ -56,8 +56,8 @@ class Connection(object):
         No session is immediately established (see the session property).
 
         'name' is what we call now the 'sql_cell_handle' -- starts with '@', followed by
-        the hex of the datasource uuid (usually -- the legacy sqlite and bigquery do not
-        use the hex convention because they predate datasources)
+        the hex of the datasource uuid (usually -- the legacy "local database" (was sqlite, now duckdb)
+        and bigquery do not use the hex convention because they predate datasources)
 
         'human_name' is the name that the user gave the datasource ('My PostgreSQL Connection')
         (again, only for real datasource connections). There's a slight risk of name collision

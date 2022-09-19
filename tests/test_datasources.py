@@ -130,7 +130,8 @@ class SampleData:
         'redshift': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['sqlalchemy-redshift', 'redshift_connector'],
-                'allow_datasource_dialect_autoinstall': True,
+                # Packages installed already in noteable-notebook-magics
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'redshift+redshift_connector',
                 'sqlmagic_autocommit': True,
                 'name': 'My RedShift',
@@ -322,7 +323,9 @@ class TestBootstrapDatasource:
             # Can only work this way also if the datasource name was present in meta-json.
             assert the_conn._engine is Connection.get_engine(expected_human_name)
 
-        # Ensure the required packages are installed.
+        # Ensure the required packages are installed -- excercies either the 'auto-installation'
+        # code useful when trying out new datasource types in integration, or having been
+        # already installed because is listed as a dependency here in noteable-notebook-magics requirements.
         expected_packages = case_data.meta_dict['required_python_modules']
         pkg_to_installed = {
             pkg_name: datasources.is_package_installed(pkg_name) for pkg_name in expected_packages
