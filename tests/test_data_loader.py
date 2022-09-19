@@ -10,18 +10,6 @@ from noteable_magics.sql.connection import Connection
 
 
 @pytest.fixture
-def with_empty_connections():
-    """Empty out the current set of sql magic Connections"""
-    preexisting_connections = Connection.connections
-
-    Connection.connections = {}
-
-    yield
-
-    Connection.connections = preexisting_connections
-
-
-@pytest.fixture
 def csv_file(tmp_path: Path) -> Path:
     the_file = tmp_path / 'test.csv'
     with the_file.open('w') as outfile:
@@ -59,25 +47,6 @@ def data_loader() -> NoteableDataLoaderMagic:
     return NoteableDataLoaderMagic()
 
 
-@pytest.fixture
-def alternate_datasource_handle_and_human_name():
-    """Empty out the current set of sql magic Connections, then make an @foo SQLite connection
-    to simulate a non-default bootstrapped datasource.
-    """
-    preexisting_connections = Connection.connections
-
-    Connection.connections = {}
-
-    # Add a memory-only duckdb dbs.
-    handle = '@foo'
-    human_name = "My Shiny Connection"
-    Connection.set("duckdb:///:memory:", displaycon=False, name=handle, human_name=human_name)
-
-    yield handle, human_name
-
-    Connection.connections = preexisting_connections
-
-
 class TestDataLoaderMagic:
     @pytest.mark.usefixtures("with_empty_connections")
     def test_can_load_into_local_connection(self, csv_file: Path, data_loader):
@@ -112,10 +81,10 @@ class TestDataLoaderMagic:
             ).scalar_one()
 
     def test_can_specify_alternate_connection_via_handle(
-        self, csv_file, data_loader, alternate_datasource_handle_and_human_name
+        self, csv_file, data_loader, foo_database_connection
     ):
         """Test specifying non-default connection via --connection @sql_cell_handle"""
-        alternate_datasource_handle, human_name = alternate_datasource_handle_and_human_name
+        alternate_datasource_handle, human_name = foo_database_connection
         assert alternate_datasource_handle != '@noteable'
         df = data_loader.execute(f"{csv_file} the_table --connection {alternate_datasource_handle}")
 
@@ -133,10 +102,10 @@ class TestDataLoaderMagic:
             )
 
     def test_can_specify_alternate_connection_via_human_name(
-        self, csv_file, data_loader, alternate_datasource_handle_and_human_name
+        self, csv_file, data_loader, foo_database_connection
     ):
         """Test specifying non-default connection via --connection 'Human given datasource name'"""
-        _, human_name = alternate_datasource_handle_and_human_name
+        _, human_name = foo_database_connection
 
         # human_name from fixture gots spaces in it, so must wrap in quotes.
         df = data_loader.execute(f"{csv_file} the_table --connection '{human_name}'")
