@@ -15,14 +15,14 @@ EXCEL_MIMETYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
 }
 LOCAL_DB_CONN_HANDLE = "@noteable"
-sqlite_db_location = "sqlite:////tmp/ntbl.db"
+duckdb_location = "duckdb:///:memory:"
 
 
 def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connection']:
     """Return the sql.connection.Connection corresponding to the requested
         datasource sql_cell_handle or human name.
 
-    If the cell handle happens to correspond to the 'local database' SQLite database,
+    If the cell handle happens to correspond to the 'local database' DuckDB database,
     then we will bootstrap it upon demand. Otherwise, try to find and return
     the connection.
 
@@ -33,9 +33,9 @@ def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connectio
         sql_cell_handle_or_human_name == LOCAL_DB_CONN_HANDLE
         and sql_cell_handle_or_human_name not in Connection.connections
     ):
-        # Bootstrap the SQLite database if asked and needed.
+        # Bootstrap the DuckDB database if asked and needed.
         return Connection.set(
-            sqlite_db_location,
+            duckdb_location,
             human_name="Local Database",
             displaycon=False,
             name=LOCAL_DB_CONN_HANDLE,
@@ -87,7 +87,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         type=str,
         default=LOCAL_DB_CONN_HANDLE,
         required=False,
-        help="Connection name or handle identifying the datasource to populate. Defaults to local SQLite datasource.",
+        help="Connection name or handle identifying the datasource to populate. Defaults to local DuckDB datasource.",
     )
     def execute(self, line="", cell=""):
         # workaround for https://github.com/ipython/ipython/issues/12729

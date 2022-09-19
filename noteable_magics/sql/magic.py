@@ -138,6 +138,7 @@ class SqlMagic(Magics, Configurable):
 
           postgresql://me:mypw@localhost/mydb
           sqlite://
+          duckdb:///:memory:
           mysql+pymysql://me:mypw@localhost/mydb
 
         """

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `%ntbl change-log-level` no longer requires `--app-level` arg. If it's not passed in, it won't change PA `planar_ally.*` log level from wherever it's currently set
+- `@noteable` magic changed to use duckdb
 
 ## [2.0.0] - 2022-03-15
 ### Changed
