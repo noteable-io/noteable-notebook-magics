@@ -34,7 +34,7 @@ def csv_file(tmp_path: Path) -> Path:
 
 @pytest.mark.usefixtures("with_empty_connections")
 class TestGetDbConnection:
-    def test_populate_sqlite_conn_if_needed(self):
+    def test_populate_duckdb_conn_if_needed(self):
         assert len(Connection.connections) == 0
 
         conn = get_db_connection(LOCAL_DB_CONN_HANDLE)
