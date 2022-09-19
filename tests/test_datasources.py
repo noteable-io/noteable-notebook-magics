@@ -130,7 +130,8 @@ class SampleData:
         'redshift': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['sqlalchemy-redshift', 'redshift_connector'],
-                'allow_datasource_dialect_autoinstall': True,
+                # Packages installed already in noteable-notebook-magics
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'redshift+redshift_connector',
                 'sqlmagic_autocommit': True,
                 'name': 'My RedShift',
