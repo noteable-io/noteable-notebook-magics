@@ -2,8 +2,8 @@ import os
 from typing import Optional
 
 import sqlalchemy
-from sqlalchemy.engine import Engine
 import sqlalchemy.engine.base
+from sqlalchemy.engine import Engine
 
 
 class ConnectionError(Exception):
