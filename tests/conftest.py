@@ -10,6 +10,7 @@ from noteable_magics.planar_ally_client.types import (
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )
+from noteable_magics.sql.connection import Connection
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -71,3 +72,15 @@ def mock_dataset_stream():
         ).json(),
         200,
     ).stream()
+
+
+@pytest.fixture
+def with_empty_connections():
+    """Empty out the current set of sql magic Connections"""
+    preexisting_connections = Connection.connections
+
+    Connection.connections = {}
+
+    yield
+
+    Connection.connections = preexisting_connections
