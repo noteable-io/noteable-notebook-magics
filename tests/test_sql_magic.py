@@ -1,13 +1,12 @@
 """ Tests over the data loading magic, "create_or_replace_data_view" """
 
 
-import pytest
 import pandas as pd
+import pytest
+from IPython.core.interactiveshell import InteractiveShell
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.magic import SqlMagic
-
-from IPython.core.interactiveshell import InteractiveShell
 
 
 @pytest.fixture
