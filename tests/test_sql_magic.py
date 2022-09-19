@@ -44,6 +44,17 @@ def populated_foo_database(foo_database_connection):
 
 @pytest.mark.usefixtures("populated_foo_database")
 class TestSqlMagic:
+    def test_basic_query(self, sql_magic, ipython_shell):
+        """Test basic query behavior"""
+
+        results = sql_magic.execute('@foo select a, b from int_table')
+        assert isinstance(results, pd.DataFrame)
+
+        # Two rows as from populated_foo_database
+        assert len(results) == 2
+        assert results['a'].tolist() == [1, 4]
+        assert results['b'].tolist() == [2, 5]
+
     def test_assigment_to_variable(self, sql_magic, ipython_shell):
         """Test that when the 'varname << select ...' syntax is used, the df is returned
         as the main execute result, and varname is side-effect assigned to."""
