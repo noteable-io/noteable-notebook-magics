@@ -24,6 +24,8 @@ prettytable = "^3.3.0"
 SQLAlchemy = "^1.4.39"
 sqlparse = "^0.4.2"
 duckdb-engine = "^0.6.4"
+redshift-connector = "2.0.908"
+sqlalchemy-redshift = "0.8.11"
 
 
 [tool.poetry.dev-dependencies]

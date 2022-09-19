@@ -68,10 +68,10 @@ def alternate_datasource_handle_and_human_name():
 
     Connection.connections = {}
 
-    # Add a memory-only sqlite dbs.
+    # Add a memory-only duckdb dbs.
     handle = '@foo'
     human_name = "My Shiny Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+    Connection.set("duckdb:///:memory:", displaycon=False, name=handle, human_name=human_name)
 
     yield handle, human_name
 
