@@ -68,3 +68,16 @@ class TestSqlMagic:
 
         # Should have also assigned the results to global 'my_df' in the ipython shell.
         assert ipython_shell.user_ns['my_df'] is results
+
+    def test_does_not_assign_exceptions_to_variable(self, sql_magic, ipython_shell):
+        """Test that if queries raise exceptions, those do not get assigned to any
+        requested variable name. ENG-4730"""
+
+        # This will raise a ProgrammingError error from sqlalchemy, which
+        # sql magic will catch and convert to a short print output, then not
+        # do the assignment (nor re-raise the exception).
+        results = sql_magic.execute('@foo my_df << select a from nonexistent_table')
+        assert results is None
+
+        # Should NOT have also assigned the exception to global 'my_df' in the ipython shell.
+        assert 'my_df' not in ipython_shell.user_ns
