@@ -41,6 +41,11 @@ def populated_foo_database(foo_database_connection):
     db.execute('create table int_table(a int, b int, c int)')
     db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
 
+    db.execute('create table str_table(str_id text, int_col int)')
+    db.execute(
+        "insert into str_table(str_id, int_col) values ('a', 1), ('b', 2), ('c', 3), ('d', null)"
+    )
+
 
 @pytest.mark.usefixtures("populated_foo_database")
 class TestSqlMagic:
@@ -81,3 +86,66 @@ class TestSqlMagic:
 
         # Should NOT have also assigned the exception to global 'my_df' in the ipython shell.
         assert 'my_df' not in ipython_shell.user_ns
+
+
+@pytest.mark.usefixtures("populated_foo_database")
+class TestJinjaTemplatesWithinSqlMagic:
+    """Tests over jinjasql integration. See https://github.com/sripathikrishnan/jinjasql"""
+
+    @pytest.mark.parametrize('a_value,expected_b_value', [(1, 2), (4, 5)])
+    def test_basic_query(self, sql_magic, ipython_shell, a_value, expected_b_value):
+        """Test simple template expansion"""
+
+        # Each a value corresponds with a different b value, see
+        # populated_foo_database().
+        ipython_shell.user_ns['a_value'] = a_value
+
+        ## jinjasql expansion!
+        results = sql_magic.execute('@foo select b from int_table where a = {{a_value}}')
+        assert isinstance(results, pd.DataFrame)
+
+        # One row as from populated_foo_database
+        assert len(results) == 1
+        assert results['b'].tolist() == [expected_b_value]
+
+    def test_in_query_template(self, sql_magic, ipython_shell):
+        """Test an in clause expanded from a list. Requires '| inclause' formatter"""
+        ipython_shell.user_ns['a_values'] = [1, 4]  # both known a values.
+        results = sql_magic.execute(
+            '@foo select b from int_table where a in {{a_values | inclause}} order by b'
+        )
+
+        assert len(results) == 2
+        assert results['b'].tolist() == [2, 5]
+
+    def test_against_string(self, sql_magic, ipython_shell):
+        """Test string params"""
+        ipython_shell.user_ns['str_id_val'] = 'a'
+
+        results = sql_magic.execute(
+            '@foo select int_col from str_table where str_id = {{str_id_val}}'
+        )
+
+        assert len(results) == 1
+        assert results['int_col'].tolist() == [1]
+
+    @pytest.mark.parametrize('ret_col,expected_value', [('a', 1), ('b', 2)])
+    def test_sqlsafe(self, sql_magic, ipython_shell, ret_col, expected_value):
+        """Test template that gets projected column name via jinja2. Requires '|sqlsafe' formatter"""
+        ipython_shell.user_ns['ret_col'] = ret_col
+
+        results = sql_magic.execute('@foo select {{ret_col | sqlsafe}} from int_table where a=1')
+
+        assert len(results) == 1
+        assert results[ret_col].tolist() == [expected_value]
+
+    @pytest.mark.parametrize('do_filter,expected_values', [(True, [2]), (False, [2, 5])])
+    def test_conditional_filter(self, sql_magic, ipython_shell, do_filter, expected_values):
+        """Test jijna conditional in the template"""
+        ipython_shell.user_ns['do_filter'] = do_filter
+
+        results = sql_magic.execute(
+            '@foo select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
+        )
+
+        assert results['b'].tolist() == expected_values
