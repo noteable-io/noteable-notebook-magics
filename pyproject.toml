@@ -6,7 +6,7 @@ version = "2.0.0"
 
 [tool.poetry.dependencies]
 GitPython = "^3.1.14"
-backoff = "^1.10.0"
+backoff = "^2.2.1"
 click = "^8.0.4" # pinned until black is updated to not use internal module that was removed by click in 8.1.0; https://github.com/psf/black/issues/2964
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
@@ -37,6 +37,7 @@ sqlalchemy-bigquery = {version = "1.4.4", python = ">=3.8,<3.11"}
 sqlalchemy-databricks = {version = "0.2.0"}
 trino = {version = "0.313.0", extras = ["sqlalchemy"]}
 greenlet = "^1.1.3"
+
 
 
 
