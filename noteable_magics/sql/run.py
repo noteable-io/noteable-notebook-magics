@@ -385,7 +385,6 @@ def run(conn, sql, config, user_namespace):
             else:
                 query, bind_params = jinja_sql.prepare_query(statement, user_namespace)
                 txt = sqlalchemy.sql.text(query)
-                print(f'Query: {txt}, binds: {bind_params}')
                 result = conn.session.execute(txt, bind_params)
             _commit(conn=conn, config=config)
             if result and config.feedback:
