@@ -11,9 +11,9 @@ click = "^8.0.4" # pinned until black is updated to not use internal module that
 httpx = {extras = ["http2"], version = "^0.18.2"}
 ipython = "^7.31.1"
 openpyxl = "^3.0.7"
-pandas = "^1.2.1"
+pandas = "^1.3.5"
 pyarrow = "^6.0.1" # Snowflake driver wants 6.0.X series as of June 2022.
-pydantic = "^1.7.3"
+pydantic = "^1.9.1"
 python = "^3.8"
 rich = "10.13.0"  # Upgrading breaks progress bars
 unidiff = "^0.6.0"
