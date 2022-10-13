@@ -5,6 +5,7 @@ import os.path
 import re
 from functools import reduce
 
+from jinjasql import JinjaSql
 import prettytable
 import six
 import sqlalchemy
@@ -362,6 +363,9 @@ def _commit(conn, config):
             pass  # not all engines can commit
 
 
+jinja_sql = JinjaSql(param_style='named')
+
+
 def run(conn, sql, config, user_namespace):
     if sql.strip():
         for statement in sqlparse.split(sql):
@@ -379,8 +383,9 @@ def run(conn, sql, config, user_namespace):
                 ]
                 result = FakeResultProxy(cur, headers)
             else:
-                txt = sqlalchemy.sql.text(statement)
-                result = conn.session.execute(txt, user_namespace)
+                query, bind_params = jinja_sql.prepare_query(statement, user_namespace)
+                txt = sqlalchemy.sql.text(query)
+                result = conn.session.execute(txt, bind_params)
             _commit(conn=conn, config=config)
             if result and config.feedback:
                 print(interpret_rowcount(result.rowcount))

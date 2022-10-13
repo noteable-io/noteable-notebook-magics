@@ -1,6 +1,5 @@
 import json
 import re
-from string import Formatter
 
 from IPython.core.magic import Magics, cell_magic, line_magic, magics_class, needs_local_scope
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
@@ -142,15 +141,6 @@ class SqlMagic(Magics, Configurable):
           mysql+pymysql://me:mypw@localhost/mydb
 
         """
-        # Parse variables (words wrapped in {}) for %%sql magic (for %sql this is done automatically)
-        cell_variables = [fn for _, fn, _, _ in Formatter().parse(cell) if fn is not None]
-        cell_params = {}
-        for variable in cell_variables:
-            if variable in local_ns:
-                cell_params[variable] = local_ns[variable]
-            else:
-                raise NameError(variable)
-        cell = cell.format(**cell_params)
 
         line = noteable_magics.sql.parse.without_sql_comment(parser=self.execute.parser, line=line)
         args = parse_argstring(self.execute, line)
