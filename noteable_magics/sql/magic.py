@@ -184,6 +184,14 @@ class SqlMagic(Magics, Configurable):
         if args.creator:
             args.creator = user_ns[args.creator]
 
+        # Get ahold of the connection to use. Original sql-magic lifecycle was to create connections
+        # on the fly within cells via magic invocations. Said connection would then become the
+        # default for use for future invocations that lacked an explicit connection string (hence
+        # use of `set()` here. But at Noteable, we bootstrap the kernel's datasources from info in Vault
+        # at startup time, and don't really advise / support creating new ones on the fly within kernel
+        # sessions. So, of this get-and-set-default-and-or-create behavior that this `set()` call performs, we only really
+        # expect to use the get portion. If an unknown datasource handle (say, handle of a datasource created _after_
+        # kernel launch / our bootstrapping) gets passed into here, an exception will be raised.
         try:
             conn = noteable_magics.sql.connection.Connection.set(
                 connect_str,
@@ -191,9 +199,9 @@ class SqlMagic(Magics, Configurable):
                 connect_args=args.connection_arguments,
                 creator=args.creator,
             )
-        except Exception as e:
+        except noteable_magics.sql.connection.UnknownConnectionError as e:
+            # Cell referenced a datasource we don't know about. Exception will have a short + sweet message.
             print(e)
-            print(noteable_magics.sql.connection.Connection.tell_format())
             return None
 
         if args.persist:

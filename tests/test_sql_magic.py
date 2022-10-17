@@ -87,6 +87,30 @@ class TestSqlMagic:
         # Should NOT have also assigned the exception to global 'my_df' in the ipython shell.
         assert 'my_df' not in ipython_shell.user_ns
 
+    def test_unknown_datasource_handle_produces_expected_exception(self, sql_magic, capsys):
+        from noteable_magics.sql.connection import Connection, UnknownConnectionError
+
+        # sql magic invocation of an unknown connection will end up calling .set() with
+        # that unknown connection's handle. Should raise. (This is unit-test-y)
+
+        # Verbiage from ENG-4264.
+        expected_message = "Cannot find data connection. If you recently created this connection, please restart the kernel."
+
+        with pytest.raises(
+            UnknownConnectionError,
+            match=expected_message,
+        ):
+            Connection.set('@45645675', False)
+
+        # ... and when run through the magic, the magic will return None, but print the message out as
+        # the cell's output. (This is more integration test-y, or at least higher-level unit-test-y.)
+        assert sql_magic.execute('@45645675 select true') is None
+        captured = capsys.readouterr()
+        assert captured.out == f"{expected_message}\n"
+
+        # Finally, the total number of known connections should have remained 1 (@foo).
+        assert len(Connection.connections) == 1
+
 
 @pytest.mark.usefixtures("populated_foo_database")
 class TestJinjaTemplatesWithinSqlMagic:

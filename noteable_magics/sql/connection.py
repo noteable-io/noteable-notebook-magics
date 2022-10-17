@@ -1,12 +1,16 @@
 import os
-from typing import Optional
+from typing import Optional, Union
 
 import sqlalchemy
 import sqlalchemy.engine.base
 from sqlalchemy.engine import Engine
+import structlog
 
 
-class ConnectionError(Exception):
+logger = structlog.get_logger(__name__)
+
+
+class UnknownConnectionError(Exception):
     pass
 
 
@@ -28,14 +32,6 @@ def rough_dict_get(dct, sought, default=None):
 class Connection(object):
     current = None
     connections = {}
-
-    @classmethod
-    def tell_format(cls):
-        return """Connection info needed in SQLAlchemy format, example:
-               postgresql://username:password@hostname/dbname
-               or an existing connection: %s""" % str(
-            cls.connections.keys()
-        )
 
     def __init__(self, connect_str=None, name=None, human_name=None, **create_engine_kwargs):
         """
@@ -78,9 +74,32 @@ class Connection(object):
 
         try:
             self._engine = sqlalchemy.create_engine(connect_str, **create_engine_kwargs)
-        except Exception:  # TODO: bare-ish except; but what's an ArgumentError?
-            print(self.tell_format())
-            raise
+        except Exception:
+
+            # Most likely reason to end up here: cell being asked to use a datasource that wasn't bootstrapped
+            # as one of these Connections at kernel startup, and sql-magic ends up here, trying
+            # to create a new Connection on the fly. But if given only something like
+            # "@3453454567546" for the connect_str as from a SQL cell invocation, this obviously
+            # isn't enough to create a new SQLA engine.
+
+            logger.exception(
+                'Error creating new noteable_magics.sql.Connection', connect_str=connect_str
+            )
+
+            if connect_str.startswith('@'):
+                # Is indeed the above most likely reason. Cell ran something like "%sql @3244356456 select true",
+                # and magic.py's call to `conn = noteable_magics.sql.connection.Connection.set(...)`
+                # ended up here trying to create a new Connection and Engine because '@3244356456' didn't
+                # rendezvous with an already knoen bootstrapped datasource from vault via the startup-time bootstrapping
+                # noteable_magics.datasources.bootstrap_datasources() call. Most likely reason for that is because
+                # the user created the datasource _after_ when the kernel was launched and other checks and balances
+                # didn't prevent them from trying to gesture to use it in this kernel session.
+                raise UnknownConnectionError(
+                    "Cannot find data connection. If you recently created this connection, please restart the kernel."
+                )
+            else:
+                # Hmm. Maybe something desperately wrong at inside of a bootstrapped datasource? Just re-raise.
+                raise
 
         self.dialect = self._engine.url.get_dialect()
         self.metadata = sqlalchemy.MetaData(bind=self._engine)
@@ -105,8 +124,14 @@ class Connection(object):
         return self._session
 
     @classmethod
-    def set(cls, descriptor, displaycon, name=None, **create_engine_kwargs):
-        """Sets the current database connection"""
+    def set(
+        cls,
+        descriptor: Union[str, 'Connection'],
+        displaycon: bool,
+        name: Optional[str] = None,
+        **create_engine_kwargs
+    ):
+        """Sets the current database connection. Will construct and cache new one on the fly if needed."""
 
         if descriptor:
             if isinstance(descriptor, Connection):
