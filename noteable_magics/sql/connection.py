@@ -90,7 +90,7 @@ class Connection(object):
                 # Is indeed the above most likely reason. Cell ran something like "%sql @3244356456 select true",
                 # and magic.py's call to `conn = noteable_magics.sql.connection.Connection.set(...)`
                 # ended up here trying to create a new Connection and Engine because '@3244356456' didn't
-                # rendezvous with an already knoen bootstrapped datasource from vault via the startup-time bootstrapping
+                # rendezvous with an already known bootstrapped datasource from vault via the startup-time bootstrapping
                 # noteable_magics.datasources.bootstrap_datasources() call. Most likely reason for that is because
                 # the user created the datasource _after_ when the kernel was launched and other checks and balances
                 # didn't prevent them from trying to gesture to use it in this kernel session.
