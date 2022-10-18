@@ -92,7 +92,6 @@ class TestSqlMagic:
 
         # sql magic invocation of an unknown connection will end up calling .set() with
         # that unknown connection's handle. Should raise. (This is unit-test-y)
-
         # Verbiage from ENG-4264.
         expected_message = "Cannot find data connection. If you recently created this connection, please restart the kernel."
 
