@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@noteable` magic changed to use duckdb, away from sqlite.
 - `%%sql @e456456 my_df << select a, b, c from foo` variable assignment syntax will now always return the resulting dataframe as well as silently assign to the interpreter variable (`my_df` in this case) as side-effect. Previously would only assign to the interpreter variable and announce the fact with a print(), while having no return result.
 - Now use jinjasql for SQL cell template expansion, not simple string.Template.
+- Simpler message printed as the cell's side-effect if an unknown datasource handle is attempted.
 
 ## [2.0.0] - 2022-03-15
 ### Changed
