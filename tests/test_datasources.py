@@ -97,7 +97,7 @@ class SampleData:
         'simple-cockroachdb': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['sqlalchemy-cockroachdb', 'psycopg2-binary'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'cockroachdb',
                 'sqlmagic_autocommit': False,
                 'name': 'My CRDB',
@@ -113,7 +113,7 @@ class SampleData:
         'simple-postgres': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2-binary'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL',
@@ -129,7 +129,7 @@ class SampleData:
         'postgres-require-ssl': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2-binary'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL SSL',
@@ -163,7 +163,7 @@ class SampleData:
         'trino': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['trino[sqlalchemy]'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'trino',
                 'sqlmagic_autocommit': False,  # This one is special!
                 # And explicitly no name assigned, 'legacy'.
@@ -178,7 +178,7 @@ class SampleData:
         'databricks': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['sqlalchemy-databricks'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'databricks+connector',
                 'sqlmagic_autocommit': False,  # This one is special!
                 'name': 'My Databricks',
@@ -199,7 +199,7 @@ class SampleData:
         'snowflake-required': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['snowflake-sqlalchemy'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
                 'name': 'My Snowflake',
@@ -216,7 +216,7 @@ class SampleData:
         'snowflake-with-database': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['snowflake-sqlalchemy'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
                 'name': 'My Snowflake with database',
@@ -234,7 +234,7 @@ class SampleData:
         'snowflake-with-database-and-schema': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['snowflake-sqlalchemy'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
                 'name': 'Snowflake with database and schema',
@@ -253,7 +253,7 @@ class SampleData:
         'snowflake-with-empty-db-and-schema': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['snowflake-sqlalchemy'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
                 'sqlmagic_autocommit': True,
                 'name': 'Snowflake with empty db and schema',
@@ -371,7 +371,7 @@ class TestBootstrapDatasource:
         case_data = DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['sqlalchemy-bigquery'],
-                'allow_datasource_dialect_autoinstall': True,
+                'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'bigquery',
                 'sqlmagic_autocommit': True,
             },
