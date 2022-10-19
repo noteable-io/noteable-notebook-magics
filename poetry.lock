@@ -1910,6 +1910,17 @@ geography = ["geoalchemy2", "shapely"]
 tests = ["packaging", "pytz"]
 
 [[package]]
+name = "sqlalchemy-cockroachdb"
+version = "1.4.4"
+description = "CockroachDB dialect for SQLAlchemy"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+SQLAlchemy = "*"
+
+[[package]]
 name = "sqlalchemy-databricks"
 version = "0.2.0"
 description = "SQLAlchemy Dialect for Databricks"
@@ -2190,7 +2201,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "flake8 
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "8dda347e49c3e3f51286fc287c51a1a39177ff59c5cb9c26f67ce5d270d63c4a"
+content-hash = "5ea950eeac17d698c9c935161f146a43dc4f5befc4ffb1fdfc63b5cb9e979e8e"
 
 [metadata.files]
 anyio = [
@@ -2823,6 +2834,7 @@ soupsieve = [
 ]
 sqlalchemy = []
 sqlalchemy-bigquery = []
+sqlalchemy-cockroachdb = []
 sqlalchemy-databricks = []
 sqlalchemy-redshift = []
 sqlparse = []
