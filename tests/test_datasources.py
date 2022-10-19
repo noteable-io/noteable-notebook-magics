@@ -94,6 +94,22 @@ class SampleData:
     """Test case fodder"""
 
     samples = {
+        'simple-cockroachdb': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-cockroachdb', 'psycopg2-binary'],
+                'allow_datasource_dialect_autoinstall': True,
+                'drivername': 'cockroachdb',
+                'sqlmagic_autocommit': False,
+                'name': 'My CRDB',
+            },
+            dsn_dict={
+                'username': 'scott',
+                'password': 'tiger',
+                'host': 'localhost',
+                'port': 26257,
+                'database': 'defaultdb',
+            },
+        ),
         'simple-postgres': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2-binary'],
