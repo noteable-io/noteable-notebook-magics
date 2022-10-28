@@ -24,19 +24,19 @@ def sql_magic(ipython_shell) -> SqlMagic:
 
 
 @pytest.fixture
-def foo_database_connection(with_empty_connections):
-    """Make an @foo SQLite connection to simulate a non-default bootstrapped datasource."""
+def sqlite_database_connection(with_empty_connections):
+    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
 
-    handle = '@foo'
-    human_name = "My Shiny Connection"
+    handle = '@sqlite'
+    human_name = "My Sqlite Connection"
     Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
 
     yield handle, human_name
 
 
 @pytest.fixture
-def populated_foo_database(foo_database_connection):
-    connection = Connection.connections['@foo']
+def populated_sqlite_database(sqlite_database_connection):
+    connection = Connection.connections['@sqlite']
     db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
     db.execute('create table int_table(a int, b int, c int)')
     db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
@@ -47,15 +47,15 @@ def populated_foo_database(foo_database_connection):
     )
 
 
-@pytest.mark.usefixtures("populated_foo_database")
+@pytest.mark.usefixtures("populated_sqlite_database")
 class TestSqlMagic:
     def test_basic_query(self, sql_magic, ipython_shell):
         """Test basic query behavior"""
 
-        results = sql_magic.execute('@foo select a, b from int_table')
+        results = sql_magic.execute('@sqlite select a, b from int_table')
         assert isinstance(results, pd.DataFrame)
 
-        # Two rows as from populated_foo_database
+        # Two rows as from populated_sqlite_database
         assert len(results) == 2
         assert results['a'].tolist() == [1, 4]
         assert results['b'].tolist() == [2, 5]
@@ -64,10 +64,10 @@ class TestSqlMagic:
         """Test that when the 'varname << select ...' syntax is used, the df is returned
         as the main execute result, and varname is side-effect assigned to."""
 
-        results = sql_magic.execute('@foo my_df << select a from int_table')
+        results = sql_magic.execute('@sqlite my_df << select a from int_table')
         assert isinstance(results, pd.DataFrame)
 
-        # Two rows as from populated_foo_database
+        # Two rows as from populated_sqlite_database
         assert len(results) == 2
         assert results['a'].tolist() == [1, 4]
 
@@ -81,7 +81,7 @@ class TestSqlMagic:
         # This will raise a ProgrammingError error from sqlalchemy, which
         # sql magic will catch and convert to a short print output, then not
         # do the assignment (nor re-raise the exception).
-        results = sql_magic.execute('@foo my_df << select a from nonexistent_table')
+        results = sql_magic.execute('@sqlite my_df << select a from nonexistent_table')
         assert results is None
 
         # Should NOT have also assigned the exception to global 'my_df' in the ipython shell.
@@ -107,11 +107,11 @@ class TestSqlMagic:
         captured = capsys.readouterr()
         assert captured.out == f"{expected_message}\n"
 
-        # Finally, the total number of known connections should have remained 1 (@foo).
+        # Finally, the total number of known connections should have remained 1 (@sqlite).
         assert len(Connection.connections) == 1
 
 
-@pytest.mark.usefixtures("populated_foo_database")
+@pytest.mark.usefixtures("populated_sqlite_database")
 class TestJinjaTemplatesWithinSqlMagic:
     """Tests over jinjasql integration. See https://github.com/sripathikrishnan/jinjasql"""
 
@@ -120,14 +120,14 @@ class TestJinjaTemplatesWithinSqlMagic:
         """Test simple template expansion"""
 
         # Each a value corresponds with a different b value, see
-        # populated_foo_database().
+        # populated_sqlite_database().
         ipython_shell.user_ns['a_value'] = a_value
 
         ## jinjasql expansion!
-        results = sql_magic.execute('@foo select b from int_table where a = {{a_value}}')
+        results = sql_magic.execute('@sqlite select b from int_table where a = {{a_value}}')
         assert isinstance(results, pd.DataFrame)
 
-        # One row as from populated_foo_database
+        # One row as from populated_sqlite_database
         assert len(results) == 1
         assert results['b'].tolist() == [expected_b_value]
 
@@ -135,7 +135,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         """Test an in clause expanded from a list. Requires '| inclause' formatter"""
         ipython_shell.user_ns['a_values'] = [1, 4]  # both known a values.
         results = sql_magic.execute(
-            '@foo select b from int_table where a in {{a_values | inclause}} order by b'
+            '@sqlite select b from int_table where a in {{a_values | inclause}} order by b'
         )
 
         assert len(results) == 2
@@ -146,7 +146,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['str_id_val'] = 'a'
 
         results = sql_magic.execute(
-            '@foo select int_col from str_table where str_id = {{str_id_val}}'
+            '@sqlite select int_col from str_table where str_id = {{str_id_val}}'
         )
 
         assert len(results) == 1
@@ -157,7 +157,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         """Test template that gets projected column name via jinja2. Requires '|sqlsafe' formatter"""
         ipython_shell.user_ns['ret_col'] = ret_col
 
-        results = sql_magic.execute('@foo select {{ret_col | sqlsafe}} from int_table where a=1')
+        results = sql_magic.execute('@sqlite select {{ret_col | sqlsafe}} from int_table where a=1')
 
         assert len(results) == 1
         assert results[ret_col].tolist() == [expected_value]
@@ -168,7 +168,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['do_filter'] = do_filter
 
         results = sql_magic.execute(
-            '@foo select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
+            '@sqlite select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
         )
 
         assert results['b'].tolist() == expected_values

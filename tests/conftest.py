@@ -1,6 +1,9 @@
 import json
 from contextlib import contextmanager
 
+from IPython.core.interactiveshell import InteractiveShell
+
+
 import pytest
 
 from noteable_magics.logging import configure_logging
@@ -11,6 +14,9 @@ from noteable_magics.planar_ally_client.types import (
     FileProgressUpdateMessage,
 )
 from noteable_magics.sql.connection import Connection
+
+
+from noteable_magics.sql.magic import SqlMagic
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -87,19 +93,38 @@ def with_empty_connections():
 
 
 @pytest.fixture
-def foo_database_connection(with_empty_connections):
-    """Make an @foo SQLite connection to simulate a non-default bootstrapped datasource."""
-
-    handle = '@foo'
-    human_name = "My Shiny Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
-
-    yield handle, human_name
+def ipython_shell() -> InteractiveShell:
+    return InteractiveShell()
 
 
 @pytest.fixture
-def populated_foo_database(foo_database_connection):
-    connection = Connection.connections['@foo']
+def sql_magic(ipython_shell) -> SqlMagic:
+    magic = SqlMagic(ipython_shell)
+    # As would be done when we normally bootstrap things ...
+    magic.autopandas = True
+
+    return magic
+
+
+@pytest.fixture
+def sqlite_database_connection(with_empty_connections):
+    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
+
+    handle = '@sqlite'
+    human_name = "My Sqlite Connection"
+    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+
+    return handle, human_name
+
+
+@pytest.fixture
+def populated_sqlite_database(sqlite_database_connection):
+    connection = Connection.connections['@sqlite']
     db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
     db.execute('create table int_table(a int, b int, c int)')
     db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
+
+    db.execute('create table str_table(str_id text, int_col int)')
+    db.execute(
+        "insert into str_table(str_id, int_col) values ('a', 1), ('b', 2), ('c', 3), ('d', null)"
+    )

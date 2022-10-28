@@ -14,6 +14,10 @@ from sqlalchemy.exc import (
 import noteable_magics.sql.connection
 import noteable_magics.sql.parse
 import noteable_magics.sql.run
+from noteable_magics.sql.meta_commands import (
+    MetaCommandException,
+    run_meta_command,
+)
 
 try:
     from traitlets import Bool, Int, Unicode
@@ -214,7 +218,14 @@ class SqlMagic(Magics, Configurable):
             return
 
         try:
-            result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
+            if parsed["sql"].startswith('\\'):
+                # Is a meta command, say, to introspect schema or table such as "\describe foo"
+                # May emit things directly as well as probably return a primary dataframe.
+                result = run_meta_command(self.shell, conn, parsed["sql"])
+
+            else:
+                # Vanilla SQL statement.
+                result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
 
             if result is not None and not isinstance(result, str) and self.column_local_vars:
                 # Instead of returning values, set variables directly in the
@@ -246,6 +257,7 @@ class SqlMagic(Magics, Configurable):
             InterfaceError,
             DatabaseError,
             OperationalError,
+            MetaCommandException,
         ) as e:
 
             # Normal syntax errors, missing table, etc. should come back as
@@ -254,13 +266,20 @@ class SqlMagic(Magics, Configurable):
             #
             # BUT of course sqlite returns ALL errors as OperationalError. Sigh.
 
-            is_fatal = not isinstance(e, ProgrammingError) and not (
+            is_fatal = not isinstance(e, (ProgrammingError, MetaCommandException)) and not (
                 isinstance(e, OperationalError) and "sqlite" in str(e)
             )
 
             if not is_fatal:
                 if self.short_errors:
                     print(e)
+
+                    if isinstance(e, MetaCommandException):
+                        if hasattr(e, 'invoked_with'):
+                            print(rf'(Use "\help {e.invoked_with}"" for more assistance)')
+                        else:
+                            print(r'(Use "\help" for more assistance)')
+
                 else:
                     raise
             else:
