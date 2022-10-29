@@ -65,7 +65,7 @@ class SchemasCommand(MetaCommand):
     invokers = ['\\schemas', '\\schemas+', '\\dn', '\\dn+']
     accepts_args = False
 
-    def run(self, invoked_as: str, args: list[str]):
+    def run(self, invoked_as: str, args: List[str]):
         insp = self.get_inspector()
 
         default_schema = insp.default_schema_name
@@ -95,7 +95,7 @@ class HelpCommand(MetaCommand):
     invokers = ['\\help']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: list[str]):
+    def run(self, invoked_as: str, args: List[str]):
         # If no args, will return DF describing usage of all registered subcommands.
         # If run with exactly one subcommand, find it in registry and just talk about that one.
         # If subcommand not found, then complain.
