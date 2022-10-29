@@ -14,10 +14,7 @@ from sqlalchemy.exc import (
 import noteable_magics.sql.connection
 import noteable_magics.sql.parse
 import noteable_magics.sql.run
-from noteable_magics.sql.meta_commands import (
-    MetaCommandException,
-    run_meta_command,
-)
+from noteable_magics.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:
     from traitlets import Bool, Int, Unicode

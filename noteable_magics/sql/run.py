@@ -5,11 +5,11 @@ import os.path
 import re
 from functools import reduce
 
-from jinjasql import JinjaSql
 import prettytable
 import six
 import sqlalchemy
 import sqlparse
+from jinjasql import JinjaSql
 
 from noteable_magics.sql.column_guesser import ColumnGuesserMixin
 

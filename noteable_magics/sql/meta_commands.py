@@ -1,11 +1,9 @@
 from typing import Optional
 
+from IPython.core.interactiveshell import InteractiveShell
+from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
-
-from pandas import DataFrame
-
-from IPython.core.interactiveshell import InteractiveShell
 
 from noteable_magics.sql.connection import Connection
 
@@ -19,7 +17,7 @@ class MetaCommandException(Exception):
 
 
 class MetaCommandInvocationException(MetaCommandException):
-    """Invoked a specific meta command incorrectly.
+    r"""Invoked a specific meta command incorrectly.
 
     Will trigger sql-magic print() to suggest '\help \<subcommand>'
     """
