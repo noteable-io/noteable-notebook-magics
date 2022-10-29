@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Iterable, Optional
 
 from IPython.core.interactiveshell import InteractiveShell
 from pandas import DataFrame
@@ -34,9 +34,12 @@ class MetaCommand:
     within SQL cells.
     """
 
+    # One-line description of what this one does.
+    description: str
+
     # List of strings that will invoke this subclass.
     # Primary human-readable and memorable invocation string should come first, then any shorthand
-    # aliases. See how global _registry
+    # aliases. See how global _registry is populated towards bottom of
     invokers: list[str]
 
     # Does this command accept additional arguments?
@@ -54,12 +57,11 @@ class MetaCommand:
 
 
 class SchemasCommand(MetaCommand):
-    """List all the schemas (namespaces for tables, views) within a database.
+    """List all the schemas (namespaces for tables, views) within a database."""
 
-    If invoked with trailing '+', will also include the count of tables and views
-    within each schema.
-    """
+    """\nIf invoked with trailing '+', will also include the count of tables and views within each schema."""
 
+    description = "List schemas (namespaces) within database"
     invokers = ['\\schemas', '\\schemas+', '\\dn', '\\dn+']
     accepts_args = False
 
@@ -86,9 +88,60 @@ class SchemasCommand(MetaCommand):
         return DataFrame(data=data)
 
 
+class HelpCommand(MetaCommand):
+    r"""Implement \help"""
+
+    description = "Help"
+    invokers = ['\\help']
+    accepts_args = True
+
+    def run(self, invoked_as: str, args: list[str]):
+        # If no args, will return DF describing usage of all registered subcommands.
+        # If run with exactly one subcommand, find it in registry and just talk about that one.
+        # If subcommand not found, then complain.
+        # If run with more than a single argument, then complain.
+
+        commands: Iterable[MetaCommand]
+
+        if not args:
+            # display all the help.
+            commands = sorted(
+                # Omit talking about myself.
+                (cls for cls in _all_command_classes if cls is not HelpCommand),
+                key=lambda cls: cls.description,
+            )
+        else:
+            if len(args) > 1:
+                # Too many arguments: \help \foo bar
+                raise MetaCommandException(r'Usage: \help [command]')
+            elif args[0] in _registry:
+                # Is '\foo' from "\help \foo", and we found "\foo" in registry.
+                commands = [_registry[args[0]]]
+            else:
+                raise MetaCommandException(f'Unknown command "{args[0]}"')
+
+        descriptions = []
+        invokers = []
+        docstrings = []
+
+        for cmd in commands:
+            descriptions.append(cmd.description)
+            invokers.append(', '.join(cmd.invokers))
+            docstrings.append(cmd.__doc__.strip())
+
+        return DataFrame(
+            data={
+                'Description': descriptions,
+                'Documentation': docstrings,
+                'Invoke Using One Of': invokers,
+            }
+        )
+
+
 # Populate simple registry of invocation command string -> concrete subclass.
+_all_command_classes = [SchemasCommand, HelpCommand]
 _registry = {}
-for cls in [SchemasCommand]:
+for cls in _all_command_classes:
     for invoker in cls.invokers:
         assert invoker not in _registry, f'Cannot register {invoker} for {cls}, already registered!'
         _registry[invoker] = cls

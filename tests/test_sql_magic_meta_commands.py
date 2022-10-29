@@ -1,6 +1,7 @@
 import pytest
 
 from noteable_magics.sql.connection import Connection
+from noteable_magics.sql.meta_commands import _all_command_classes
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -32,7 +33,7 @@ class TestListSchemas:
         else:
             assert results.columns.tolist() == ['Schema', 'Default']
 
-    def test_list_schemas_when_no_views(self, sql_magic, populated_sqlite_database):
+    def test_list_schemas_when_no_views(self, sql_magic):
         r"""Prove that when no views exist, \schemas+ does not talk at all about a 'View Count' column"""
 
         # Drop the view.
@@ -57,6 +58,34 @@ class TestListSchemas:
             out
             == '\\schemas does not expect arguments\n(Use "\\help \\schemas"" for more assistance)\n'
         )
+
+
+@pytest.mark.usefixtures("populated_sqlite_database")
+class TestHelp:
+    def test_general_help(self, sql_magic):
+        results = sql_magic.execute(r'@sqlite \help')
+        assert len(results) == len(_all_command_classes) - 1  # avoids talking about HelpCommand
+        assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+
+    # Both these specific commands should regurgitate the same help row.
+    @pytest.mark.parametrize('cmdname', [r'\schemas', r'\dn+'])
+    def test_single_topic_help(self, cmdname, sql_magic):
+        results = sql_magic.execute(rf'@sqlite \help {cmdname}')
+        assert len(results) == 1
+        assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert results['Description'][0] == 'List schemas (namespaces) within database'
+        assert results['Invoke Using One Of'][0] == r'\schemas, \schemas+, \dn, \dn+'
+        assert results['Documentation'][0].startswith('List all the schemas')
+
+    def test_help_hates_unknown_subcommands(self, sql_magic, capsys):
+        sql_magic.execute(r'@sqlite \help \foo')
+        out, err = capsys.readouterr()
+        assert out == 'Unknown command "\\foo"\n(Use "\\help" for more assistance)\n'
+
+    def test_help_wants_at_most_a_single_arg(self, sql_magic, capsys):
+        sql_magic.execute(r'@sqlite \help \foo \bar')
+        out, err = capsys.readouterr()
+        assert out == 'Usage: \\help [command]\n(Use "\\help" for more assistance)\n'
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
