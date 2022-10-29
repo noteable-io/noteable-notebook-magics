@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 from IPython.core.interactiveshell import InteractiveShell
 from pandas import DataFrame
@@ -40,7 +40,7 @@ class MetaCommand:
     # List of strings that will invoke this subclass.
     # Primary human-readable and memorable invocation string should come first, then any shorthand
     # aliases. See how global _registry is populated towards bottom of
-    invokers: list[str]
+    invokers: List[str]
 
     # Does this command accept additional arguments?
     accepts_args: bool
@@ -49,7 +49,7 @@ class MetaCommand:
         self.shell = shell
         self.conn = conn
 
-    def run(self, invoked_as: str, args: list[str]):
+    def run(self, invoked_as: str, args: List[str]):
         raise NotImplementedError
 
     def get_inspector(self) -> Inspector:
