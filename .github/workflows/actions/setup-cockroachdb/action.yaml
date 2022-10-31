@@ -1,0 +1,29 @@
+name: Install CockroachDB
+description: Installs a specific version of CockroachDB
+
+inputs:
+  version:
+    description: The version of CockroachDB to install
+    required: false
+    type: string
+    default: v22.1.10
+
+runs:
+  using: composite
+  steps:
+    - name: Download CockroachDB
+      shell: bash
+      run: |
+        sudo apt install libpq-dev
+        curl https://binaries.cockroachdb.com/cockroach-${{ inputs.version }}.linux-amd64.tgz | tar xvz
+        mv cockroach-${{ inputs.version }}.linux-amd64 /tmp/cockroachdb
+
+    - name: Install CockroachDB
+      shell: bash
+      run: |
+        chmod +x /tmp/cockroachdb/cockroach
+        sudo cp -i /tmp/cockroachdb/cockroach /usr/local/bin/
+
+
+# TODO: add post action to cleanup cockroach binary once gh actions support it:
+#   https://github.com/actions/runner/issues/1478

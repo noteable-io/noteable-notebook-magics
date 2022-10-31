@@ -6,31 +6,46 @@ from noteable_magics.sql.meta_commands import _all_command_classes
 
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestListSchemas:
-    @pytest.mark.parametrize('connection_handle', ['@sqlite', '@cockroach'])
+    @pytest.mark.parametrize(
+        'connection_handle,expected_results',
+        [
+            ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main', 'table_count': 3}),
+            # CDRB dialect counts "str_int_view" view as both a table and a view, sigh.
+            ('@cockroach', {'num_schemas': 3, 'primary_schema_name': 'public', 'table_count': 4}),
+        ],
+    )
     @pytest.mark.parametrize(
         'invocation,expect_extras',
         [
-            (r'\schemas', False),
-            (r'\schemas+', True),
-            (r'\dn', False),
-            (r'\dn+', True),
+            (r'schemas', False),
+            (r'schemas+', True),
+            (r'dn', False),
+            (r'dn+', True),
         ],
     )
     def test_list_schemas(
-        self, connection_handle: str, invocation: str, expect_extras: bool, sql_magic
+        self,
+        connection_handle: str,
+        invocation: str,
+        expected_results: dict,
+        expect_extras: bool,
+        sql_magic,
     ):
-        print(Connection.connections[connection_handle])
+        # prepend the slash. Having the slashes in the paramterized spelling makes pytest's printout
+        # of this variant icky and hard to invoke directly.
+        invocation = f'\\{invocation}'
         results = sql_magic.execute(f'{connection_handle} {invocation}')
 
-        # Sqlite just has one schema, 'main', and is the default.
-        assert len(results) == 1
-        assert results['Schema'][0] == 'main'
+        assert len(results) == expected_results['num_schemas']
+        assert results['Schema'][0] == expected_results['primary_schema_name']
 
         # wacky, if test with 'is', fails with 'assert True is True'
         assert results['Default'][0] == True  # noqa: E712
 
         if expect_extras:
-            assert results['Table Count'][0] == 3  # int_table, str_table, references_int_table
+            assert (
+                results['Table Count'][0] == expected_results['table_count']
+            )  # int_table, str_table, references_int_table, or and also str_int_view from crdb dialect.
             assert results['View Count'][0] == 1  # str_int_view
             assert results.columns.tolist() == ['Schema', 'Default', 'Table Count', 'View Count']
         else:

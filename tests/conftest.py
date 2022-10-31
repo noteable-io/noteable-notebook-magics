@@ -138,7 +138,7 @@ def populate_database(connection: Connection):
 
 
 @pytest.fixture
-def sqlite_database_connection(with_empty_connections) -> Tuple[str, str]:
+def sqlite_database_connection() -> Tuple[str, str]:
     """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
 
     handle = '@sqlite'
