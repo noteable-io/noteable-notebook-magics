@@ -4,8 +4,9 @@ from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.meta_commands import _all_command_classes
 
 
-@pytest.mark.usefixtures("populated_sqlite_database")
+@pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestListSchemas:
+    @pytest.mark.parametrize('connection_handle', ['@sqlite', '@cockroach'])
     @pytest.mark.parametrize(
         'invocation,expect_extras',
         [
@@ -15,9 +16,11 @@ class TestListSchemas:
             (r'\dn+', True),
         ],
     )
-    def test_list_schemas(self, invocation: str, expect_extras: bool, sql_magic):
-
-        results = sql_magic.execute(f'@sqlite {invocation}')
+    def test_list_schemas(
+        self, connection_handle: str, invocation: str, expect_extras: bool, sql_magic
+    ):
+        print(Connection.connections[connection_handle])
+        results = sql_magic.execute(f'{connection_handle} {invocation}')
 
         # Sqlite just has one schema, 'main', and is the default.
         assert len(results) == 1

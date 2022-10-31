@@ -55,6 +55,7 @@ setuptools = "^65.3.0"
 tox = "^3.23.1"
 psycopg2-binary = "^2.9.3"
 sqlalchemy-databricks = "^0.2.0"
+managed-service-fixtures = "^0.1.5"
 
 
 [build-system]
