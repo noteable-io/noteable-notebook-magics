@@ -1,8 +1,10 @@
 import json
 from contextlib import contextmanager
+from typing import Tuple
 
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
+from managed_service_fixtures import CockroachDetails
 
 from noteable_magics.logging import configure_logging
 from noteable_magics.planar_ally_client.api import PlanarAllyAPI
@@ -13,6 +15,9 @@ from noteable_magics.planar_ally_client.types import (
 )
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.magic import SqlMagic
+
+# managed_service_fixtures plugin for a live cockroachdb
+pytest_plugins = 'managed_service_fixtures'
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -77,7 +82,7 @@ def mock_dataset_stream():
 
 
 @pytest.fixture
-def with_empty_connections():
+def with_empty_connections() -> None:
     """Empty out the current set of sql magic Connections"""
     preexisting_connections = Connection.connections
 
@@ -102,20 +107,7 @@ def sql_magic(ipython_shell) -> SqlMagic:
     return magic
 
 
-@pytest.fixture
-def sqlite_database_connection(with_empty_connections):
-    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
-
-    handle = '@sqlite'
-    human_name = "My Sqlite Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
-
-    return handle, human_name
-
-
-@pytest.fixture
-def populated_sqlite_database(sqlite_database_connection):
-    connection = Connection.connections['@sqlite']
+def populate_database(connection: Connection):
     db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
     db.execute('create table int_table(a int primary key, b int not null, c int not null)')
     db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
@@ -143,3 +135,37 @@ def populated_sqlite_database(sqlite_database_connection):
                         join int_table i on (s.int_col = i.a)
                 '''
     )
+
+
+@pytest.fixture
+def sqlite_database_connection() -> Tuple[str, str]:
+    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
+
+    handle = '@sqlite'
+    human_name = "My Sqlite Connection"
+    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+
+    return handle, human_name
+
+
+@pytest.fixture
+def populated_sqlite_database(sqlite_database_connection: Tuple[str, str]) -> None:
+    handle, _ = sqlite_database_connection
+    connection = Connection.connections[handle]
+    populate_database(connection)
+
+
+# For tests talking to a live cockroachdb
+@pytest.fixture(scope='session')
+def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[str, str]:
+    handle = '@cockroach'
+    human_name = "My Cockroach Connection"
+    Connection.set(managed_cockroach.sync_dsn, displaycon=False, name=handle, human_name=human_name)
+    return handle, human_name
+
+
+@pytest.fixture(scope='session')
+def populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
+    handle, _ = cockroach_database_connection
+    connection = Connection.connections[handle]
+    populate_database(connection)

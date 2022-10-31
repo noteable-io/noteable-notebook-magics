@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import sqlalchemy
 import sqlalchemy.engine.base
@@ -30,7 +30,7 @@ def rough_dict_get(dct, sought, default=None):
 
 class Connection(object):
     current = None
-    connections = {}
+    connections: Dict[str, 'Connection'] = {}
 
     def __init__(self, connect_str=None, name=None, human_name=None, **create_engine_kwargs):
         """

@@ -40,6 +40,9 @@ jobs:
       - name: Install tox dependencies
         run: pip install tox poetry
 
+      - name: Install CockroachDB
+        uses: ./.github/actions/setup-cockroachdb
+
       # Run all of the tests
       - name: Flake8 - Style guide enforcement
         run: tox -e flake8
@@ -60,5 +63,6 @@ jobs:
       - name: Set env
         id: vars
         run: PY_VER=${{ matrix.python-version }}; echo ::set-output name=tox_py::${PY_VER//.}
+
       - name: Pytest - Unit tests
         run: tox -e py${{ steps.vars.outputs.tox_py }}

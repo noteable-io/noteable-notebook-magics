@@ -4,24 +4,40 @@ from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.meta_commands import _all_command_classes
 
 
-@pytest.mark.usefixtures("populated_sqlite_database")
+@pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestListSchemas:
+    @pytest.mark.parametrize(
+        'connection_handle,expected_results',
+        [
+            ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main'}),
+            ('@cockroach', {'num_schemas': 3, 'primary_schema_name': 'public'}),
+        ],
+    )
     @pytest.mark.parametrize(
         'invocation,expect_extras',
         [
-            (r'\schemas', False),
-            (r'\schemas+', True),
-            (r'\dn', False),
-            (r'\dn+', True),
+            (r'schemas', False),
+            (r'schemas+', True),
+            (r'dn', False),
+            (r'dn+', True),
         ],
     )
-    def test_list_schemas(self, invocation: str, expect_extras: bool, sql_magic):
+    def test_list_schemas(
+        self,
+        connection_handle: str,
+        invocation: str,
+        expected_results: dict,
+        expect_extras: bool,
+        sql_magic,
+    ):
+        r"""Test \schemas variants against both sqlite and CRDB for basic sanity purposes"""
+        # prepend the slash. Having the slashes in the paramterized spelling makes pytest's printout
+        # of this variant icky and hard to invoke directly.
+        invocation = f'\\{invocation}'
+        results = sql_magic.execute(f'{connection_handle} {invocation}')
 
-        results = sql_magic.execute(f'@sqlite {invocation}')
-
-        # Sqlite just has one schema, 'main', and is the default.
-        assert len(results) == 1
-        assert results['Schema'][0] == 'main'
+        assert len(results) == expected_results['num_schemas']
+        assert results['Schema'][0] == expected_results['primary_schema_name']
 
         # wacky, if test with 'is', fails with 'assert True is True'
         assert results['Default'][0] == True  # noqa: E712
