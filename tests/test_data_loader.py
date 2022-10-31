@@ -81,10 +81,10 @@ class TestDataLoaderMagic:
             ).scalar_one()
 
     def test_can_specify_alternate_connection_via_handle(
-        self, csv_file, data_loader, foo_database_connection
+        self, csv_file, data_loader, sqlite_database_connection
     ):
         """Test specifying non-default connection via --connection @sql_cell_handle"""
-        alternate_datasource_handle, human_name = foo_database_connection
+        alternate_datasource_handle, human_name = sqlite_database_connection
         assert alternate_datasource_handle != '@noteable'
         df = data_loader.execute(f"{csv_file} the_table --connection {alternate_datasource_handle}")
 
@@ -102,10 +102,10 @@ class TestDataLoaderMagic:
             )
 
     def test_can_specify_alternate_connection_via_human_name(
-        self, csv_file, data_loader, foo_database_connection
+        self, csv_file, data_loader, sqlite_database_connection
     ):
         """Test specifying non-default connection via --connection 'Human given datasource name'"""
-        _, human_name = foo_database_connection
+        _, human_name = sqlite_database_connection
 
         # human_name from fixture gots spaces in it, so must wrap in quotes.
         df = data_loader.execute(f"{csv_file} the_table --connection '{human_name}'")

@@ -3,9 +3,8 @@ from typing import Optional, Union
 
 import sqlalchemy
 import sqlalchemy.engine.base
-from sqlalchemy.engine import Engine
 import structlog
-
+from sqlalchemy.engine import Engine
 
 logger = structlog.get_logger(__name__)
 
