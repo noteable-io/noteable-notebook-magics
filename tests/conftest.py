@@ -161,9 +161,6 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
     handle = '@cockroach'
     human_name = "My Cockroach Connection"
     Connection.set(managed_cockroach.sync_dsn, displaycon=False, name=handle, human_name=human_name)
-    print('\n\n')
-    print(managed_cockroach.sync_dsn)
-    print('\n\n')
     return handle, human_name
 
 

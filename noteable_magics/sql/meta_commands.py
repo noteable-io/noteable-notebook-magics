@@ -79,10 +79,26 @@ class SchemasCommand(MetaCommand):
 
         if invoked_as.endswith('+'):
             # Want extra info -- namely, the table + view counts.
-            data['Table Count'] = [len(insp.get_table_names(sn)) for sn in all_schemas]
+            table_counts = []
+            view_counts = []
 
-            view_counts = [len(insp.get_view_names(sn)) for sn in all_schemas]
+            for sn in all_schemas:
+                table_names = set(insp.get_table_names(sn))
+                view_names = insp.get_view_names(sn)
+
+                # Some dialects (lookin' at you, CRDB) return view names as both view
+                # names and table names. Sigh. We'd like to only return the counts of
+                # the definite tables, though, so ...
+                if view_names:
+                    # Remove any view names from our pristeen list of table names.
+                    table_names.difference_update(view_names)
+
+                table_counts.append(len(table_names))
+                view_counts.append(len(view_names))
+
+            data['Table Count'] = table_counts
             if any(view_counts):
+                # Only optionally project a 'View Count' dataframe column if there are any views.
                 data['View Count'] = view_counts
 
         return DataFrame(data=data)

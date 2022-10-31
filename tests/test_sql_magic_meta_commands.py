@@ -9,9 +9,8 @@ class TestListSchemas:
     @pytest.mark.parametrize(
         'connection_handle,expected_results',
         [
-            ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main', 'table_count': 3}),
-            # CDRB dialect counts "str_int_view" view as both a table and a view, sigh.
-            ('@cockroach', {'num_schemas': 3, 'primary_schema_name': 'public', 'table_count': 4}),
+            ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main'}),
+            ('@cockroach', {'num_schemas': 3, 'primary_schema_name': 'public'}),
         ],
     )
     @pytest.mark.parametrize(
@@ -31,6 +30,7 @@ class TestListSchemas:
         expect_extras: bool,
         sql_magic,
     ):
+        r"""Test \schemas variants against both sqlite and CRDB for basic sanity purposes"""
         # prepend the slash. Having the slashes in the paramterized spelling makes pytest's printout
         # of this variant icky and hard to invoke directly.
         invocation = f'\\{invocation}'
@@ -43,9 +43,7 @@ class TestListSchemas:
         assert results['Default'][0] == True  # noqa: E712
 
         if expect_extras:
-            assert (
-                results['Table Count'][0] == expected_results['table_count']
-            )  # int_table, str_table, references_int_table, or and also str_int_view from crdb dialect.
+            assert results['Table Count'][0] == 3  # int_table, str_table, references_int_table
             assert results['View Count'][0] == 1  # str_int_view
             assert results.columns.tolist() == ['Schema', 'Default', 'Table Count', 'View Count']
         else:
