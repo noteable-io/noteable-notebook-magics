@@ -1,4 +1,5 @@
-from typing import Iterable, List, Optional
+import re
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
 from pandas import DataFrame
@@ -72,8 +73,11 @@ class SchemasCommand(MetaCommand):
         all_schemas = sorted(insp.get_schema_names())
 
         # Want to have default schema always come first regardless of alpha order
-        all_schemas.remove(default_schema)
-        all_schemas.insert(0, default_schema)
+        # (alas, some dialects like Trino, BigQuery do not know of a distinguished 'default' schema, so be cautious)
+        # (default_schema / insp.default_schema_name will be None)
+        if default_schema in all_schemas:
+            all_schemas.remove(default_schema)
+            all_schemas.insert(0, default_schema)
 
         data = {'Schema': all_schemas, 'Default': [sn == default_schema for sn in all_schemas]}
 
@@ -102,6 +106,183 @@ class SchemasCommand(MetaCommand):
                 data['View Count'] = view_counts
 
         return DataFrame(data=data)
+
+
+class RelationsCommand(MetaCommand):
+    """List all the relations (tables and views) within one or more schemas (namespaces) of a database."""
+
+    description = "List names of tables and views within database"
+    invokers = [r'\list', r'\dr']
+    accepts_args = True
+
+    def run(self, invoked_as: str, args: List[str]):
+        if len(args) > 1:
+            raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[table pattern]]')
+
+        if not args:
+            # All relations in the default schema.
+            args = ['*']
+
+        return relation_names(self.get_inspector(), args[0])
+
+
+class TablesCommand(MetaCommand):
+    """List all the tables (not views) within one or more schemas (namespaces) of a database."""
+
+    description = "List names of tables within database"
+    invokers = [r'\tables', r'\dt']
+    accepts_args = True
+
+    def run(self, invoked_as: str, args: List[str]):
+        if len(args) > 1:
+            raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[table pattern]]')
+
+        if not args:
+            # All tables in the default schema.
+            args = ['*']
+
+        return relation_names(self.get_inspector(), args[0], include_views=False)
+
+
+class ViewsCommand(MetaCommand):
+    """List all the views (not tables) within one or more schemas (namespaces) of a database."""
+
+    description = "List names of views within database"
+    invokers = [r'\views', r'\dv']
+    accepts_args = True
+
+    def run(self, invoked_as: str, args: List[str]):
+        if len(args) > 1:
+            raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[view pattern]]')
+
+        if not args:
+            # All views in the default schema.
+            args = ['*']
+
+        return relation_names(self.get_inspector(), args[0], include_tables=False)
+
+
+def relation_names(
+    inspector: Inspector,
+    argument: str,
+    include_tables=True,
+    include_views=True,
+) -> DataFrame:
+    """Determine relation names (or perhaps only specifically either views or tables) in one or more
+    schemas.
+
+    `argument` is expected to be either:
+        A) a dot-separated schema (glob) and relation name glob, at which schemas matching the
+            glob will be considered, and then relations matching the glob are matched and returned.
+            To match against all schemas, use '*' on the left hand of the dot.
+        B) not containing a dot, which then implies 'only match relations from the default schema'
+
+     Examples:
+        'foo' -> Find all relations in default schema starting with 'foo'.
+        'monkeypox.foo' -> Find all relations in 'monkeypox' schema starting with foo.
+        'monkeypox.foo*' -> Find all relations in 'monkeypox' schema starting with foo.
+        '*mon*.foo' -> Find all relations starting with 'foo' in schemas that have 'mon' as a subset of schema name.
+        '*foo' -> Find all relations in default schema whose name ends with 'foo.'
+        'foo??' -> Find all relations in default schema whose names start with 'foo' and only has two following letters in name.
+    """
+    schema_name_glob, relation_name_glob = parse_schema_and_relation_glob(inspector, argument)
+
+    schema_name_filter = convert_relation_glob_to_regex(schema_name_glob)
+    relation_name_filter = convert_relation_glob_to_regex(relation_name_glob, imply_prefix=True)
+
+    schemas = sorted(s for s in inspector.get_schema_names() if schema_name_filter.match(s))
+
+    # Collect tables and / or views in each requested schema.
+    schema_to_relations: Dict[str, str] = {}
+    for s in schemas:
+        # Some dialects return views as tables (and then also as views), so distict-ify via a set.
+        relations = set()
+        if include_tables:
+            relations.update(inspector.get_table_names(s))
+
+        view_names = inspector.get_view_names(s)
+        if include_views:
+            relations.update(view_names)
+        else:
+            # Because some dialects may have already included view names in get_table_names(), need
+            # to explicitly remove the definite view names. Thanks, guys.
+            relations.difference_update(view_names)
+
+        # Convert passing-through-relation_name_filter names into a nice comma list
+        relations = ', '.join(sorted(r for r in relations if relation_name_filter.match(r)))
+
+        if relations:
+            schema_to_relations[s] = relations
+
+    return DataFrame(
+        data={
+            'Schema': list(schema_to_relations.keys()),
+            'Relations': [schema_to_relations[k] for k in schema_to_relations],
+        }
+    )
+
+
+def parse_schema_and_relation_glob(
+    inspector: Inspector, schema_and_possible_relation: str
+) -> Tuple[str, str]:
+    """Return tuple of schema name glob, table glob given a single string
+    like '*', 'public.*', 'foo???', ...
+
+    Input string will either be of general form <schema glob>.<relation glob>, which we separate apart,
+    or if without a period, will imply 'use the default schema only'.
+
+    Expects to be driven with at least a single character string.
+    """
+
+    if schema_and_possible_relation == '.':
+        # Degenerate value. Treat like they meant wildcard
+        schema_and_possible_relation = '*'
+
+    if '.' in schema_and_possible_relation and schema_and_possible_relation:
+        # Only break on the leftmost dot. User might have typed more than one.
+        dot_loc = schema_and_possible_relation.index('.')
+        schema = schema_and_possible_relation[:dot_loc]
+        table_pat = schema_and_possible_relation[dot_loc + 1 :]  # skip the dot.
+    else:
+        # Schema is implied to be default
+        schema = inspector.default_schema_name
+        if not schema:
+            # Some dialects don't declare the default schema name. Sigh. Go with 1st one returned?
+            schema = inspector.get_schema_names()[0]
+        table_pat = schema_and_possible_relation
+
+    return (schema, table_pat)
+
+
+# Only expect simple chars in schema/table names.
+ALLOWED_CHARS_RE = re.compile(r'[a-zA-Z0-9_ ]')
+
+
+def convert_relation_glob_to_regex(glob: str, imply_prefix=False) -> re.Pattern:
+    """Convert a simple glob like 'foo*' or 'foo_??' from glob spelling to a regex, pessimistically.
+    Only allow letters, numbers, underscore, and spaces to pass through from end-user string.
+
+    If no glob chars are found (*, ?), then we interpret this as a prefix match
+    """
+    buf = []
+    found_glob_char = False
+    for c in glob:
+        if ALLOWED_CHARS_RE.match(c):
+            buf.append(c)
+        elif c == '*':
+            # Glob spelling '*' -> regex spelling '.*'
+            buf.append('.*')
+            found_glob_char = True
+        elif c == '?':
+            # Glob spelling '?' -> regex spelling '.'
+            buf.append('.')
+            found_glob_char = True
+
+    if not found_glob_char and imply_prefix:
+        # Implied prefix matching only.
+        buf.append('.*')
+
+    return re.compile(''.join(buf))
 
 
 class HelpCommand(MetaCommand):
@@ -155,7 +336,7 @@ class HelpCommand(MetaCommand):
 
 
 # Populate simple registry of invocation command string -> concrete subclass.
-_all_command_classes = [SchemasCommand, HelpCommand]
+_all_command_classes = [SchemasCommand, HelpCommand, RelationsCommand, TablesCommand, ViewsCommand]
 _registry = {}
 for cls in _all_command_classes:
     for invoker in cls.invokers:
