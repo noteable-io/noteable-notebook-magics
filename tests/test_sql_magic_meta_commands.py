@@ -160,13 +160,13 @@ class TestTablesCommand:
         assert len(results) == 3
         assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
         # No str_int_view!
-        assert results['Relations'][2] == 'int_table, references_int_table, str_table'
+        assert results['Tables'][2] == 'int_table, references_int_table, str_table'
 
         # Show all relations in single glob'd schema (matches 'public' only)
         results = sql_magic.execute(r'@cockroach \tables p*.*')
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
-        assert results['Relations'][0] == 'int_table, references_int_table, str_table'
+        assert results['Tables'][0] == 'int_table, references_int_table, str_table'
 
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
@@ -174,7 +174,7 @@ class TestTablesCommand:
             results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
-            assert results['Relations'][0] == 'int_table, references_int_table, str_table'
+            assert results['Tables'][0] == 'int_table, references_int_table, str_table'
 
 
 @pytest.mark.usefixtures("populated_cockroach_database")
@@ -188,13 +188,13 @@ class TestViewsCommand:
         assert len(results) == 2
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
         assert results['Schema'].tolist() == ['crdb_internal', 'public']
-        assert results['Relations'][1] == 'str_int_view'
+        assert results['Views'][1] == 'str_int_view'
 
         # Show all views in single glob'd schema (matches 'public' only)
         results = sql_magic.execute(r'@cockroach \views p*.*')
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
-        assert results['Relations'][0] == 'str_int_view'
+        assert results['Views'][0] == 'str_int_view'
 
         # Show all views in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
@@ -202,7 +202,7 @@ class TestViewsCommand:
             results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
-            assert results['Relations'][0] == 'str_int_view'
+            assert results['Views'][0] == 'str_int_view'
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")

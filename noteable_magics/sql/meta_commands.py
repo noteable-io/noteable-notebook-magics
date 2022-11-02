@@ -214,10 +214,17 @@ def relation_names(
         if relations:
             schema_to_relations[s] = relations
 
+    if include_tables and include_views:
+        colname = 'Relations'
+    elif include_tables:
+        colname = 'Tables'
+    else:
+        colname = 'Views'
+
     return DataFrame(
         data={
             'Schema': list(schema_to_relations.keys()),
-            'Relations': [schema_to_relations[k] for k in schema_to_relations],
+            colname: [schema_to_relations[k] for k in schema_to_relations],
         }
     )
 
