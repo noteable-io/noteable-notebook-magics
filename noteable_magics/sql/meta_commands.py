@@ -194,13 +194,13 @@ def relation_names(
 
     # Collect tables and / or views in each requested schema.
     schema_to_relations: Dict[str, str] = {}
-    for s in schemas:
+    for schema in schemas:
         # Some dialects return views as tables (and then also as views), so distict-ify via a set.
         relations = set()
         if include_tables:
-            relations.update(inspector.get_table_names(s))
+            relations.update(inspector.get_table_names(schema))
 
-        view_names = inspector.get_view_names(s)
+        view_names = inspector.get_view_names(schema)
         if include_views:
             relations.update(view_names)
         else:
@@ -209,10 +209,12 @@ def relation_names(
             relations.difference_update(view_names)
 
         # Convert passing-through-relation_name_filter names into a nice comma list
-        relations = ', '.join(sorted(r for r in relations if relation_name_filter.match(r)))
+        relations_comma_str = ', '.join(
+            sorted(r for r in relations if relation_name_filter.match(r))
+        )
 
-        if relations:
-            schema_to_relations[s] = relations
+        if relations_comma_str:
+            schema_to_relations[schema] = relations_comma_str
 
     if include_tables and include_views:
         colname = 'Relations'
@@ -273,14 +275,14 @@ def convert_relation_glob_to_regex(glob: str, imply_prefix=False) -> re.Pattern:
     """
     buf = []
     found_glob_char = False
-    for c in glob:
-        if ALLOWED_CHARS_RE.match(c):
-            buf.append(c)
-        elif c == '*':
+    for char in glob:
+        if ALLOWED_CHARS_RE.match(char):
+            buf.append(char)
+        elif char == '*':
             # Glob spelling '*' -> regex spelling '.*'
             buf.append('.*')
             found_glob_char = True
-        elif c == '?':
+        elif char == '?':
             # Glob spelling '?' -> regex spelling '.'
             buf.append('.')
             found_glob_char = True
