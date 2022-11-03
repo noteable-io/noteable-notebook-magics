@@ -13,11 +13,6 @@ from jinjasql import JinjaSql
 
 from noteable_magics.sql.column_guesser import ColumnGuesserMixin
 
-try:
-    from pgspecial.main import PGSpecial
-except ImportError:
-    PGSpecial = None
-
 
 def unduplicate_field_names(field_names):
     """Append a number to duplicate field names to make them unique."""
@@ -372,20 +367,11 @@ def run(conn, sql, config, user_namespace):
             first_word = sql.strip().split()[0].lower()
             if first_word == "begin":
                 raise Exception("ipython_sql does not support transactions")
-            if first_word.startswith("\\") and (
-                "postgres" in str(conn.dialect) or "redshift" in str(conn.dialect)
-            ):
-                if not PGSpecial:
-                    raise ImportError("pgspecial not installed")
-                pgspecial = PGSpecial()
-                _, cur, headers, _ = pgspecial.execute(conn.session.connection.cursor(), statement)[
-                    0
-                ]
-                result = FakeResultProxy(cur, headers)
-            else:
-                query, bind_params = jinja_sql.prepare_query(statement, user_namespace)
-                txt = sqlalchemy.sql.text(query)
-                result = conn.session.execute(txt, bind_params)
+
+            query, bind_params = jinja_sql.prepare_query(statement, user_namespace)
+            txt = sqlalchemy.sql.text(query)
+            result = conn.session.execute(txt, bind_params)
+
             _commit(conn=conn, config=config)
             if result and config.feedback:
                 print(interpret_rowcount(result.rowcount))

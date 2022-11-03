@@ -1,7 +1,15 @@
+import re
+from typing import Optional, Tuple
+
 import pytest
+from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.meta_commands import _all_command_classes
+from noteable_magics.sql.meta_commands import (
+    _all_command_classes,
+    convert_relation_glob_to_regex,
+    parse_schema_and_relation_glob,
+)
 
 
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
@@ -16,10 +24,10 @@ class TestListSchemas:
     @pytest.mark.parametrize(
         'invocation,expect_extras',
         [
-            (r'schemas', False),
-            (r'schemas+', True),
-            (r'dn', False),
-            (r'dn+', True),
+            ('schemas', False),
+            ('schemas+', True),
+            ('dn', False),
+            ('dn+', True),
         ],
     )
     def test_list_schemas(
@@ -76,6 +84,127 @@ class TestListSchemas:
         )
 
 
+@pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
+class TestRelationsCommand:
+    @pytest.mark.parametrize(
+        'connection_handle',
+        [
+            '@sqlite',
+            '@cockroach',
+        ],
+    )
+    @pytest.mark.parametrize(
+        'invocation',
+        ['list', 'dr'],
+    )
+    @pytest.mark.parametrize(
+        'argument,exp_table_string',
+        [
+            ('', 'int_table, references_int_table, str_int_view, str_table'),
+            ('int*', 'int_table'),
+            ('int_tab??', 'int_table'),
+            ('*.int*', 'int_table'),
+            ('*int*', 'int_table, references_int_table, str_int_view'),
+        ],
+    )
+    def test_list_relations(
+        self,
+        connection_handle: str,
+        argument: str,
+        exp_table_string: str,
+        invocation: str,
+        sql_magic,
+    ):
+
+        invocation = f'\\{invocation}'
+        results = sql_magic.execute(f'{connection_handle} {invocation} {argument}')
+        assert len(results) == 1
+        assert results['Relations'][0] == exp_table_string
+
+    def test_list_relations_multiple_schemas(
+        self,
+        sql_magic,
+    ):
+        # Show all relations in all schemas.
+        results = sql_magic.execute(r'@cockroach \list *.*')
+        assert len(results) == 3
+        assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
+        assert results['Relations'][2] == 'int_table, references_int_table, str_int_view, str_table'
+
+        # Show all relations in single glob'd schema (matches 'public' only)
+        results = sql_magic.execute(r'@cockroach \list p*.*')
+        assert len(results) == 1
+        assert results['Schema'][0] == 'public'
+        assert results['Relations'][0] == 'int_table, references_int_table, str_int_view, str_table'
+
+        # Show all tables in default schema, which in crdb, happens to be named 'public'
+        # (either single asterisk arg, or no arg at all)
+        for invocation_and_maybe_arg in [r'\list *', r'\list']:
+            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            assert len(results) == 1
+            assert results['Schema'][0] == 'public'
+            assert (
+                results['Relations'][0]
+                == 'int_table, references_int_table, str_int_view, str_table'
+            )
+
+
+@pytest.mark.usefixtures("populated_cockroach_database")
+class TestTablesCommand:
+    def test_list_tables(
+        self,
+        sql_magic,
+    ):
+        # Show only tables (no views) in all schemas.
+        results = sql_magic.execute(r'@cockroach \tables *.*')
+        assert len(results) == 3
+        assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
+        # No str_int_view!
+        assert results['Tables'][2] == 'int_table, references_int_table, str_table'
+
+        # Show all relations in single glob'd schema (matches 'public' only)
+        results = sql_magic.execute(r'@cockroach \tables p*.*')
+        assert len(results) == 1
+        assert results['Schema'][0] == 'public'
+        assert results['Tables'][0] == 'int_table, references_int_table, str_table'
+
+        # Show all tables in default schema, which in crdb, happens to be named 'public'
+        # (either single asterisk arg, or no arg at all)
+        for invocation_and_maybe_arg in [r'\tables *', r'\tables', r'\dt']:
+            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            assert len(results) == 1
+            assert results['Schema'][0] == 'public'
+            assert results['Tables'][0] == 'int_table, references_int_table, str_table'
+
+
+@pytest.mark.usefixtures("populated_cockroach_database")
+class TestViewsCommand:
+    def test_list_tables(
+        self,
+        sql_magic,
+    ):
+        # Show only tables (no views) in all schemas.
+        results = sql_magic.execute(r'@cockroach \views *.*')
+        assert len(results) == 2
+        # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
+        assert results['Schema'].tolist() == ['crdb_internal', 'public']
+        assert results['Views'][1] == 'str_int_view'
+
+        # Show all views in single glob'd schema (matches 'public' only)
+        results = sql_magic.execute(r'@cockroach \views p*.*')
+        assert len(results) == 1
+        assert results['Schema'][0] == 'public'
+        assert results['Views'][0] == 'str_int_view'
+
+        # Show all views in default schema, which in crdb, happens to be named 'public'
+        # (either single asterisk arg, or no arg at all)
+        for invocation_and_maybe_arg in [r'\views *', r'\views', r'\dv']:
+            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            assert len(results) == 1
+            assert results['Schema'][0] == 'public'
+            assert results['Views'][0] == 'str_int_view'
+
+
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestHelp:
     def test_general_help(self, sql_magic):
@@ -110,3 +239,64 @@ class TestMisc:
         sql_magic.execute(r'@sqlite \unknown_subcommand')
         out, err = capsys.readouterr()
         assert out == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
+
+
+class TestParseSchemaAndRelationGlob:
+    @pytest.mark.parametrize(
+        'inp,expected_result',
+        [
+            ('*.*', ('*', '*')),  # all schemas, all tables.
+            # no schema designator implies default schema. All tables starting with 'foo'
+            (
+                'foo*',
+                ('default', 'foo*'),
+            ),
+            (
+                'main.foo*',
+                ('main', 'foo*'),
+            ),  # Specific schema (main), all tables starting with foo.
+            ('*schema*.*', ('*schema*', '*')),  # Schemas matching glob *schema*, any tables within.
+        ],
+    )
+    def test_when_default_schema_is_available(
+        self, inp: str, expected_result: Tuple[Optional[str], Optional[str]], mocker
+    ):
+        mock_inspector = mocker.Mock(Inspector)
+        mock_inspector.default_schema_name = 'default'
+        assert parse_schema_and_relation_glob(mock_inspector, inp) == expected_result
+
+    def test_when_default_schema_is_not_available(self, mocker):
+        """Test when the dialect's inspector doesn't distinguish any schema as the default, as BigQuery and Trino do"""
+        mock_inspector = mocker.Mock(Inspector)
+        mock_inspector.default_schema_name = None
+        mock_inspector.get_schema_names.side_effect = lambda: ['first', 'random_schema']
+
+        assert parse_schema_and_relation_glob(mock_inspector, 'foo') == ('first', 'foo')
+        assert parse_schema_and_relation_glob(mock_inspector, '*') == ('first', '*')
+        assert parse_schema_and_relation_glob(mock_inspector, '.') == ('first', '*')
+        assert parse_schema_and_relation_glob(mock_inspector, 'schema.foo*') == ('schema', 'foo*')
+
+
+@pytest.mark.parametrize(
+    'inp,imply_prefix,expected_result',
+    [
+        # No glob chars at all imply prefix search if asked with imply_prefix
+        ('foo', True, re.compile('foo.*')),
+        ('foo', False, re.compile('foo')),
+        # Explicit prefix search.
+        ('foo*', False, re.compile('foo.*')),
+        # glob wildcard -> regex wildcard.
+        ('*', False, re.compile('.*')),
+        # Skip trash
+        ('f$%^&', True, re.compile('f.*')),
+        # Spaces preserved, FWIW.
+        ('foo_bar *', False, re.compile('foo_bar .*')),
+        # Question marks work too.
+        ('f??', True, re.compile('f..')),
+    ],
+)
+def test_convert_relation_glob_to_regex(
+    inp: str, imply_prefix, expected_result: Tuple[Optional[str], Optional[str]], mocker
+):
+
+    assert convert_relation_glob_to_regex(inp, imply_prefix=imply_prefix) == expected_result
