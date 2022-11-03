@@ -58,10 +58,34 @@ def postprocess_postgresql(
     # extra behavior into the driver as side-effect so that interrupting the
     # kernel does what we expect.
 
-    import psycopg2.extensions
-    import psycopg2.extras
+    _install_psycopg2_interrupt_fix()
 
-    psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+@register_postprocessor('cockroachdb')
+def postprocess_cockroachdb(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Install fix for ENG-4327 for Cockroachdb.
+
+    CRDB uses psycopg2 as driver, so it needs the fix also.
+    """
+
+    _install_psycopg2_interrupt_fix()
+
+
+_installed_psycopg2_interrupt_fix = False
+
+
+def _install_psycopg2_interrupt_fix():
+    global _installed_psycopg2_interrupt_fix
+
+    if not _installed_psycopg2_interrupt_fix:
+        import psycopg2.extensions
+        import psycopg2.extras
+
+        psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+        _installed_psycopg2_interrupt_fix = True
 
 
 @register_postprocessor('bigquery')

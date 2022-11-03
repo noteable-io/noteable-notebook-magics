@@ -3,48 +3,6 @@
 
 import pandas as pd
 import pytest
-from IPython.core.interactiveshell import InteractiveShell
-
-from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.magic import SqlMagic
-
-
-@pytest.fixture
-def ipython_shell() -> InteractiveShell:
-    return InteractiveShell()
-
-
-@pytest.fixture
-def sql_magic(ipython_shell) -> SqlMagic:
-    magic = SqlMagic(ipython_shell)
-    # As would be done when we normally bootstrap things ...
-    magic.autopandas = True
-
-    return magic
-
-
-@pytest.fixture
-def sqlite_database_connection(with_empty_connections):
-    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
-
-    handle = '@sqlite'
-    human_name = "My Sqlite Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
-
-    yield handle, human_name
-
-
-@pytest.fixture
-def populated_sqlite_database(sqlite_database_connection):
-    connection = Connection.connections['@sqlite']
-    db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
-    db.execute('create table int_table(a int, b int, c int)')
-    db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
-
-    db.execute('create table str_table(str_id text, int_col int)')
-    db.execute(
-        "insert into str_table(str_id, int_col) values ('a', 1), ('b', 2), ('c', 3), ('d', null)"
-    )
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -90,6 +48,7 @@ class TestSqlMagic:
     def test_unknown_datasource_handle_produces_expected_exception(self, sql_magic, capsys):
         from noteable_magics.sql.connection import Connection, UnknownConnectionError
 
+        initial_connection_count = len(Connection.connections)
         # sql magic invocation of an unknown connection will end up calling .set() with
         # that unknown connection's handle. Should raise. (This is unit-test-y)
         # Verbiage from ENG-4264.
@@ -107,8 +66,8 @@ class TestSqlMagic:
         captured = capsys.readouterr()
         assert captured.out == f"{expected_message}\n"
 
-        # Finally, the total number of known connections should have remained 1 (@sqlite).
-        assert len(Connection.connections) == 1
+        # Finally, the total number of known connections should have remained the same.
+        assert len(Connection.connections) == initial_connection_count
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
