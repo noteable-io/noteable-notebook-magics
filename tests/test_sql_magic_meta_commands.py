@@ -205,6 +205,75 @@ class TestViewsCommand:
             assert results['Views'][0] == 'str_int_view'
 
 
+@pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
+class TestSingleRelationCommand:
+    @pytest.mark.parametrize(
+        'handle,defaults_include_int8', [('@cockroach', True), ('@sqlite', False)]
+    )
+    def test_table_without_schema(self, sql_magic, handle: str, defaults_include_int8: bool):
+        results = sql_magic.execute(fr'{handle} \describe int_table')
+        assert len(results) == 3
+        assert results.columns.tolist() == ['Column', 'Type', 'Nullable', 'Default']
+        assert results['Column'].tolist() == ['a', 'b', 'c']
+        assert results['Type'].tolist() == ['integer'] * 3
+        assert results['Nullable'].tolist() == [False] * 3
+
+        if defaults_include_int8:
+            # CRDB default values include type designation hint.
+            expected_defaults = [None, '12:::INT8', '42:::INT8']
+        else:
+            expected_defaults = [None, '12', '42']
+
+        assert results['Default'].tolist() == expected_defaults
+
+    @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
+    def test_varying_invocation(self, sql_magic, invocation: str):
+        results = sql_magic.execute(rf'@cockroach {invocation} public.int_table')
+        assert len(results) == 3
+        assert results['Column'].tolist() == ['a', 'b', 'c']
+        assert results['Type'].tolist() == ['integer'] * 3
+        assert results['Nullable'].tolist() == [False] * 3
+
+    @pytest.mark.parametrize('handle,text_type', [('@cockroach', 'varchar'), ('@sqlite', 'text')])
+    def test_against_view(self, sql_magic, handle: str, text_type: str):
+        results = sql_magic.execute(fr'{handle} \describe str_int_view')
+        assert len(results) == 4
+        assert results['Column'].tolist() == ['str_id', 'int_col', 'b', 'c']
+        assert results['Type'].tolist() == [text_type, 'integer', 'integer', 'integer']
+        # Alas, view columns always smell nullable, even if in reality they are not.
+        assert results['Nullable'].tolist() == [True] * 4
+        # Alas, sqlite doesn't support comments in a schema,
+        # CRDB does, but the dialect doesn't currently dig them out of the system catalog
+        # so we don't get them returned. We try, though!
+        assert results.columns.tolist() == ['Column', 'Type', 'Nullable']
+
+    def test_no_args_gets_table_list(self, sql_magic):
+        results = sql_magic.execute(r'@sqlite \d')
+        # Should have given us schema + table list instead of single-table details.
+        assert len(results) == 1
+        assert results.columns.tolist() == ['Schema', 'Relations']
+
+    def test_hate_more_than_one_arg(self, sql_magic, capsys):
+        sql_magic.execute(r'@sqlite \d foo bar')
+        out, err = capsys.readouterr()
+        assert out.startswith(r'Usage: \d [[schema].[relation_name]]')
+
+    def test_nonexistent_table(self, sql_magic, capsys):
+        sql_magic.execute(r'@cockroach \d foobar')
+        out, err = capsys.readouterr()
+        assert out.startswith(r'Relation foobar does not exist')
+
+    def test_nonexistent_schema_qualified_table(self, sql_magic, capsys):
+        sql_magic.execute(r'@cockroach \d public.foobar')
+        out, err = capsys.readouterr()
+        assert out.startswith(r'Relation public.foobar does not exist')
+
+    def test_nonexistent_schema(self, sql_magic, capsys):
+        sql_magic.execute(r'@cockroach \d sdfsdfsdf.foobar')
+        out, err = capsys.readouterr()
+        assert out.startswith(r'Relation sdfsdfsdf.foobar does not exist')
+
+
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestHelp:
     def test_general_help(self, sql_magic):

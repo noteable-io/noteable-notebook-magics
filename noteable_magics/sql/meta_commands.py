@@ -294,6 +294,102 @@ def convert_relation_glob_to_regex(glob: str, imply_prefix=False) -> re.Pattern:
     return re.compile(''.join(buf))
 
 
+class SingleRelationCommand(MetaCommand):
+    """Show the structure of a single relation."""
+
+    description = "Show the structure of a single relation."
+    invokers = [r'\describe', r'\d']
+    accepts_args = True
+
+    def run(self, invoked_as: str, args: List[str]):
+        if len(args) > 1:
+            raise MetaCommandException(f'Usage: {invoked_as} [[schema].[relation_name]]')
+
+        if len(args) == 0:
+            # Kick over to showing all relations in the default schema, like PG does.
+            alt_cmd = RelationsCommand(self.shell, self.conn)
+            return alt_cmd.run('\\list', ['*'])
+
+        schema, relation_name = self._split_schema_table(args[0])
+
+        inspector = self.get_inspector()
+
+        is_view = relation_name in inspector.get_view_names(schema)
+
+        if not is_view:
+            # Ensure is a table
+            if relation_name not in inspector.get_table_names(schema):
+                if schema:
+                    msg = f'Relation {schema}.{relation_name} does not exist'
+                else:
+                    msg = f'Relation {relation_name} does not exist'
+                raise MetaCommandException(msg)
+
+        column_dicts = inspector.get_columns(relation_name, schema=schema)
+
+        # 'Pivot' the dicts from get_columns()
+        names = []
+        types = []
+        nullables = []
+        defaults = []
+        comments = []
+
+        for col in column_dicts:
+            names.append(col['name'])
+            # Convert the possibly db-centric TypeEngine instance to a sqla-generic type string
+            types.append(str(col['type'].as_generic()).lower())
+            nullables.append(col['nullable'])
+            defaults.append(col['default'])
+            if 'comment' in col:
+                # Dialect may not return this attribute at all. If supported by dialect,
+                # but not present on this column, should be the empty string.
+                comments.append(col['comment'])
+
+        # Assemble dataframe out of data, conditionally skipping columns if inappropriate
+        # or zero-value.
+
+        data = {'Column': names, 'Type': types, 'Nullable': nullables}
+
+        # Only include either of these if not all None / null.
+        if any(defaults):
+            data['Default'] = defaults
+
+        if any(comments):
+            data['Comment'] = comments
+
+        return DataFrame(data=data)
+        """
+        # Soon to become ...
+        df.attrs.update(
+            {
+                'noteable': {
+                    'defaults': {
+                        'title': 'Schema for table foo.bar',
+                        'subtitle': 'table-wide comment goes here',
+                        'show_index': False,
+                        'table_style': 'simple',
+                    }
+                }
+            }
+        )
+
+        display(df)
+        """
+
+    @staticmethod
+    def _split_schema_table(schema_table: str) -> Tuple[Optional[str], str]:
+        """Split 'foo.bar' into (foo, bar). Split 'foobar' into (None, foobar)"""
+        if '.' in schema_table:
+            dotpos = schema_table.index('.')
+            schema = schema_table[:dotpos]
+            table = schema_table[dotpos + 1 :]
+        else:
+            schema = None
+            table = schema_table
+
+        return (schema, table)
+
+
 class HelpCommand(MetaCommand):
     r"""Implement \help"""
 
@@ -345,7 +441,14 @@ class HelpCommand(MetaCommand):
 
 
 # Populate simple registry of invocation command string -> concrete subclass.
-_all_command_classes = [SchemasCommand, HelpCommand, RelationsCommand, TablesCommand, ViewsCommand]
+_all_command_classes = [
+    SchemasCommand,
+    RelationsCommand,
+    TablesCommand,
+    ViewsCommand,
+    SingleRelationCommand,
+    HelpCommand,
+]
 _registry = {}
 for cls in _all_command_classes:
     for invoker in cls.invokers:
