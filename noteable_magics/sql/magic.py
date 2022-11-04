@@ -215,14 +215,15 @@ class SqlMagic(Magics, Configurable):
             return
 
         try:
+            # TODO: Strip any SQL comments out early / here.
             if parsed["sql"].startswith('\\'):
                 # Is a meta command, say, to introspect schema or table such as "\describe foo"
                 # May emit things directly as well as probably return a primary dataframe.
-                result = run_meta_command(self.shell, conn, parsed["sql"])
+                run_meta_command(self.shell, conn, parsed["sql"], parsed.get("result_var"))
+                return
 
-            else:
-                # Vanilla SQL statement.
-                result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
+            # Otherwise is a vanilla SQL statement.
+            result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
 
             if result is not None and not isinstance(result, str) and self.column_local_vars:
                 # Instead of returning values, set variables directly in the

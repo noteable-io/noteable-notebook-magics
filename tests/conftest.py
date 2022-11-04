@@ -108,6 +108,18 @@ def sql_magic(ipython_shell) -> SqlMagic:
     return magic
 
 
+@pytest.fixture
+def ipython_namespace(ipython_shell):
+    return ipython_shell.user_ns
+
+
+@pytest.fixture
+def mock_display(mocker):
+    mock = mocker.Mock()
+    mocker.patch("noteable_magics.sql.meta_commands.display", mock)
+    return mock
+
+
 def populate_database(connection: Connection, include_comments=False):
 
     # Must actually do the table building transactionally, especially adding comments, else
