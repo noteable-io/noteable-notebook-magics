@@ -49,7 +49,17 @@ def parse(cell, config):
     if len(pieces) > 1 and pieces[1] == "<<":
         result["result_var"] = pieces.pop(0)
         pieces.pop(0)  # discard << operator
-    result["sql"] = (" ".join(pieces)).strip()
+
+    joined_pieces = (" ".join(pieces)).strip()
+
+    # If cell was multilined, there will be embedded newlines.
+    # Need to strip away any any SQL comments else a cell like "-- the following shows all schemas\n\schemas"
+    # will not be treated like a bare "\schemas" would.
+
+    result["sql"] = '\n'.join(
+        without_sql_comment(line) for line in joined_pieces.split('\n')
+    ).strip()
+
     return result
 
 
@@ -66,20 +76,14 @@ def _option_strings_from_parser(parser):
     return list(itertools.chain.from_iterable(opts))
 
 
-def without_sql_comment(parser, line):
+def without_sql_comment(line):
     """Strips -- comment from a line
 
-    The argparser unfortunately expects -- to precede an option,
-    but in SQL that delineates a comment.  So this removes comments
-    so a line can safely be fed to the argparser.
-
-    :param line: A line of SQL, possibly mixed with option strings
+    :param line: A line of SQL.
     :type line: str
     """
-
-    args = _option_strings_from_parser(parser)
     result = itertools.takewhile(
-        lambda word: (not word.startswith("--")) or (word in args),
+        lambda word: not word.startswith("--"),
         shlex.split(line, posix=False),
     )
     return " ".join(result)

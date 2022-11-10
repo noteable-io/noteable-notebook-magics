@@ -169,7 +169,7 @@ def sqlite_database_connection() -> Tuple[str, str]:
 
     handle = '@sqlite'
     human_name = "My Sqlite Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+    Connection.set("sqlite:///:memory:", name=handle, human_name=human_name)
 
     return handle, human_name
 
@@ -193,7 +193,7 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
 
     handle = '@cockroach'
     human_name = "My Cockroach Connection"
-    Connection.set(managed_cockroach.sync_dsn, displaycon=False, name=handle, human_name=human_name)
+    Connection.set(managed_cockroach.sync_dsn, name=handle, human_name=human_name)
     return handle, human_name
 
 

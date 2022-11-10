@@ -1,6 +1,7 @@
 import re
 from typing import Optional, Tuple
 
+import pandas as pd
 import pytest
 from sqlalchemy.engine.reflection import Inspector
 
@@ -362,6 +363,19 @@ class TestMisc:
         sql_magic.execute(r'@sqlite \unknown_subcommand')
         out, err = capsys.readouterr()
         assert out == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
+
+    def test_handles_sql_comment_at_front(self, sql_magic, capsys, ipython_namespace):
+        """Test that even if the cell starts with a comment line, can still invoke a meta-command properly"""
+        sql_magic.execute('@sqlite help_df << -- this is a sql comment as first line\n\\help')
+        help_df = ipython_namespace.get('help_df')
+
+        out, err = capsys.readouterr()
+
+        assert type(help_df) is pd.DataFrame
+        assert help_df.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert (
+            'List names of tables and views within database' in out
+        )  # ... amoungst other things that \\help outputs!
 
 
 class TestParseSchemaAndRelationGlob:
