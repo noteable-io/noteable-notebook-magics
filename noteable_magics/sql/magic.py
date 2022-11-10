@@ -32,8 +32,6 @@ class SqlMagic(Magics, Configurable):
 
     Provides the %%sql magic."""
 
-    autolimit = 0
-
     short_errors = Bool(
         True,
         config=True,
