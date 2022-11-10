@@ -112,22 +112,23 @@ class SqlMagic(Magics, Configurable):
             return None
 
         if not parsed["sql"]:
+            # Nothing at all to do. Perhaps cell was all comments (stripped away inside of parse()) or otherwise blank?
             return
 
         try:
-            # TODO: Strip any SQL comments out early / here.
             if parsed["sql"].startswith('\\'):
                 # Is a meta command, say, to introspect schema or table such as "\describe foo"
-                # May emit things directly as well as probably return a primary dataframe.
+                # Will make calls to display() as well as handle doing any result_var assignments into
+                # self.shell.user_ns.
                 run_meta_command(self.shell, conn, parsed["sql"], parsed.get("result_var"))
                 return
 
-            # Otherwise is a vanilla SQL statement.
+            # Is a vanilla SQL statement. Run it.
             result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
 
             if parsed["result_var"]:
                 # Silently assign the result to this named variable, ENG-4711.
-                self.shell.user_ns.update({parsed["result_var"]: result})
+                self.shell.user_ns[parsed["result_var"]] = result
 
             # Always return query results into the default ipython _ variable
             return result
