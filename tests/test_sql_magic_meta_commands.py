@@ -1,6 +1,8 @@
 import re
 from typing import Optional, Tuple
 
+from IPython.display import HTML
+
 import pandas as pd
 import pytest
 from sqlalchemy.engine.reflection import Inspector
@@ -282,7 +284,9 @@ class TestSingleRelationCommand:
         assert results['Nullable'].tolist() == [False] * 3
 
     @pytest.mark.parametrize('handle,text_type', [('@cockroach', 'varchar'), ('@sqlite', 'text')])
-    def test_against_view(self, sql_magic, ipython_namespace, handle: str, text_type: str):
+    def test_against_view(
+        self, sql_magic, ipython_namespace, handle: str, text_type: str, mock_display
+    ):
         sql_magic.execute(fr'{handle} \describe str_int_view')
         results = ipython_namespace['_']
 
@@ -295,6 +299,39 @@ class TestSingleRelationCommand:
         # CRDB does, but the dialect doesn't currently dig them out of the system catalog
         # so we don't get them returned. We try, though!
         assert results.columns.tolist() == ['Column', 'Type', 'Nullable']
+
+        # Two things will be display()ed ...
+        assert mock_display.call_count == 2
+
+        # 1) The dataframe describing the view columns.
+        df_displayed = mock_display.call_args_list[0].args[0]
+        assert isinstance(df_displayed, pd.DataFrame)
+        assert results is df_displayed
+
+        # 2) The HTML blob describing the view definition
+        html_obj = mock_display.call_args_list[1].args[0]
+        assert isinstance(html_obj, HTML)
+        html_contents: str = html_obj.data
+        assert html_contents.startswith("<h2>View 'str_int_view' Definition:</h2>")
+        # Some dialects include a 'CREATE VIEW' statement, others just start with 'select\n', and will vary by case.
+        matcher = re.compile(
+            '.*<pre>.*select.*s.str_id, s.int_col.*</pre>$',
+            re.IGNORECASE + re.MULTILINE + re.DOTALL,
+        )
+        assert matcher.search(html_contents)
+
+    def test_against_schema_qualified_view(self, sql_magic, ipython_namespace, mock_display):
+        # Sub-case of test_against_view(), but when schema-qualified.
+        # Test that we schema qualify correctly in the <h2> when schema was explicitly mentioned.
+
+        sql_magic.execute(r'@cockroach \describe public.str_int_view')
+
+        html_obj = mock_display.call_args_list[1].args[0]
+        assert isinstance(html_obj, HTML)
+        html_contents: str = html_obj.data
+        assert html_contents.startswith(
+            "<h2>View 'public.str_int_view' Definition:</h2>"
+        ), html_contents
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
         sql_magic.execute(r'@sqlite \d')
