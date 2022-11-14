@@ -1,10 +1,9 @@
 import re
 from typing import Optional, Tuple
 
-from IPython.display import HTML
-
 import pandas as pd
 import pytest
+from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
