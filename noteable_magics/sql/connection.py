@@ -1,4 +1,3 @@
-import os
 from typing import Dict, Optional, Union
 
 import sqlalchemy
@@ -126,7 +125,6 @@ class Connection(object):
     def set(
         cls,
         descriptor: Union[str, 'Connection'],
-        displaycon: bool,
         name: Optional[str] = None,
         **create_engine_kwargs
     ):
@@ -143,17 +141,6 @@ class Connection(object):
                     name,
                     **create_engine_kwargs,
                 )
-        else:
-            if cls.connections:
-                if displaycon:
-                    print(cls.connection_list())
-            else:
-                if os.getenv("DATABASE_URL"):
-                    cls.current = Connection(os.getenv("DATABASE_URL"), **create_engine_kwargs)
-                else:
-                    raise ConnectionError(
-                        "Environment variable $DATABASE_URL not set, and no connect string given."
-                    )
         return cls.current
 
     @classmethod

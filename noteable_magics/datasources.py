@@ -118,7 +118,6 @@ def bootstrap_datasource(
         connection_url,
         name=f'@{datasource_id}',
         human_name=human_name,
-        displaycon=False,
         **create_engine_kwargs,
     )
 

@@ -101,35 +101,14 @@ class ResultSet(list, ColumnGuesserMixin):
         self.keys = sqlaproxy.keys()
         self.sql = sql
         self.config = config
-        self.limit = config.autolimit
-        style_name = config.style
-        self.style = prettytable.__dict__[style_name.upper()]
+        self.style = prettytable.__dict__['DEFAULT']
         if sqlaproxy.returns_rows:
-            if self.limit:
-                list.__init__(self, sqlaproxy.fetchmany(size=self.limit))
-            else:
-                list.__init__(self, sqlaproxy.fetchall())
+            list.__init__(self, sqlaproxy.fetchall())
             self.field_names = unduplicate_field_names(self.keys)
             self.pretty = PrettyTable(self.field_names, style=self.style)
-            # self.pretty.set_style(self.style)
         else:
             list.__init__(self, [])
             self.pretty = None
-
-    def _repr_html_(self):
-        _cell_with_spaces_pattern = re.compile(r"(<td>)( {2,})")
-        if self.pretty:
-            self.pretty.add_rows(self)
-            result = self.pretty.get_html_string()
-            result = _cell_with_spaces_pattern.sub(_nonbreaking_spaces, result)
-            if self.config.displaylimit and len(self) > self.config.displaylimit:
-                result = (
-                    '%s\n<span style="font-style:italic;text-align:center;">%d rows, truncated to displaylimit of %d</span>'
-                    % (result, len(self), self.config.displaylimit)
-                )
-            return result
-        else:
-            return None
 
     def __str__(self, *arg, **kwarg):
         self.pretty.add_rows(self)
@@ -375,7 +354,9 @@ def run(conn, sql, config, user_namespace):
             _commit(conn=conn, config=config)
             if result and config.feedback:
                 print(interpret_rowcount(result.rowcount))
+
         resultset = ResultSet(result, statement, config)
+
         if config.autopandas:
             return resultset.DataFrame()
         else:

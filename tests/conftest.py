@@ -108,6 +108,18 @@ def sql_magic(ipython_shell) -> SqlMagic:
     return magic
 
 
+@pytest.fixture
+def ipython_namespace(ipython_shell):
+    return ipython_shell.user_ns
+
+
+@pytest.fixture
+def mock_display(mocker):
+    mock = mocker.Mock()
+    mocker.patch("noteable_magics.sql.meta_commands.display", mock)
+    return mock
+
+
 def populate_database(connection: Connection, include_comments=False):
 
     # Must actually do the table building transactionally, especially adding comments, else
@@ -157,7 +169,7 @@ def sqlite_database_connection() -> Tuple[str, str]:
 
     handle = '@sqlite'
     human_name = "My Sqlite Connection"
-    Connection.set("sqlite:///:memory:", displaycon=False, name=handle, human_name=human_name)
+    Connection.set("sqlite:///:memory:", name=handle, human_name=human_name)
 
     return handle, human_name
 
@@ -181,7 +193,7 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
 
     handle = '@cockroach'
     human_name = "My Cockroach Connection"
-    Connection.set(managed_cockroach.sync_dsn, displaycon=False, name=handle, human_name=human_name)
+    Connection.set(managed_cockroach.sync_dsn, name=handle, human_name=human_name)
     return handle, human_name
 
 

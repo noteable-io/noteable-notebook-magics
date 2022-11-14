@@ -37,7 +37,6 @@ def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connectio
         return Connection.set(
             duckdb_location,
             human_name="Local Database",
-            displaycon=False,
             name=LOCAL_DB_CONN_HANDLE,
         )
     else:

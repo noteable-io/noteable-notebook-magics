@@ -2,6 +2,8 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
+from IPython.display import display
+
 from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
@@ -46,11 +48,37 @@ class MetaCommand:
     # Does this command accept additional arguments?
     accepts_args: bool
 
-    def __init__(self, shell: InteractiveShell, conn: Connection):
+    # What variable name to assign the 'primary' output to, if any
+    assign_to_varname: Optional[str]
+
+    def __init__(self, shell: InteractiveShell, conn: Connection, assign_to_varname: Optional[str]):
         self.shell = shell
         self.conn = conn
+        self.assign_to_varname = assign_to_varname
 
-    def run(self, invoked_as: str, args: List[str]):
+    def do_run(self, invoked_as: str, args: List[str]):
+        df, need_display_call = self.run(invoked_as, args)
+
+        if need_display_call:
+            display(df)
+
+        # Make the assignment(s) into the user's namespace.
+        # The subclass's run() will have already called display()
+        # on this and possibly other dataframes already, but this
+        # returned one is the 'primary' return result from the meta
+        # command.
+
+        if self.assign_to_varname:
+            self.shell.user_ns[self.assign_to_varname] = df
+
+        # This ... may well get overwritten by the ultimate result of the magic
+        # returning None, which gets handled later than this.
+        self.shell.user_ns['_'] = df
+
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
+        """Implement the meta command.
+        Should return a pair of the 'primary' dataframe, and if display() needs
+        to be called with it or not."""
         raise NotImplementedError
 
     def get_inspector(self) -> Inspector:
@@ -66,7 +94,7 @@ class SchemasCommand(MetaCommand):
     invokers = ['\\schemas', '\\schemas+', '\\dn', '\\dn+']
     accepts_args = False
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         insp = self.get_inspector()
 
         default_schema = insp.default_schema_name
@@ -105,7 +133,7 @@ class SchemasCommand(MetaCommand):
                 # Only optionally project a 'View Count' dataframe column if there are any views.
                 data['View Count'] = view_counts
 
-        return DataFrame(data=data)
+        return DataFrame(data=data), True
 
 
 class RelationsCommand(MetaCommand):
@@ -115,7 +143,7 @@ class RelationsCommand(MetaCommand):
     invokers = [r'\list', r'\dr']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         if len(args) > 1:
             raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[table pattern]]')
 
@@ -133,7 +161,7 @@ class TablesCommand(MetaCommand):
     invokers = [r'\tables', r'\dt']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         if len(args) > 1:
             raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[table pattern]]')
 
@@ -151,7 +179,7 @@ class ViewsCommand(MetaCommand):
     invokers = [r'\views', r'\dv']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         if len(args) > 1:
             raise MetaCommandException(f'Usage: {invoked_as} [[schema pattern].[view pattern]]')
 
@@ -167,7 +195,7 @@ def relation_names(
     argument: str,
     include_tables=True,
     include_views=True,
-) -> DataFrame:
+) -> Tuple[DataFrame, bool]:
     """Determine relation names (or perhaps only specifically either views or tables) in one or more
     schemas.
 
@@ -223,12 +251,14 @@ def relation_names(
     else:
         colname = 'Views'
 
-    return DataFrame(
+    df = DataFrame(
         data={
             'Schema': list(schema_to_relations.keys()),
             colname: [schema_to_relations[k] for k in schema_to_relations],
         }
     )
+
+    return df, True
 
 
 def parse_schema_and_relation_glob(
@@ -301,13 +331,13 @@ class SingleRelationCommand(MetaCommand):
     invokers = [r'\describe', r'\d']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         if len(args) > 1:
             raise MetaCommandException(f'Usage: {invoked_as} [[schema].[relation_name]]')
 
         if len(args) == 0:
             # Kick over to showing all relations in the default schema, like PG does.
-            alt_cmd = RelationsCommand(self.shell, self.conn)
+            alt_cmd = RelationsCommand(self.shell, self.conn, self.assign_to_varname)
             return alt_cmd.run('\\list', ['*'])
 
         schema, relation_name = self._split_schema_table(args[0])
@@ -357,17 +387,23 @@ class SingleRelationCommand(MetaCommand):
         if any(comments):
             data['Comment'] = comments
 
-        return DataFrame(data=data)
+        main_relation_structure = DataFrame(data=data)
+        display(main_relation_structure)
+
+        return main_relation_structure, False
+
         """
         # Soon to become ...
         df.attrs.update(
             {
                 'noteable': {
-                    'defaults': {
+                    'dex': {
+                        'table_style': 'simple'
+                    }
+                    'view': {
                         'title': 'Schema for table foo.bar',
                         'subtitle': 'table-wide comment goes here',
                         'show_index': False,
-                        'table_style': 'simple',
                     }
                 }
             }
@@ -397,7 +433,7 @@ class HelpCommand(MetaCommand):
     invokers = ['\\help']
     accepts_args = True
 
-    def run(self, invoked_as: str, args: List[str]):
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         # If no args, will return DF describing usage of all registered subcommands.
         # If run with exactly one subcommand, find it in registry and just talk about that one.
         # If subcommand not found, then complain.
@@ -431,12 +467,15 @@ class HelpCommand(MetaCommand):
             invokers.append(', '.join(cmd.invokers))
             docstrings.append(cmd.__doc__.strip())
 
-        return DataFrame(
-            data={
-                'Description': descriptions,
-                'Documentation': docstrings,
-                'Invoke Using One Of': invokers,
-            }
+        return (
+            DataFrame(
+                data={
+                    'Description': descriptions,
+                    'Documentation': docstrings,
+                    'Invoke Using One Of': invokers,
+                }
+            ),
+            True,
         )
 
 
@@ -457,7 +496,7 @@ for cls in _all_command_classes:
 
 
 def run_meta_command(
-    shell: InteractiveShell, conn: Connection, command: str
+    shell: InteractiveShell, conn: Connection, command: str, assign_to_varname: str
 ) -> Optional[DataFrame]:
     """Dispatch to a MetaCommand implementation, return its result"""
     command_words = command.strip().split()  # ['\foo', 'bar.blat']
@@ -472,5 +511,5 @@ def run_meta_command(
             f'{invoker} does not expect arguments', invoked_with=invoker
         )
 
-    instance = implementation_class(shell, conn)
-    return instance.run(invoker, args)
+    instance = implementation_class(shell, conn, assign_to_varname)
+    instance.do_run(invoker, args)

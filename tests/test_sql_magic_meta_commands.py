@@ -1,6 +1,7 @@
 import re
 from typing import Optional, Tuple
 
+import pandas as pd
 import pytest
 from sqlalchemy.engine.reflection import Inspector
 
@@ -37,12 +38,20 @@ class TestListSchemas:
         expected_results: dict,
         expect_extras: bool,
         sql_magic,
+        ipython_namespace,
+        mock_display,
     ):
         r"""Test \schemas variants against both sqlite and CRDB for basic sanity purposes"""
         # prepend the slash. Having the slashes in the paramterized spelling makes pytest's printout
         # of this variant icky and hard to invoke directly.
         invocation = f'\\{invocation}'
-        results = sql_magic.execute(f'{connection_handle} {invocation}')
+        sql_magic.execute(f'{connection_handle} {invocation}')
+
+        # The magic meta command does not return the dataframe, but instead
+        # directly calls display() and assigns into '_' (or to an arbitrary name
+        # if invoked with '<<')
+        results = ipython_namespace['_']
+        mock_display.assert_called_with(results)
 
         assert len(results) == expected_results['num_schemas']
         assert results['Schema'][0] == expected_results['primary_schema_name']
@@ -57,7 +66,12 @@ class TestListSchemas:
         else:
             assert results.columns.tolist() == ['Schema', 'Default']
 
-    def test_list_schemas_when_no_views(self, sql_magic):
+    def test_list_schemas_when_no_views(
+        self,
+        sql_magic,
+        ipython_namespace,
+        mock_display,
+    ):
         r"""Prove that when no views exist, \schemas+ does not talk at all about a 'View Count' column"""
 
         # Drop the view.
@@ -65,7 +79,9 @@ class TestListSchemas:
         db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
         db.execute('drop view str_int_view')
 
-        results = sql_magic.execute(r'@sqlite \schemas+')
+        sql_magic.execute(r'@sqlite \schemas+')
+        results = ipython_namespace['_']
+        mock_display.assert_called_with(results)
 
         assert len(results) == 1
 
@@ -114,25 +130,38 @@ class TestRelationsCommand:
         exp_table_string: str,
         invocation: str,
         sql_magic,
+        ipython_namespace,
+        mock_display,
     ):
 
         invocation = f'\\{invocation}'
-        results = sql_magic.execute(f'{connection_handle} {invocation} {argument}')
+        sql_magic.execute(f'{connection_handle} {invocation} {argument}')
+
+        results = ipython_namespace['_']
+        mock_display.assert_called_with(results)
+
         assert len(results) == 1
         assert results['Relations'][0] == exp_table_string
 
     def test_list_relations_multiple_schemas(
         self,
         sql_magic,
+        ipython_namespace,
+        mock_display,
     ):
         # Show all relations in all schemas.
-        results = sql_magic.execute(r'@cockroach \list *.*')
+        sql_magic.execute(r'@cockroach \list *.*')
+
+        results = ipython_namespace['_']
+        mock_display.assert_called_with(results)
+
         assert len(results) == 3
         assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
         assert results['Relations'][2] == 'int_table, references_int_table, str_int_view, str_table'
 
         # Show all relations in single glob'd schema (matches 'public' only)
-        results = sql_magic.execute(r'@cockroach \list p*.*')
+        sql_magic.execute(r'@cockroach \list p*.*')
+        results = ipython_namespace['_']
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
         assert results['Relations'][0] == 'int_table, references_int_table, str_int_view, str_table'
@@ -140,7 +169,8 @@ class TestRelationsCommand:
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\list *', r'\list']:
-            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            results = ipython_namespace['_']
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
             assert (
@@ -154,16 +184,24 @@ class TestTablesCommand:
     def test_list_tables(
         self,
         sql_magic,
+        ipython_namespace,
+        mock_display,
     ):
-        # Show only tables (no views) in all schemas.
-        results = sql_magic.execute(r'@cockroach \tables *.*')
+        # Show only tables (no views) in all schemas. Also test out assignment to non='_' var.
+        results = sql_magic.execute(r'@cockroach tables << \tables *.*')
+
+        results = ipython_namespace['tables']
+        mock_display.assert_called_with(results)
+
         assert len(results) == 3
         assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
         # No str_int_view!
         assert results['Tables'][2] == 'int_table, references_int_table, str_table'
 
         # Show all relations in single glob'd schema (matches 'public' only)
-        results = sql_magic.execute(r'@cockroach \tables p*.*')
+        sql_magic.execute(r'@cockroach \tables p*.*')
+        results = ipython_namespace['_']
+
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
         assert results['Tables'][0] == 'int_table, references_int_table, str_table'
@@ -171,7 +209,9 @@ class TestTablesCommand:
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\tables *', r'\tables', r'\dt']:
-            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            results = ipython_namespace['_']
+
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
             assert results['Tables'][0] == 'int_table, references_int_table, str_table'
@@ -179,19 +219,19 @@ class TestTablesCommand:
 
 @pytest.mark.usefixtures("populated_cockroach_database")
 class TestViewsCommand:
-    def test_list_tables(
-        self,
-        sql_magic,
-    ):
+    def test_list_tables(self, sql_magic, ipython_namespace):
         # Show only tables (no views) in all schemas.
-        results = sql_magic.execute(r'@cockroach \views *.*')
+        sql_magic.execute(r'@cockroach \views *.*')
+        results = ipython_namespace['_']
+
         assert len(results) == 2
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
         assert results['Schema'].tolist() == ['crdb_internal', 'public']
         assert results['Views'][1] == 'str_int_view'
 
         # Show all views in single glob'd schema (matches 'public' only)
-        results = sql_magic.execute(r'@cockroach \views p*.*')
+        sql_magic.execute(r'@cockroach \views p*.*')
+        results = ipython_namespace['_']
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
         assert results['Views'][0] == 'str_int_view'
@@ -199,7 +239,8 @@ class TestViewsCommand:
         # Show all views in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\views *', r'\views', r'\dv']:
-            results = sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            results = ipython_namespace['_']
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
             assert results['Views'][0] == 'str_int_view'
@@ -210,8 +251,12 @@ class TestSingleRelationCommand:
     @pytest.mark.parametrize(
         'handle,defaults_include_int8', [('@cockroach', True), ('@sqlite', False)]
     )
-    def test_table_without_schema(self, sql_magic, handle: str, defaults_include_int8: bool):
-        results = sql_magic.execute(fr'{handle} \describe int_table')
+    def test_table_without_schema(
+        self, sql_magic, ipython_namespace, handle: str, defaults_include_int8: bool
+    ):
+        sql_magic.execute(fr'{handle} \describe int_table')
+        results = ipython_namespace['_']
+
         assert len(results) == 3
         assert results.columns.tolist() == ['Column', 'Type', 'Nullable', 'Default']
         assert results['Column'].tolist() == ['a', 'b', 'c']
@@ -227,16 +272,20 @@ class TestSingleRelationCommand:
         assert results['Default'].tolist() == expected_defaults
 
     @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
-    def test_varying_invocation(self, sql_magic, invocation: str):
-        results = sql_magic.execute(rf'@cockroach {invocation} public.int_table')
+    def test_varying_invocation(self, sql_magic, ipython_namespace, invocation: str):
+        sql_magic.execute(rf'@cockroach {invocation} public.int_table')
+        results = ipython_namespace['_']
+
         assert len(results) == 3
         assert results['Column'].tolist() == ['a', 'b', 'c']
         assert results['Type'].tolist() == ['integer'] * 3
         assert results['Nullable'].tolist() == [False] * 3
 
     @pytest.mark.parametrize('handle,text_type', [('@cockroach', 'varchar'), ('@sqlite', 'text')])
-    def test_against_view(self, sql_magic, handle: str, text_type: str):
-        results = sql_magic.execute(fr'{handle} \describe str_int_view')
+    def test_against_view(self, sql_magic, ipython_namespace, handle: str, text_type: str):
+        sql_magic.execute(fr'{handle} \describe str_int_view')
+        results = ipython_namespace['_']
+
         assert len(results) == 4
         assert results['Column'].tolist() == ['str_id', 'int_col', 'b', 'c']
         assert results['Type'].tolist() == [text_type, 'integer', 'integer', 'integer']
@@ -247,8 +296,10 @@ class TestSingleRelationCommand:
         # so we don't get them returned. We try, though!
         assert results.columns.tolist() == ['Column', 'Type', 'Nullable']
 
-    def test_no_args_gets_table_list(self, sql_magic):
-        results = sql_magic.execute(r'@sqlite \d')
+    def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
+        sql_magic.execute(r'@sqlite \d')
+        results = ipython_namespace['_']
+
         # Should have given us schema + table list instead of single-table details.
         assert len(results) == 1
         assert results.columns.tolist() == ['Schema', 'Relations']
@@ -276,15 +327,19 @@ class TestSingleRelationCommand:
 
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestHelp:
-    def test_general_help(self, sql_magic):
-        results = sql_magic.execute(r'@sqlite \help')
+    def test_general_help(self, sql_magic, ipython_namespace):
+        sql_magic.execute(r'@sqlite \help')
+        results = ipython_namespace['_']
+
         assert len(results) == len(_all_command_classes) - 1  # avoids talking about HelpCommand
         assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
 
     # Both these specific commands should regurgitate the same help row.
     @pytest.mark.parametrize('cmdname', [r'\schemas', r'\dn+'])
-    def test_single_topic_help(self, cmdname, sql_magic):
-        results = sql_magic.execute(rf'@sqlite \help {cmdname}')
+    def test_single_topic_help(self, cmdname, sql_magic, ipython_namespace):
+        sql_magic.execute(rf'@sqlite \help {cmdname}')
+        results = ipython_namespace['_']
+
         assert len(results) == 1
         assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
         assert results['Description'][0] == 'List schemas (namespaces) within database'
@@ -308,6 +363,19 @@ class TestMisc:
         sql_magic.execute(r'@sqlite \unknown_subcommand')
         out, err = capsys.readouterr()
         assert out == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
+
+    def test_handles_sql_comment_at_front(self, sql_magic, capsys, ipython_namespace):
+        """Test that even if the cell starts with a comment line, can still invoke a meta-command properly"""
+        sql_magic.execute('@sqlite help_df << -- this is a sql comment as first line\n\\help')
+        help_df = ipython_namespace.get('help_df')
+
+        out, err = capsys.readouterr()
+
+        assert type(help_df) is pd.DataFrame
+        assert help_df.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert (
+            'List names of tables and views within database' in out
+        )  # ... amoungst other things that \\help outputs!
 
 
 class TestParseSchemaAndRelationGlob:
