@@ -2,8 +2,7 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
-from IPython.display import display, HTML
-
+from IPython.display import HTML, display
 from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
