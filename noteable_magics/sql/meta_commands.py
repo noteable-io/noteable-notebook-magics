@@ -2,8 +2,7 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
-from IPython.display import display
-
+from IPython.display import HTML, display
 from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
@@ -390,6 +389,19 @@ class SingleRelationCommand(MetaCommand):
         main_relation_structure = DataFrame(data=data)
         display(main_relation_structure)
 
+        if is_view:
+            view_definition = inspector.get_view_definition(relation_name, schema)
+
+            # Would not surprise me if some dialects do not implement / return anything, so be cautious.
+            if view_definition:
+                display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
+                html_buf = []
+                html_buf.append(f'<h2>View {display_view_name!r} Definition:</h2>')
+                html_buf.append('<br />')
+                html_buf.append(f'<pre>{view_definition}</pre>')
+
+                display(HTML('\n'.join(html_buf)))
+
         return main_relation_structure, False
 
         """
@@ -477,6 +489,13 @@ class HelpCommand(MetaCommand):
             ),
             True,
         )
+
+
+def displayable_relation_name(schema: Optional[str], relation_name: str) -> str:
+    if schema:
+        return f'{schema}.{relation_name}'
+    else:
+        return relation_name
 
 
 # Populate simple registry of invocation command string -> concrete subclass.

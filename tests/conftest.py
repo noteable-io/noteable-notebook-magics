@@ -115,9 +115,7 @@ def ipython_namespace(ipython_shell):
 
 @pytest.fixture
 def mock_display(mocker):
-    mock = mocker.Mock()
-    mocker.patch("noteable_magics.sql.meta_commands.display", mock)
-    return mock
+    return mocker.patch("noteable_magics.sql.meta_commands.display")
 
 
 def populate_database(connection: Connection, include_comments=False):
