@@ -402,6 +402,7 @@ class SingleRelationCommand(MetaCommand):
             if view_definition:
                 display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
                 html_buf = []
+                html_buf.append('<br />')
                 html_buf.append(f'<h2>View {display_view_name!r} Definition:</h2>')
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')

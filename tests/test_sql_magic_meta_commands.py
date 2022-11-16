@@ -258,7 +258,7 @@ class TestViewsCommand:
         results = ipython_namespace['_']
 
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
-        assert results.columns.tolist == ['Schema', 'View']
+        assert results.columns.tolist() == ['Schema', 'View']
         assert results['Schema'].unique().tolist() == ['crdb_internal', 'public']
         assert results[results.Schema == 'public']['View'].tolist() == ['str_int_view']
 
@@ -343,7 +343,7 @@ class TestSingleRelationCommand:
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
-        assert html_contents.startswith("<h2>View 'str_int_view' Definition:</h2>")
+        assert html_contents.startswith("<br />\n<h2>View 'str_int_view' Definition:</h2>")
         # Some dialects include a 'CREATE VIEW' statement, others just start with 'select\n', and will vary by case.
         matcher = re.compile(
             '.*<pre>.*select.*s.str_id, s.int_col.*</pre>$',
@@ -361,7 +361,7 @@ class TestSingleRelationCommand:
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
         assert html_contents.startswith(
-            "<h2>View 'public.str_int_view' Definition:</h2>"
+            "<br />\n<h2>View 'public.str_int_view' Definition:</h2>"
         ), html_contents
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
