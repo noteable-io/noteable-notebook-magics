@@ -222,6 +222,9 @@ def relation_names(
     # Parallel lists of schema, relation names for output
     output_schemas: List[str] = []
     output_relations: List[str] = []
+    # One more possible output column if we're returning both tables and views
+    if include_tables and include_views:
+        relation_types: List[str] = []
 
     for schema in schemas:
         # Some dialects return views as tables (and then also as views), so distict-ify via a set.
@@ -241,22 +244,26 @@ def relation_names(
         for relname in sorted(r for r in relations if relation_name_filter.match(r)):
             output_schemas.append(schema)
             output_relations.append(relname)
+            if include_tables and include_views:
+                # And also if is a view or a table, since we're returning both.
+                relation_types.append('view' if relname in view_names else 'table')
 
     if include_tables and include_views:
-        relation_colname = 'Relations'
+        relation_colname = 'Relation'
     elif include_tables:
-        relation_colname = 'Tables'
+        relation_colname = 'Table'
     else:
-        relation_colname = 'Views'
+        relation_colname = 'View'
 
-    df = DataFrame(
-        data={
-            'Schema': output_schemas,
-            relation_colname: output_relations,
-        }
-    )
+    data = {
+        'Schema': output_schemas,
+        relation_colname: output_relations,
+    }
+    if include_tables and include_views:
+        # Only need to project this column if possibly displaying more than one kind of relation
+        data['Kind'] = relation_types
 
-    return df, True
+    return DataFrame(data), True
 
 
 def parse_schema_and_relation_glob(
