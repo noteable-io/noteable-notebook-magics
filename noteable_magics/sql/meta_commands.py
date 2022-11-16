@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
@@ -240,7 +240,7 @@ def relation_names(
             # to explicitly remove the definite view names. Thanks, guys.
             relations.difference_update(view_names)
 
-        # Filter, sort, append pair of (schema, relname) onto schema_and_relations
+        # Filter, sort, append schema, relname and possibly the kind onto respective lists.
         for relname in sorted(r for r in relations if relation_name_filter.match(r)):
             output_schemas.append(schema)
             output_relations.append(relname)
@@ -403,7 +403,7 @@ class SingleRelationCommand(MetaCommand):
                 display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
                 html_buf = []
                 html_buf.append('<br />')
-                html_buf.append(f'<h2>View {display_view_name!r} Definition:</h2>')
+                html_buf.append(f'<h2>View "{display_view_name}" Definition</h2>')
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
