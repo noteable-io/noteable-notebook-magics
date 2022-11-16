@@ -1,5 +1,5 @@
 import re
-from typing import Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
@@ -330,7 +330,7 @@ def convert_relation_glob_to_regex(glob: str, imply_prefix=False) -> re.Pattern:
 
 
 class SingleRelationCommand(MetaCommand):
-    """Show the structure of a single relation."""
+    """Describe a single relation"""
 
     description = "Show the structure of a single relation."
     invokers = [r'\describe', r'\d']
@@ -408,6 +408,11 @@ class SingleRelationCommand(MetaCommand):
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
                 display(HTML('\n'.join(html_buf)))
+        else:
+            # Is a table. Let's go get indices.
+            index_df = index_dataframe(inspector, relation_name, schema)
+            if len(index_df):
+                display(index_df)
 
         return main_relation_structure, False
 
@@ -443,6 +448,38 @@ class SingleRelationCommand(MetaCommand):
             table = schema_table
 
         return (schema, table)
+
+
+def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]) -> DataFrame:
+    """Convert results from inspector.get_indexes for a table to a single dataframe"""
+
+    index_dicts: List[Dict[str, Any]] = inspector.get_indexes(table_name, schema)
+
+    index_names: List[str] = []
+    column_lists: List[List[str]] = []
+    uniques: List[bool] = []
+
+    for i_d in sorted(index_dicts, key=lambda d: d['name']):
+        index_names.append(i_d['name'])
+        column_lists.append(i_d['column_names'])
+        uniques.append(i_d['unique'])
+
+        # Not doing anything with optional 'column_sorting' or 'dialect_options'
+
+    df = DataFrame({'Index': index_names, 'Columns': column_lists, 'Unique': uniques})
+
+    title = f'Table "{displayable_relation_name(schema, table_name)}" Indices'
+
+    return set_dataframe_metadata(df, title=title)
+
+
+def set_dataframe_metadata(df: DataFrame, title=None) -> DataFrame:
+    """Set noteable metadata in the dataframe for Dex to pick up"""
+
+    # This structure is expected to change.
+    df.attrs['noteable'] = {'defaults': {'title': title}}
+
+    return df
 
 
 class HelpCommand(MetaCommand):
