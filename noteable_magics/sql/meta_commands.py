@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
@@ -138,7 +138,7 @@ class SchemasCommand(MetaCommand):
 class RelationsCommand(MetaCommand):
     """List all the relations (tables and views) within one or more schemas (namespaces) of a database."""
 
-    description = "List names of tables and views within database"
+    description = "List names of tables and/or views within database"
     invokers = [r'\list', r'\dr']
     accepts_args = True
 
@@ -219,8 +219,13 @@ def relation_names(
 
     schemas = sorted(s for s in inspector.get_schema_names() if schema_name_filter.match(s))
 
-    # Collect tables and / or views in each requested schema.
-    schema_to_relations: Dict[str, str] = {}
+    # Parallel lists of schema, relation names for output
+    output_schemas: List[str] = []
+    output_relations: List[str] = []
+    # One more possible output column if we're returning both tables and views
+    if include_tables and include_views:
+        relation_types: List[str] = []
+
     for schema in schemas:
         # Some dialects return views as tables (and then also as views), so distict-ify via a set.
         relations = set()
@@ -235,29 +240,30 @@ def relation_names(
             # to explicitly remove the definite view names. Thanks, guys.
             relations.difference_update(view_names)
 
-        # Convert passing-through-relation_name_filter names into a nice comma list
-        relations_comma_str = ', '.join(
-            sorted(r for r in relations if relation_name_filter.match(r))
-        )
-
-        if relations_comma_str:
-            schema_to_relations[schema] = relations_comma_str
+        # Filter, sort, append schema, relname and possibly the kind onto respective lists.
+        for relname in sorted(r for r in relations if relation_name_filter.match(r)):
+            output_schemas.append(schema)
+            output_relations.append(relname)
+            if include_tables and include_views:
+                # And also if is a view or a table, since we're returning both.
+                relation_types.append('view' if relname in view_names else 'table')
 
     if include_tables and include_views:
-        colname = 'Relations'
+        relation_colname = 'Relation'
     elif include_tables:
-        colname = 'Tables'
+        relation_colname = 'Table'
     else:
-        colname = 'Views'
+        relation_colname = 'View'
 
-    df = DataFrame(
-        data={
-            'Schema': list(schema_to_relations.keys()),
-            colname: [schema_to_relations[k] for k in schema_to_relations],
-        }
-    )
+    data = {
+        'Schema': output_schemas,
+        relation_colname: output_relations,
+    }
+    if include_tables and include_views:
+        # Only need to project this column if possibly displaying more than one kind of relation
+        data['Kind'] = relation_types
 
-    return df, True
+    return DataFrame(data), True
 
 
 def parse_schema_and_relation_glob(
@@ -396,7 +402,8 @@ class SingleRelationCommand(MetaCommand):
             if view_definition:
                 display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
                 html_buf = []
-                html_buf.append(f'<h2>View {display_view_name!r} Definition:</h2>')
+                html_buf.append('<br />')
+                html_buf.append(f'<h2>View "{display_view_name}" Definition</h2>')
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
@@ -482,9 +489,9 @@ class HelpCommand(MetaCommand):
         return (
             DataFrame(
                 data={
+                    'Command': invokers,
                     'Description': descriptions,
                     'Documentation': docstrings,
-                    'Invoke Using One Of': invokers,
                 }
             ),
             True,
@@ -499,12 +506,13 @@ def displayable_relation_name(schema: Optional[str], relation_name: str) -> str:
 
 
 # Populate simple registry of invocation command string -> concrete subclass.
+# The order here also affects the order that they're listed in \help
 _all_command_classes = [
-    SchemasCommand,
+    SingleRelationCommand,
     RelationsCommand,
     TablesCommand,
     ViewsCommand,
-    SingleRelationCommand,
+    SchemasCommand,
     HelpCommand,
 ]
 _registry = {}
