@@ -1,5 +1,5 @@
 import re
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import pytest
@@ -115,20 +115,20 @@ class TestRelationsCommand:
         ['list', 'dr'],
     )
     @pytest.mark.parametrize(
-        'argument,exp_table_string',
+        'argument,exp_relations',
         [
-            ('', 'int_table, references_int_table, str_int_view, str_table'),
-            ('int*', 'int_table'),
-            ('int_tab??', 'int_table'),
-            ('*.int*', 'int_table'),
-            ('*int*', 'int_table, references_int_table, str_int_view'),
+            ('', ['int_table', 'references_int_table', 'str_int_view', 'str_table']),
+            ('int*', ['int_table']),
+            ('int_tab??', ['int_table']),
+            ('*.int*', ['int_table']),
+            ('*int*', ['int_table', 'references_int_table', 'str_int_view']),
         ],
     )
     def test_list_relations(
         self,
         connection_handle: str,
         argument: str,
-        exp_table_string: str,
+        exp_relations: List[str],
         invocation: str,
         sql_magic,
         ipython_namespace,
@@ -141,8 +141,7 @@ class TestRelationsCommand:
         results = ipython_namespace['_']
         mock_display.assert_called_with(results)
 
-        assert len(results) == 1
-        assert results['Relations'][0] == exp_table_string
+        assert results['Relations'].tolist() == exp_relations
 
     def test_list_relations_multiple_schemas(
         self,
@@ -156,28 +155,43 @@ class TestRelationsCommand:
         results = ipython_namespace['_']
         mock_display.assert_called_with(results)
 
-        assert len(results) == 3
-        assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
-        assert results['Relations'][2] == 'int_table, references_int_table, str_int_view, str_table'
+        assert len(results) > 100  # information_schema, crdb_internal have very many members.
+        assert set(results['Schema'].tolist()) == set(
+            ('crdb_internal', 'information_schema', 'public')
+        )
+
+        assert results[results.Schema == 'public']['Relations'].tolist() == [
+            'int_table',
+            'references_int_table',
+            'str_int_view',
+            'str_table',
+        ]
 
         # Show all relations in single glob'd schema (matches 'public' only)
         sql_magic.execute(r'@cockroach \list p*.*')
         results = ipython_namespace['_']
-        assert len(results) == 1
-        assert results['Schema'][0] == 'public'
-        assert results['Relations'][0] == 'int_table, references_int_table, str_int_view, str_table'
+        assert len(results) == 4
+        assert set(results['Schema'].tolist()) == set(('public',))
+        assert results['Relations'].tolist() == [
+            'int_table',
+            'references_int_table',
+            'str_int_view',
+            'str_table',
+        ]
 
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\list *', r'\list']:
             sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
             results = ipython_namespace['_']
-            assert len(results) == 1
+            assert len(results) == 4
             assert results['Schema'][0] == 'public'
-            assert (
-                results['Relations'][0]
-                == 'int_table, references_int_table, str_int_view, str_table'
-            )
+            assert results['Relations'].tolist() == [
+                'int_table',
+                'references_int_table',
+                'str_int_view',
+                'str_table',
+            ]
 
 
 @pytest.mark.usefixtures("populated_cockroach_database")
@@ -194,18 +208,24 @@ class TestTablesCommand:
         results = ipython_namespace['tables']
         mock_display.assert_called_with(results)
 
-        assert len(results) == 3
-        assert results['Schema'].tolist() == ['crdb_internal', 'information_schema', 'public']
+        assert len(results) > 100  # crdb_internal, information schema have lots.
+        assert set(results['Schema'].tolist()) == set(
+            ['crdb_internal', 'information_schema', 'public']
+        )
         # No str_int_view!
-        assert results['Tables'][2] == 'int_table, references_int_table, str_table'
+        assert results[results.Schema == 'public']['Tables'].tolist() == [
+            'int_table',
+            'references_int_table',
+            'str_table',
+        ]
 
         # Show all relations in single glob'd schema (matches 'public' only)
         sql_magic.execute(r'@cockroach \tables p*.*')
         results = ipython_namespace['_']
 
-        assert len(results) == 1
-        assert results['Schema'][0] == 'public'
-        assert results['Tables'][0] == 'int_table, references_int_table, str_table'
+        assert len(results) == 3
+        assert set(results['Schema'].tolist()) == set(('public',))
+        assert results['Tables'].tolist() == ['int_table', 'references_int_table', 'str_table']
 
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
@@ -213,9 +233,9 @@ class TestTablesCommand:
             sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
             results = ipython_namespace['_']
 
-            assert len(results) == 1
-            assert results['Schema'][0] == 'public'
-            assert results['Tables'][0] == 'int_table, references_int_table, str_table'
+        assert len(results) == 3
+        assert set(results['Schema'].tolist()) == set(('public',))
+        assert results['Tables'].tolist() == ['int_table', 'references_int_table', 'str_table']
 
 
 @pytest.mark.usefixtures("populated_cockroach_database")
@@ -225,10 +245,9 @@ class TestViewsCommand:
         sql_magic.execute(r'@cockroach \views *.*')
         results = ipython_namespace['_']
 
-        assert len(results) == 2
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
-        assert results['Schema'].tolist() == ['crdb_internal', 'public']
-        assert results['Views'][1] == 'str_int_view'
+        assert results['Schema'].unique().tolist() == ['crdb_internal', 'public']
+        assert results[results.Schema == 'public']['Views'].tolist() == ['str_int_view']
 
         # Show all views in single glob'd schema (matches 'public' only)
         sql_magic.execute(r'@cockroach \views p*.*')
@@ -337,8 +356,14 @@ class TestSingleRelationCommand:
         results = ipython_namespace['_']
 
         # Should have given us schema + table list instead of single-table details.
-        assert len(results) == 1
+        assert len(results) == 4
         assert results.columns.tolist() == ['Schema', 'Relations']
+        assert results['Relations'].tolist() == [
+            'int_table',
+            'references_int_table',
+            'str_int_view',
+            'str_table',
+        ]
 
     def test_hate_more_than_one_arg(self, sql_magic, capsys):
         sql_magic.execute(r'@sqlite \d foo bar')
@@ -368,7 +393,7 @@ class TestHelp:
         results = ipython_namespace['_']
 
         assert len(results) == len(_all_command_classes) - 1  # avoids talking about HelpCommand
-        assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert results.columns.tolist() == ['Command', 'Description', 'Documentation']
 
     # Both these specific commands should regurgitate the same help row.
     @pytest.mark.parametrize('cmdname', [r'\schemas', r'\dn+'])
@@ -377,9 +402,9 @@ class TestHelp:
         results = ipython_namespace['_']
 
         assert len(results) == 1
-        assert results.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert results.columns.tolist() == ['Command', 'Description', 'Documentation']
         assert results['Description'][0] == 'List schemas (namespaces) within database'
-        assert results['Invoke Using One Of'][0] == r'\schemas, \schemas+, \dn, \dn+'
+        assert results['Command'][0] == r'\schemas, \schemas+, \dn, \dn+'
         assert results['Documentation'][0].startswith('List all the schemas')
 
     def test_help_hates_unknown_subcommands(self, sql_magic, capsys):
@@ -408,9 +433,9 @@ class TestMisc:
         out, err = capsys.readouterr()
 
         assert type(help_df) is pd.DataFrame
-        assert help_df.columns.tolist() == ['Description', 'Documentation', 'Invoke Using One Of']
+        assert help_df.columns.tolist() == ['Command', 'Description', 'Documentation']
         assert (
-            'List names of tables and views within database' in out
+            'List all the relations (tables and views)' in out
         )  # ... amoungst other things that \\help outputs!
 
 
