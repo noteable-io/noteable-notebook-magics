@@ -285,7 +285,7 @@ class TestSingleRelationCommand:
         'handle,defaults_include_int8', [('@cockroach', True), ('@sqlite', False)]
     )
     def test_table_without_schema(
-        self, sql_magic, ipython_namespace, handle: str, defaults_include_int8: bool
+        self, sql_magic, ipython_namespace, handle: str, defaults_include_int8: bool, mock_display
     ):
         sql_magic.execute(fr'{handle} \describe int_table')
         results = ipython_namespace['_']
@@ -303,6 +303,24 @@ class TestSingleRelationCommand:
             expected_defaults = [None, '12', '42']
 
         assert results['Default'].tolist() == expected_defaults
+
+        # Two things will be display()ed ...
+        assert mock_display.call_count == 2
+
+        # 1) The dataframe describing the table columns.
+        df_displayed = mock_display.call_args_list[0].args[0]
+        assert isinstance(df_displayed, pd.DataFrame)
+        assert results is df_displayed
+
+        # 2) Dataframe describing the indices
+        index_df = mock_display.call_args_list[1].args[0]
+        assert isinstance(index_df, pd.DataFrame)
+        assert index_df.columns.tolist() == ['Index', 'Columns', 'Unique']
+        assert index_df['Index'][0] == 'int_table_whole_row_idx'
+        assert index_df['Columns'][0] == 'a, b, c'
+        assert index_df['Unique'][0] == True  # noqa: E712
+
+        assert index_df.attrs['noteable']['defaults']['title'] == 'Table "int_table" Indices'
 
     @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
     def test_varying_invocation(self, sql_magic, ipython_namespace, invocation: str):

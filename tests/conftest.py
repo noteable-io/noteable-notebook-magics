@@ -126,6 +126,8 @@ def populate_database(connection: Connection, include_comments=False):
         db.execute(
             'create table int_table(a int primary key not null, b int not null default 12, c int not null default 42)'
         )
+
+        db.execute('create unique index int_table_whole_row_idx on int_table(a,b,c)')
         db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
 
         db.execute(
