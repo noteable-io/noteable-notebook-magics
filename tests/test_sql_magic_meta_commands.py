@@ -317,8 +317,8 @@ class TestSingleRelationCommand:
         assert isinstance(index_df, pd.DataFrame)
         assert index_df.columns.tolist() == ['Index', 'Columns', 'Unique']
         assert index_df['Index'][0] == 'int_table_whole_row_idx'
-        assert index_df['Columns'][0] == ['a', 'b', 'c']
-        assert index_df['Unique'][0] == True
+        assert index_df['Columns'][0] == 'a, b, c'
+        assert index_df['Unique'][0] == True  # noqa: E712
 
         assert index_df.attrs['noteable']['defaults']['title'] == 'Table "int_table" Indices'
 

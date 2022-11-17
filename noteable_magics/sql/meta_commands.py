@@ -32,8 +32,13 @@ class MetaCommandInvocationException(MetaCommandException):
 
 
 class MetaCommand:
-    """Base class for family of metadata commands to do operations like schema-introspection, etc.
+    r"""Base class for family of metadata commands to do operations like schema-introspection, etc.
     within SQL cells.
+
+    The docstring of each concrete subclass will be 'published' as a part of the documentation
+    exposed by "\help" in a SQL cell, so keep 'em end-user friendly.
+
+    (See HelpCommand grabbing .__doc__ from each of the concrete subclasses)
     """
 
     # One-line description of what this one does.
@@ -392,8 +397,8 @@ class SingleRelationCommand(MetaCommand):
         if any(comments):
             data['Comment'] = comments
 
-        main_relation_structure = DataFrame(data=data)
-        display(main_relation_structure)
+        main_relation_df = DataFrame(data=data)
+        display(main_relation_df)
 
         if is_view:
             view_definition = inspector.get_view_definition(relation_name, schema)
@@ -409,32 +414,13 @@ class SingleRelationCommand(MetaCommand):
 
                 display(HTML('\n'.join(html_buf)))
         else:
-            # Is a table. Let's go get indices.
+            # Is a table. Let's go get indices and transform to a dataframe for
+            # presentation.
             index_df = index_dataframe(inspector, relation_name, schema)
             if len(index_df):
                 display(index_df)
 
-        return main_relation_structure, False
-
-        """
-        # Soon to become ...
-        df.attrs.update(
-            {
-                'noteable': {
-                    'dex': {
-                        'table_style': 'simple'
-                    }
-                    'view': {
-                        'title': 'Schema for table foo.bar',
-                        'subtitle': 'table-wide comment goes here',
-                        'show_index': False,
-                    }
-                }
-            }
-        )
-
-        display(df)
-        """
+        return main_relation_df, False
 
     @staticmethod
     def _split_schema_table(schema_table: str) -> Tuple[Optional[str], str]:
@@ -451,20 +437,21 @@ class SingleRelationCommand(MetaCommand):
 
 
 def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]) -> DataFrame:
-    """Convert results from inspector.get_indexes for a table to a single dataframe"""
+    """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
 
     index_dicts: List[Dict[str, Any]] = inspector.get_indexes(table_name, schema)
 
     index_names: List[str] = []
-    column_lists: List[List[str]] = []
+    column_lists: List[str] = []
     uniques: List[bool] = []
 
     for i_d in sorted(index_dicts, key=lambda d: d['name']):
         index_names.append(i_d['name'])
-        column_lists.append(i_d['column_names'])
+        column_lists.append(', '.join(i_d['column_names']))  # List[str] to nice comma sep string.
         uniques.append(i_d['unique'])
 
-        # Not doing anything with optional 'column_sorting' or 'dialect_options'
+        # Not doing anything with optional 'column_sorting' or 'dialect_options' at this time.
+        # (although column_sorting should be fairly easy to spice in)
 
     df = DataFrame({'Index': index_names, 'Columns': column_lists, 'Unique': uniques})
 
@@ -476,7 +463,12 @@ def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]
 def set_dataframe_metadata(df: DataFrame, title=None) -> DataFrame:
     """Set noteable metadata in the dataframe for Dex to pick up"""
 
-    # This structure is expected to change.
+    # This is a stub for now. Expect a good number of additional kwargs to grow once
+    # Shoup / Noel and I get together.
+
+    # This structure is expected to change. And dx -> Dex doesn't notice any of these
+    # at this point in time, so this is a christmas list right now.
+
     df.attrs['noteable'] = {'defaults': {'title': title}}
 
     return df
