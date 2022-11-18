@@ -282,10 +282,17 @@ class TestViewsCommand:
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestSingleRelationCommand:
     @pytest.mark.parametrize(
-        'handle,defaults_include_int8', [('@cockroach', True), ('@sqlite', False)]
+        'handle,defaults_include_int8,expected_pk_index_name',
+        [('@cockroach', True, 'int_table_pkey'), ('@sqlite', False, '(unnamed primary key)')],
     )
     def test_table_without_schema(
-        self, sql_magic, ipython_namespace, handle: str, defaults_include_int8: bool, mock_display
+        self,
+        sql_magic,
+        ipython_namespace,
+        handle: str,
+        defaults_include_int8: bool,
+        expected_pk_index_name: str,
+        mock_display,
     ):
         sql_magic.execute(fr'{handle} \describe int_table')
         results = ipython_namespace['_']
@@ -318,6 +325,16 @@ class TestSingleRelationCommand:
         assert (
             '<h2>Table <code>int_table</code> Indices</h2>' in index_df_html.data
         )  # title was projected.
+
+        # This is fugtastic. About at the point to use bs4 + pandas DataFrame.from_html()
+        # to convert the HTML spelling of the indexes back into a DF to then test it more
+        # thoroughly.
+
+        # primary key index should be described.
+        assert expected_pk_index_name in index_df_html.data
+        assert '<td>a</td>' in index_df_html.data  # PK column.
+
+        # secondary index should be described also.
         assert 'int_table_whole_row_idx' in index_df_html.data  # index name
         assert 'a, b, c' in index_df_html.data  # index columns
         assert 'True' in index_df_html.data  # is a unique index
