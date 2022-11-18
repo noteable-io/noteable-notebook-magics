@@ -312,15 +312,15 @@ class TestSingleRelationCommand:
         assert isinstance(df_displayed, pd.DataFrame)
         assert results is df_displayed
 
-        # 2) Dataframe describing the indices
-        index_df = mock_display.call_args_list[1].args[0]
-        assert isinstance(index_df, pd.DataFrame)
-        assert index_df.columns.tolist() == ['Index', 'Columns', 'Unique']
-        assert index_df['Index'][0] == 'int_table_whole_row_idx'
-        assert index_df['Columns'][0] == 'a, b, c'
-        assert index_df['Unique'][0] == True  # noqa: E712
-
-        assert index_df.attrs['noteable']['defaults']['title'] == 'Table "int_table" Indices'
+        # 2) HTML describing the indices
+        index_df_html = mock_display.call_args_list[1].args[0]
+        assert isinstance(index_df_html, HTML)
+        assert (
+            '<h2>Table <code>int_table</code> Indices</h2>' in index_df_html.data
+        )  # title was projected.
+        assert 'int_table_whole_row_idx' in index_df_html.data  # index name
+        assert 'a, b, c' in index_df_html.data  # index columns
+        assert 'True' in index_df_html.data  # is a unique index
 
     @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
     def test_varying_invocation(self, sql_magic, ipython_namespace, invocation: str):
@@ -361,7 +361,9 @@ class TestSingleRelationCommand:
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
-        assert html_contents.startswith('<br />\n<h2>View "str_int_view" Definition</h2>')
+        assert html_contents.startswith(
+            '<br />\n<h2>View <code>str_int_view</code> Definition</h2>'
+        )
         # Some dialects include a 'CREATE VIEW' statement, others just start with 'select\n', and will vary by case.
         matcher = re.compile(
             '.*<pre>.*select.*s.str_id, s.int_col.*</pre>$',
@@ -379,7 +381,7 @@ class TestSingleRelationCommand:
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
         assert html_contents.startswith(
-            '<br />\n<h2>View "public.str_int_view" Definition</h2>'
+            '<br />\n<h2>View <code>public.str_int_view</code> Definition</h2>'
         ), html_contents
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
