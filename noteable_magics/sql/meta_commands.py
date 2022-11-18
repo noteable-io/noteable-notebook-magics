@@ -408,7 +408,7 @@ class SingleRelationCommand(MetaCommand):
                 display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
                 html_buf = []
                 html_buf.append('<br />')
-                html_buf.append(f'<h2>View "{display_view_name}" Definition</h2>')
+                html_buf.append(f'<h2>View <code>{display_view_name}</code> Definition</h2>')
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
@@ -418,7 +418,7 @@ class SingleRelationCommand(MetaCommand):
             # presentation.
             index_df = index_dataframe(inspector, relation_name, schema)
             if len(index_df):
-                display(index_df)
+                display(secondary_dataframe_to_html(index_df))
 
         return main_relation_df, False
 
@@ -448,14 +448,17 @@ def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]
     for i_d in sorted(index_dicts, key=lambda d: d['name']):
         index_names.append(i_d['name'])
         column_lists.append(', '.join(i_d['column_names']))  # List[str] to nice comma sep string.
-        uniques.append(i_d['unique'])
+
+        # Was this index UNIQUE? Wackily, if we ask sqlite, it returns 0 or 1. CRDB at least
+        # returns expected boolean. So coerce to bool for consistency.
+        uniques.append(bool(i_d['unique']))
 
         # Not doing anything with optional 'column_sorting' or 'dialect_options' at this time.
         # (although column_sorting should be fairly easy to spice in)
 
     df = DataFrame({'Index': index_names, 'Columns': column_lists, 'Unique': uniques})
 
-    title = f'Table "{displayable_relation_name(schema, table_name)}" Indices'
+    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Indices'
 
     return set_dataframe_metadata(df, title=title)
 
@@ -472,6 +475,38 @@ def set_dataframe_metadata(df: DataFrame, title=None) -> DataFrame:
     df.attrs['noteable'] = {'defaults': {'title': title}}
 
     return df
+
+
+def secondary_dataframe_to_html(df: DataFrame) -> HTML:
+    """Because DEX expects at most one dataframe directly display()ed from a cell
+    (the DEX control metadata is scoped singularly at the cell level), we cannot
+    differentiate titles, display style, etc. between multiple dataframes emitted
+    by a cell. So we need to hand-convert these additional datagframes down to
+    HTML explicitly.
+    """
+    html_buf = []
+    html_buf.append('<br />')
+    if title := defaults_get(df, 'noteable.defaults.title'):
+        html_buf.append(f'<h2>{title}</h2>')
+        html_buf.append('<br />')
+
+    html_buf.append(df.to_html(index=False))
+
+    return HTML('\n'.join(html_buf))
+
+
+def defaults_get(df: DataFrame, attribute_path: str) -> Optional[str]:
+    elements = attribute_path.split(
+        '.'
+    )  # "noteable.defaults.title" -> ['noteable', 'defaults', 'title']
+    current = df.attrs
+    for elem in elements:
+        if elem not in current:
+            return None
+
+        current = current[elem]
+
+    return current
 
 
 class HelpCommand(MetaCommand):
@@ -528,6 +563,7 @@ class HelpCommand(MetaCommand):
 
 
 def displayable_relation_name(schema: Optional[str], relation_name: str) -> str:
+    """If schema was specified, return dotted string. Otherwise just the relation name."""
     if schema:
         return f'{schema}.{relation_name}'
     else:
