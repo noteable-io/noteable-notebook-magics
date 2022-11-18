@@ -501,7 +501,7 @@ def defaults_get(df: DataFrame, attribute_path: str) -> Optional[str]:
     )  # "noteable.defaults.title" -> ['noteable', 'defaults', 'title']
     current = df.attrs
     for elem in elements:
-        if not elem in current:
+        if elem not in current:
             return None
 
         current = current[elem]
