@@ -439,11 +439,22 @@ class SingleRelationCommand(MetaCommand):
 def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]) -> DataFrame:
     """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
 
-    index_dicts: List[Dict[str, Any]] = inspector.get_indexes(table_name, schema)
-
     index_names: List[str] = []
     column_lists: List[str] = []
     uniques: List[bool] = []
+
+    # Primary key index is ... treated special by SQLA for some reason. Sigh.
+    primary_index_dict = inspector.get_pk_constraint(table_name, schema)
+
+    if primary_index_dict:
+        unnamed_name = '(unnamed primary key)'
+        # Is a little ambiguous if 'name' will _always_ be in the returned dict? In
+        # sqlite it is, but returns None, so be double-delicate here.
+        index_names.append(primary_index_dict.get('name', unnamed_name) or unnamed_name)
+        column_lists.append(', '.join(primary_index_dict['constrained_columns']))
+        uniques.append(True)  # PK index is definitely unique.
+
+    index_dicts: List[Dict[str, Any]] = inspector.get_indexes(table_name, schema)
 
     for i_d in sorted(index_dicts, key=lambda d: d['name']):
         index_names.append(i_d['name'])

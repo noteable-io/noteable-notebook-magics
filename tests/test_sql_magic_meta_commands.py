@@ -282,10 +282,17 @@ class TestViewsCommand:
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestSingleRelationCommand:
     @pytest.mark.parametrize(
-        'handle,defaults_include_int8', [('@cockroach', True), ('@sqlite', False)]
+        'handle,defaults_include_int8,expected_pk_index_name',
+        [('@cockroach', True, 'int_table_pkey'), ('@sqlite', False, '(unnamed primary key)')],
     )
     def test_table_without_schema(
-        self, sql_magic, ipython_namespace, handle: str, defaults_include_int8: bool, mock_display
+        self,
+        sql_magic,
+        ipython_namespace,
+        handle: str,
+        defaults_include_int8: bool,
+        expected_pk_index_name: str,
+        mock_display,
     ):
         sql_magic.execute(fr'{handle} \describe int_table')
         results = ipython_namespace['_']
@@ -318,9 +325,19 @@ class TestSingleRelationCommand:
         assert (
             '<h2>Table <code>int_table</code> Indices</h2>' in index_df_html.data
         )  # title was projected.
-        assert 'int_table_whole_row_idx' in index_df_html.data  # index name
-        assert 'a, b, c' in index_df_html.data  # index columns
-        assert 'True' in index_df_html.data  # is a unique index
+
+        # Convert the HTML spelling of the indices back into a DF to test the output.
+        df_from_index_html = pd.read_html(index_df_html.data)[0]
+
+        # primary key index, secondary index should be be described.
+        assert len(df_from_index_html) == 2
+        assert df_from_index_html['Index'].tolist() == [
+            expected_pk_index_name,
+            'int_table_whole_row_idx',
+        ]
+        assert df_from_index_html['Columns'].tolist() == ['a', 'a, b, c']
+        # Both indices are unique.
+        assert df_from_index_html['Unique'].tolist() == [True, True]
 
     @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
     def test_varying_invocation(self, sql_magic, ipython_namespace, invocation: str):
