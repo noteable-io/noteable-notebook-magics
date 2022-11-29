@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -85,8 +87,23 @@ class MetaCommand:
         to be called with it or not."""
         raise NotImplementedError
 
-    def get_inspector(self) -> Inspector:
-        return inspect(self.conn._engine)
+    def get_inspector(self) -> SchemaStrippingInspector:
+        engine = self.conn._engine
+        underlying_inspector = inspect(engine)
+
+        # BigQuery dialect inspector at least curiously includes schema name + '.'
+        # in the relation name portion of the results of get_table_names(), get_view_names(),
+        # which then breaks code in our SingleRelationCommand (describe structure of single table/view)
+        # So, wrap with a proxy Inspector implementation which ensures that those two methods
+        # will not return relation names of the form 'schema.relation'.
+
+        # (Why do this unconditionally, and not just for when engine.name == 'bigquery'?
+        #  Because we want our test suite to cover all methods of this implementation, but
+        #  we don't explicitly test against BigQuery directly in the test suite. Non-BigQuery
+        #  dialects will return table and view name lists w/o the schema prefix prepended, so
+        #  will just cost us an iota more CPU in exchange for greater confidence)
+
+        return SchemaStrippingInspector(underlying_inspector)
 
 
 class SchemasCommand(MetaCommand):
@@ -195,7 +212,7 @@ class ViewsCommand(MetaCommand):
 
 
 def relation_names(
-    inspector: Inspector,
+    inspector: SchemaStrippingInspector,
     argument: str,
     include_tables=True,
     include_views=True,
@@ -272,7 +289,7 @@ def relation_names(
 
 
 def parse_schema_and_relation_glob(
-    inspector: Inspector, schema_and_possible_relation: str
+    inspector: SchemaStrippingInspector, schema_and_possible_relation: str
 ) -> Tuple[str, str]:
     """Return tuple of schema name glob, table glob given a single string
     like '*', 'public.*', 'foo???', ...
@@ -436,7 +453,9 @@ class SingleRelationCommand(MetaCommand):
         return (schema, table)
 
 
-def index_dataframe(inspector: Inspector, table_name: str, schema: Optional[str]) -> DataFrame:
+def index_dataframe(
+    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+) -> DataFrame:
     """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
 
     index_names: List[str] = []
@@ -616,3 +635,51 @@ def run_meta_command(
 
     instance = implementation_class(shell, conn, assign_to_varname)
     instance.do_run(invoker, args)
+
+
+class SchemaStrippingInspector:
+    """Proxy implementation that removes 'schema.' prefixing from results of underlying
+    get_table_names() and get_view_names(). BigQuery dialect inspector seems to include
+    the schema (dataset) name in those return results, unlike other dialects.
+    """
+
+    def __init__(self, underlying_inspector: Inspector):
+        self.underlying_inspector = underlying_inspector
+
+    # Direct passthrough attributes / methods
+    @property
+    def default_schema_name(self) -> str:
+        return self.underlying_inspector.default_schema_name
+
+    def get_schema_names(self) -> List[str]:
+        return self.underlying_inspector.get_schema_names()
+
+    def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_columns(relation_name, schema=schema)
+
+    def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
+        return self.underlying_inspector.get_view_definition(view_name, schema=schema)
+
+    def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
+        return self.underlying_inspector.get_pk_constraint(table_name, schema=schema)
+
+    def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_indexes(table_name, schema=schema)
+
+    # Now the value-adding filtering methods.
+    def get_table_names(self, schema: Optional[str] = None) -> List[str]:
+        names = self.underlying_inspector.get_table_names(schema)
+        return self._strip_schema(names, schema)
+
+    def get_view_names(self, schema: Optional[str] = None) -> List[str]:
+        names = self.underlying_inspector.get_view_names(schema)
+        return self._strip_schema(names, schema)
+
+    def _strip_schema(self, names: List[str], schema: Optional[str] = None) -> List[str]:
+        if not schema:
+            return names
+
+        prefix = f'{schema}.'
+        # Remove "schema." from the start of each name if starts with.
+        # (name[False:] is equiv to name[0:], 'cause python bools are subclasses of ints)
+        return [name[name.startswith(prefix) and len(prefix) :] for name in names]

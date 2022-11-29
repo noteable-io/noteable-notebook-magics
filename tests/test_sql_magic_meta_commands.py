@@ -8,6 +8,7 @@ from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.meta_commands import (
+    SchemaStrippingInspector,
     _all_command_classes,
     convert_relation_glob_to_regex,
     parse_schema_and_relation_glob,
@@ -523,6 +524,30 @@ class TestParseSchemaAndRelationGlob:
         assert parse_schema_and_relation_glob(mock_inspector, '*') == ('first', '*')
         assert parse_schema_and_relation_glob(mock_inspector, '.') == ('first', '*')
         assert parse_schema_and_relation_glob(mock_inspector, 'schema.foo*') == ('schema', 'foo*')
+
+
+class TestSchemaStrippingInspector:
+    """Most of the methods of SchemaStrippingInspector will have been tested implicitly by this
+    test suite already, but when used against CRDB and sqlite, it won't have needed to actually
+    strip schema prefixes from the underlying inspector results. So let's act like we're wrapping
+    BigQuery here and have the underlying results include the schema name mixed in, which then
+    SchemaStrippingInspector should strip out"""
+
+    def test_strip_schema(self):
+        ssi = SchemaStrippingInspector(None)
+        assert ssi._strip_schema(['foo.t1', 'foo.t2'], 'foo') == ['t1', 't2']
+
+    def test_get_table_names_does_strip_schema(self, mocker):
+        mock_underlying = mocker.Mock(Inspector)
+        mock_underlying.get_table_names.side_effect = lambda _: ['foo.t1', 'foo.t2']
+
+        assert SchemaStrippingInspector(mock_underlying).get_table_names('foo') == ['t1', 't2']
+
+    def test_get_view_names_does_strip_schema(self, mocker):
+        mock_underlying = mocker.Mock(Inspector)
+        mock_underlying.get_view_names.side_effect = lambda _: ['foo.v1', 'foo.v2']
+
+        assert SchemaStrippingInspector(mock_underlying).get_view_names('foo') == ['v1', 'v2']
 
 
 @pytest.mark.parametrize(
