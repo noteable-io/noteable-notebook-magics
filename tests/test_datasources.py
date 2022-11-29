@@ -8,10 +8,21 @@ from uuid import uuid4
 
 import pkg_resources
 import pytest
+import structlog
+from structlog.testing import LogCapture
 
 from noteable_magics import datasource_postprocessing, datasources
+from noteable_magics.logging import configure_logging
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.run import _COMMIT_BLACKLIST_DIALECTS
+
+
+@pytest.fixture
+def log_output() -> LogCapture:
+    configure_logging(True, 'INFO', 'DEBUG')
+    capturer = LogCapture()
+    structlog.configure(processors=[capturer])
+    return capturer
 
 
 @pytest.fixture
@@ -358,7 +369,45 @@ class TestBootstrapDatasource:
             not case_data.meta_dict['sqlmagic_autocommit']
         )
 
-    def test_bigquery_particulars(self, datasource_id):
+    def test_broken_postgres_is_silent_noop(self, datasource_id, log_output):
+        case_data = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['psycopg2-binary'],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'postgresql',
+                'sqlmagic_autocommit': True,
+                'name': 'My PostgreSQL',
+            },
+            dsn_dict={
+                'username': 'scott',
+                'password': 'tiger',
+                'host': 'https://bogus.org',  # is a URL fragment, not a host name!
+                'port': 5432,
+                'database': 'postgres',
+            },
+        )
+
+        initial_len = len(Connection.connections)
+
+        # Trying to bootstrap this one will fail somewhat silently -- will log exception, but
+        # ultimately not having added new entry into Connection.connections.
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_len
+
+        assert len(log_output.entries) == 2
+
+        e1 = log_output.entries[0]
+        assert e1['event'] == 'Error creating new noteable_magics.sql.Connection'
+        assert e1['connect_str'] == 'postgresql://scott:tiger@[https://bogus.org]:5432/postgres'
+
+        e2 = log_output.entries[1]
+        assert e2['event'] == 'Unable to bootstrap datasource'
+        assert e2['datasource_id'] == datasource_id
+
+    def test_bigquery_particulars(self, datasource_id, log_output):
         """Ensure that we convert connect_args['credential_file_contents'] to
         become its own file, and (indirectly) that we promote all elements in
         connect_args to be toplevel create_engine_kwargs
@@ -381,17 +430,32 @@ class TestBootstrapDatasource:
             },
         )
 
-        # Expect the ultimate call to sqlalchemy.create_engine() to fail, because
+        # Expect the ultimate call to sqlalchemy.create_engine() to fail softly, because
         # we're not really feeding it a legit google credentials file at this time
         # (the 'credentials_file_contents' in the sample data is really just {"foo": "bar"}).
         #
         # Had postprocess_bigquery() not done the promotion from connect_args -> create_engine_kwargs, would
         # die a very different death, complaining about cannot find any credentials anywhere
         # since not passed in and the google magic env var isn't set.
-        with pytest.raises(ValueError, match='Service account info was not in the expected format'):
-            datasources.bootstrap_datasource(
-                datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
-            )
+
+        initial_len = len(Connection.connections)
+
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        # No successful side effect.
+        assert len(Connection.connections) == initial_len
+
+        assert len(log_output.entries) == 2
+
+        e1 = log_output.entries[0]
+        assert e1['event'] == 'Error creating new noteable_magics.sql.Connection'
+        assert e1['connect_str'] == 'bigquery://'
+
+        e2 = log_output.entries[1]
+        assert e2['event'] == 'Unable to bootstrap datasource'
+        assert e2['datasource_id'] == datasource_id
 
         # But we do expect the postprocessor to have run, and to have created this
         # file properly....

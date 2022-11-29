@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import pkg_resources
+import structlog
 from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
@@ -15,6 +16,8 @@ from noteable_magics.sql.run import add_commit_blacklist_dialect
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
 from noteable_magics.datasource_postprocessing import post_processor_by_drivername
+
+logger = structlog.get_logger(__name__)
 
 
 def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
@@ -29,7 +32,6 @@ def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
     # Look for *.meta.json files.
     for ds_meta_json_path in secrets_dir.glob('*.meta_js'):
         # Derive filenames for the expected related files
-
         bootstrap_datasource_from_files(ds_meta_json_path)
 
 
@@ -114,12 +116,26 @@ def bootstrap_datasource(
     human_name = metadata.get('name')
 
     # Teach ipython-sql about it!
-    noteable_magics.sql.connection.Connection.set(
-        connection_url,
-        name=f'@{datasource_id}',
-        human_name=human_name,
-        **create_engine_kwargs,
-    )
+    try:
+        noteable_magics.sql.connection.Connection.set(
+            connection_url,
+            name=f'@{datasource_id}',
+            human_name=human_name,
+            **create_engine_kwargs,
+        )
+    except Exception:
+        # Eat any exceptions coming up from trying to describe the connection down into SQLAlchemy.
+        # Bad data entered about the datasource that SQLA hates?
+        #
+        # If we don't eat this, then it will ultimately break us before we make the call to register
+        # the SQL Magics entirely, and will get errors like '%%sql magic unknown', which is far
+        # worse than attempts to use a broken datasource being met with it being unknown, but other
+        # datasources working fine.
+        logger.exception(
+            'Unable to bootstrap datasource',
+            datasource_id=datasource_id,
+            datasource_name=human_name,
+        )
 
 
 ##
