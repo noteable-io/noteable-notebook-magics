@@ -48,7 +48,7 @@ def configure_logging(dev_logging: bool, ext_log_level, app_log_level) -> None:
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=not dev_logging,
     )
 
     try:
