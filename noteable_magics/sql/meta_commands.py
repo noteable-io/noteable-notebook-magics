@@ -88,9 +88,8 @@ class MetaCommand:
     def run(self, invoked_as: str, args: List[str]) -> Optional[Tuple[DataFrame, bool]]:
         """Implement the meta command.
 
-        Should either return a pair of the 'primary' dataframe, and bool for if display() needs
-        to be called with it or not. Otherwise return None and it it assumed that display()
-        has already been called on something which wasn't a dataframe to bind to a var.
+        Subclass should return a pair of the 'primary' dataframe, and bool for if display() needs
+        to be called with it or not.
         """
         raise NotImplementedError
 
