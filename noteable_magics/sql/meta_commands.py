@@ -85,7 +85,7 @@ class MetaCommand:
         # returning None, which gets handled later than this.
         self.shell.user_ns['_'] = df
 
-    def run(self, invoked_as: str, args: List[str]) -> Optional[Tuple[DataFrame, bool]]:
+    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         """Implement the meta command.
 
         Subclass should return a pair of the 'primary' dataframe, and bool for if display() needs
