@@ -63,7 +63,15 @@ class MetaCommand:
         self.assign_to_varname = assign_to_varname
 
     def do_run(self, invoked_as: str, args: List[str]):
-        df, need_display_call = self.run(invoked_as, args)
+        maybe_tuple = self.run(invoked_as, args)
+
+        if not maybe_tuple:
+            # The command implementation didn't return anything. It must have
+            # taken care of displaying whatever it wanted itself. No variable
+            # assignments will happen.
+            return
+
+        df, need_display_call = maybe_tuple
 
         if need_display_call:
             display(df)
@@ -81,10 +89,13 @@ class MetaCommand:
         # returning None, which gets handled later than this.
         self.shell.user_ns['_'] = df
 
-    def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
+    def run(self, invoked_as: str, args: List[str]) -> Optional[Tuple[DataFrame, bool]]:
         """Implement the meta command.
-        Should return a pair of the 'primary' dataframe, and if display() needs
-        to be called with it or not."""
+
+        Should either return a pair of the 'primary' dataframe, and bool for if display() needs
+        to be called with it or not. Otherwise return None and it it assumed that display()
+        has already been called on something which wasn't a dataframe to bind to a var.
+        """
         raise NotImplementedError
 
     def get_inspector(self) -> SchemaStrippingInspector:
@@ -107,11 +118,11 @@ class MetaCommand:
 
 
 class SchemasCommand(MetaCommand):
-    """List all the schemas (namespaces for tables, views) within a database."""
+    """List all the schemas within the database."""
 
     """\nIf invoked with trailing '+', will also include the count of tables and views within each schema."""
 
-    description = "List schemas (namespaces) within database"
+    description = "List schemas within database."
     invokers = ['\\schemas', '\\schemas+', '\\dn', '\\dn+']
     accepts_args = False
 
@@ -158,9 +169,9 @@ class SchemasCommand(MetaCommand):
 
 
 class RelationsCommand(MetaCommand):
-    """List all the relations (tables and views) within one or more schemas (namespaces) of a database."""
+    """List all the relations (tables and views) within one or more schemas of the database."""
 
-    description = "List names of tables and/or views within database"
+    description = "List names of tables and/or views within database."
     invokers = [r'\list', r'\dr']
     accepts_args = True
 
@@ -176,9 +187,9 @@ class RelationsCommand(MetaCommand):
 
 
 class TablesCommand(MetaCommand):
-    """List all the tables (not views) within one or more schemas (namespaces) of a database."""
+    """List all the tables (not views) within one or more schemas of a database."""
 
-    description = "List names of tables within database"
+    description = "List names of tables within database."
     invokers = [r'\tables', r'\dt']
     accepts_args = True
 
@@ -194,9 +205,9 @@ class TablesCommand(MetaCommand):
 
 
 class ViewsCommand(MetaCommand):
-    """List all the views (not tables) within one or more schemas (namespaces) of a database."""
+    """List all the views (not tables) within one or more schemas of the database."""
 
-    description = "List names of views within database"
+    description = "List names of views within database."
     invokers = [r'\views', r'\dv']
     accepts_args = True
 
@@ -352,7 +363,7 @@ def convert_relation_glob_to_regex(glob: str, imply_prefix=False) -> re.Pattern:
 
 
 class SingleRelationCommand(MetaCommand):
-    """Describe a single relation"""
+    """Describe a single relation."""
 
     description = "Show the structure of a single relation."
     invokers = [r'\describe', r'\d']
@@ -580,7 +591,7 @@ class HelpCommand(MetaCommand):
             invokers.append(', '.join(cmd.invokers))
             docstrings.append(cmd.__doc__.strip())
 
-        return (
+        help_df = set_dataframe_metadata(
             DataFrame(
                 data={
                     'Command': invokers,
@@ -588,8 +599,16 @@ class HelpCommand(MetaCommand):
                     'Documentation': docstrings,
                 }
             ),
-            True,
+            title="SQL Introspection Commands",
         )
+
+        # We do a better job displaying this info as static HTML than
+        # DEX does currently by default. Can be revisited after we can
+        # control how DEX displays this dataframe by default.
+        display(secondary_dataframe_to_html(help_df))
+
+        # We displayed it how we like, and expressly do not want DEX to touch it.
+        return (help_df, False)
 
 
 def displayable_relation_name(schema: Optional[str], relation_name: str) -> str:

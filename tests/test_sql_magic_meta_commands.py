@@ -446,6 +446,12 @@ class TestHelp:
         assert len(results) == len(_all_command_classes) - 1  # avoids talking about HelpCommand
         assert results.columns.tolist() == ['Command', 'Description', 'Documentation']
 
+        # Each description and documentation value should end with a period
+        for column in ['Description', 'Documentation']:
+            assert all(
+                value.endswith('.') for value in results[column]
+            ), f"{column} strings should be full sentences ending with a period: {[s for s in results[column] if not s.endswith('.')]}"
+
     # Both these specific commands should regurgitate the same help row.
     @pytest.mark.parametrize('cmdname', [r'\schemas', r'\dn+'])
     def test_single_topic_help(self, cmdname, sql_magic, ipython_namespace):
@@ -454,7 +460,7 @@ class TestHelp:
 
         assert len(results) == 1
         assert results.columns.tolist() == ['Command', 'Description', 'Documentation']
-        assert results['Description'][0] == 'List schemas (namespaces) within database'
+        assert results['Description'][0] == 'List schemas within database.'
         assert results['Command'][0] == r'\schemas, \schemas+, \dn, \dn+'
         assert results['Documentation'][0].startswith('List all the schemas')
 
@@ -485,8 +491,10 @@ class TestMisc:
 
         assert type(help_df) is pd.DataFrame
         assert help_df.columns.tolist() == ['Command', 'Description', 'Documentation']
+
+        # Will have displayed a prerendered HTML table of the help dataframe.
         assert (
-            'List all the relations (tables and views)' in out
+            '<IPython.core.display.HTML object>' in out
         )  # ... amoungst other things that \\help outputs!
 
 
