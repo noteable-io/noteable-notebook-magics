@@ -63,15 +63,11 @@ class MetaCommand:
         self.assign_to_varname = assign_to_varname
 
     def do_run(self, invoked_as: str, args: List[str]):
-        maybe_tuple = self.run(invoked_as, args)
+        """Call down into subclass's `run()`, call `display()` if needed,
+        and assign to variable.
+        """
 
-        if not maybe_tuple:
-            # The command implementation didn't return anything. It must have
-            # taken care of displaying whatever it wanted itself. No variable
-            # assignments will happen.
-            return
-
-        df, need_display_call = maybe_tuple
+        df, need_display_call = self.run(invoked_as, args)
 
         if need_display_call:
             display(df)
