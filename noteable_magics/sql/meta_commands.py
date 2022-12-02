@@ -471,7 +471,7 @@ def index_dataframe(
     # Primary key index is ... treated special by SQLA for some reason. Sigh.
     primary_index_dict = inspector.get_pk_constraint(table_name, schema)
 
-    if primary_index_dict:
+    if primary_index_dict and primary_index_dict.get('constrained_columns'):
         unnamed_name = '(unnamed primary key)'
         # Is a little ambiguous if 'name' will _always_ be in the returned dict? In
         # sqlite it is, but returns None, so be double-delicate here.
