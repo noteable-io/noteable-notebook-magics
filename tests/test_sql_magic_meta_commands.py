@@ -395,6 +395,9 @@ class TestSingleRelationCommand:
 
         sql_magic.execute(r'@cockroach \describe public.str_int_view')
 
+        df = mock_display.call_args_list[0].args[0]
+        assert df.attrs['noteable']['decoration']['title'] == 'View "public.str_int_view" Structure'
+
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
@@ -412,6 +415,8 @@ class TestSingleRelationCommand:
         assert len(mock_display.call_args_list) == 1
 
         df = mock_display.call_args_list[0].args[0]
+        assert df.attrs['noteable']['decoration']['title'] == 'Table "str_table" Structure'
+
         assert isinstance(df, pd.DataFrame)
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
