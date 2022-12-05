@@ -291,7 +291,10 @@ def relation_names(
         # Only need to project this column if possibly displaying more than one kind of relation
         data['Kind'] = relation_types
 
-    return DataFrame(data), True
+    # Return dataframe and need to have display() called on it.
+    # (Not applying a title to the dataframe at this time because all of the possibilities
+    #  are currently daunting -- 'Views in Schema "public" Matching "v_*"' and whatnot.)
+    return (DataFrame(data), True)
 
 
 def parse_schema_and_relation_glob(
@@ -387,6 +390,9 @@ class SingleRelationCommand(MetaCommand):
                 else:
                     msg = f'Relation {relation_name} does not exist'
                 raise MetaCommandException(msg)
+            rtype = 'Table'
+        else:
+            rtype = 'View'
 
         column_dicts = inspector.get_columns(relation_name, schema=schema)
 
@@ -420,7 +426,12 @@ class SingleRelationCommand(MetaCommand):
         if any(comments):
             data['Comment'] = comments
 
-        main_relation_df = DataFrame(data=data)
+        displayable_rname = displayable_relation_name(schema, relation_name)
+
+        main_relation_df = set_dataframe_metadata(
+            DataFrame(data=data), title=f'{rtype} "{displayable_rname}" Structure'
+        )
+
         display(main_relation_df)
 
         if is_view:
@@ -471,7 +482,9 @@ def index_dataframe(
     # Primary key index is ... treated special by SQLA for some reason. Sigh.
     primary_index_dict = inspector.get_pk_constraint(table_name, schema)
 
-    if primary_index_dict:
+    # If it returned something truthy with nonempty constrained_columns, then
+    # we assume it described a real primary key constraint here.
+    if primary_index_dict and primary_index_dict.get('constrained_columns'):
         unnamed_name = '(unnamed primary key)'
         # Is a little ambiguous if 'name' will _always_ be in the returned dict? In
         # sqlite it is, but returns None, so be double-delicate here.
@@ -505,10 +518,7 @@ def set_dataframe_metadata(df: DataFrame, title=None) -> DataFrame:
     # This is a stub for now. Expect a good number of additional kwargs to grow once
     # Shoup / Noel and I get together.
 
-    # This structure is expected to change. And dx -> Dex doesn't notice any of these
-    # at this point in time, so this is a christmas list right now.
-
-    df.attrs['noteable'] = {'defaults': {'title': title}}
+    df.attrs['noteable'] = {'decoration': {'title': title}}
 
     return df
 
@@ -522,7 +532,7 @@ def secondary_dataframe_to_html(df: DataFrame) -> HTML:
     """
     html_buf = []
     html_buf.append('<br />')
-    if title := defaults_get(df, 'noteable.defaults.title'):
+    if title := defaults_get(df, 'noteable.decoration.title'):
         html_buf.append(f'<h2>{title}</h2>')
         html_buf.append('<br />')
 
@@ -534,7 +544,7 @@ def secondary_dataframe_to_html(df: DataFrame) -> HTML:
 def defaults_get(df: DataFrame, attribute_path: str) -> Optional[str]:
     elements = attribute_path.split(
         '.'
-    )  # "noteable.defaults.title" -> ['noteable', 'defaults', 'title']
+    )  # "noteable.decoration.title" -> ['noteable', 'decoration', 'title']
     current = df.attrs
     for elem in elements:
         if elem not in current:

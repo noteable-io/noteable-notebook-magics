@@ -395,12 +395,29 @@ class TestSingleRelationCommand:
 
         sql_magic.execute(r'@cockroach \describe public.str_int_view')
 
+        df = mock_display.call_args_list[0].args[0]
+        assert df.attrs['noteable']['decoration']['title'] == 'View "public.str_int_view" Structure'
+
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
         assert html_contents.startswith(
             '<br />\n<h2>View <code>public.str_int_view</code> Definition</h2>'
         ), html_contents
+
+    def test_against_table_without_a_primary_key(self, sql_magic, ipython_namespace, mock_display):
+        # str_table on sqlite will not have any primary key or any indices at all
+        # (all tables in cockroach have an implicit PK, so can't test with it)
+
+        # So the only output should be the dataframe. Not a subsequent HTML blob describing indices.
+        sql_magic.execute(r'@sqlite \d str_table')
+
+        assert len(mock_display.call_args_list) == 1
+
+        df = mock_display.call_args_list[0].args[0]
+        assert df.attrs['noteable']['decoration']['title'] == 'Table "str_table" Structure'
+
+        assert isinstance(df, pd.DataFrame)
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
         sql_magic.execute(r'@sqlite \d')
