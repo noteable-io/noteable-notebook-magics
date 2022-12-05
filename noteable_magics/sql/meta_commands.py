@@ -378,8 +378,6 @@ class SingleRelationCommand(MetaCommand):
 
         schema, relation_name = self._split_schema_table(args[0])
 
-        displayable_rname = displayable_relation_name(schema, relation_name)
-
         inspector = self.get_inspector()
 
         is_view = relation_name in inspector.get_view_names(schema)
@@ -428,9 +426,12 @@ class SingleRelationCommand(MetaCommand):
         if any(comments):
             data['Comment'] = comments
 
+        displayable_rname = displayable_relation_name(schema, relation_name)
+
         main_relation_df = set_dataframe_metadata(
             DataFrame(data=data), title=f'{rtype} "{displayable_rname}" Structure'
         )
+
         display(main_relation_df)
 
         if is_view:
