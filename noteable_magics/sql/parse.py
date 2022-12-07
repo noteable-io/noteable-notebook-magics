@@ -8,9 +8,7 @@ def parse(cell, config) -> Dict[str, Optional[Union[str, bool]]]:
 
     result = {"connection": "", "sql": "", "result_var": None, 'skip_boxing_scalar_result': False}
 
-    breakpoint()
-
-    pieces = cell.split()
+    pieces = cell.split(' ', 4)
 
     if not pieces:
         return result
