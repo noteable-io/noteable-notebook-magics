@@ -18,15 +18,36 @@ class TestSqlMagic:
         assert results['a'].tolist() == [1, 4]
         assert results['b'].tolist() == [2, 5]
 
-    def test_returning_scalar_when_only_single_value_resultset(self, sql_magic, ipython_shell):
-        """Should return bare scalar when result set was single row/column"""
-        results = sql_magic.execute('@sqlite select 1 + 2')
+    def test_returning_scalar_when_requested_and_single_value_resultset(
+        self, sql_magic, ipython_shell
+    ):
+        """Should return bare scalar when result set was single row/column and asked"""
+        results = sql_magic.execute('@sqlite #scalar select 1 + 2')
         assert isinstance(results, int)
         assert results == 3
 
-    def test_scalars_assigned_to_variable_just_fine(self, sql_magic, ipython_shell):
-        results = sql_magic.execute('@sqlite the_sum << select 1 + 2')
+    def test_dataframe_returned_if_nonscalar_result_despite_asking_for_scalar(
+        self, sql_magic, ipython_shell
+    ):
+        """Despite asking for scalar, if result is dataframe that's what you get"""
 
+        # Multiple columns.
+        results = sql_magic.execute('@sqlite #scalar select 1 as a, 2 as b')
+        assert isinstance(results, pd.DataFrame)
+        assert len(results) == 1
+
+        assert results['a'].tolist() == [1]
+        assert results['b'].tolist() == [2]
+
+        # Likewise multiple rows, single column.
+        results = sql_magic.execute('@sqlite #scalar select a from int_table')
+        assert isinstance(results, pd.DataFrame)
+
+    def test_returning_scalar_when_requested_and_single_value_resultset_assigns_variable(
+        self, sql_magic, ipython_shell
+    ):
+        """Should return + assign bare scalar when result set was single row/column and asked"""
+        results = sql_magic.execute('@sqlite the_sum << #scalar select 1 + 2')
         assert isinstance(results, int)
         assert results == 3
 
@@ -107,7 +128,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['a_value'] = a_value
 
         ## jinjasql expansion!
-        results = sql_magic.execute('@sqlite select b from int_table where a = {{a_value}}')
+        results = sql_magic.execute('@sqlite #scalar select b from int_table where a = {{a_value}}')
         # Single row + column == scalar, as from populated_sqlite_database
         assert isinstance(results, int)
         assert results == expected_b_value
@@ -127,7 +148,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['str_id_val'] = 'a'
 
         results = sql_magic.execute(
-            '@sqlite select int_col from str_table where str_id = {{str_id_val}}'
+            '@sqlite #scalar select int_col from str_table where str_id = {{str_id_val}}'
         )
 
         # Scalar result.
@@ -138,7 +159,9 @@ class TestJinjaTemplatesWithinSqlMagic:
         """Test template that gets projected column name via jinja2. Requires '|sqlsafe' formatter"""
         ipython_shell.user_ns['ret_col'] = ret_col
 
-        results = sql_magic.execute('@sqlite select {{ret_col | sqlsafe}} from int_table where a=1')
+        results = sql_magic.execute(
+            '@sqlite #scalar select {{ret_col | sqlsafe}} from int_table where a=1'
+        )
 
         # Scalar result.
         assert results == expected_value
@@ -149,7 +172,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['do_filter'] = do_filter
 
         results = sql_magic.execute(
-            '@sqlite select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
+            '@sqlite #scalar select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
         )
 
         if isinstance(expected_values, int):

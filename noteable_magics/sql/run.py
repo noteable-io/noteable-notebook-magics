@@ -78,7 +78,8 @@ def _commit(conn, config):
 jinja_sql = JinjaSql(param_style='named')
 
 
-def run(conn, sql, config, user_namespace):
+def run(conn, sql, config, user_namespace, skip_boxing_scalar_result: bool):
+
     if sql.strip():
         for statement in sqlparse.split(sql):
             first_word = sql.strip().split()[0].lower()
@@ -95,10 +96,7 @@ def run(conn, sql, config, user_namespace):
 
         resultset = ResultSet(result, statement, config)
 
-        if not resultset.is_scalar_value:
-            return resultset.to_dataframe()
-        else:
+        if skip_boxing_scalar_result and resultset.is_scalar_value:
             return resultset.scalar_value
-
-    else:
-        return "Connected: %s" % conn.name
+        else:
+            return resultset.to_dataframe()
