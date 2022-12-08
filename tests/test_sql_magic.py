@@ -18,6 +18,51 @@ class TestSqlMagic:
         assert results['a'].tolist() == [1, 4]
         assert results['b'].tolist() == [2, 5]
 
+    def test_returning_scalar_when_requested_and_single_value_resultset(
+        self, sql_magic, ipython_shell
+    ):
+        """Should return bare scalar when result set was single row/column and asked"""
+        results = sql_magic.execute('@sqlite #scalar select 1 + 2')
+        assert isinstance(results, int)
+        assert results == 3
+
+    def test_dataframe_returned_if_nonscalar_result_despite_asking_for_scalar(
+        self, sql_magic, ipython_shell
+    ):
+        """Despite asking for scalar, if result is dataframe that's what you get"""
+
+        # Multiple columns.
+        results = sql_magic.execute('@sqlite #scalar select 1 as a, 2 as b')
+        assert isinstance(results, pd.DataFrame)
+        assert len(results) == 1
+
+        assert results['a'].tolist() == [1]
+        assert results['b'].tolist() == [2]
+
+        # Likewise multiple rows, single column.
+        results = sql_magic.execute('@sqlite #scalar select a from int_table')
+        assert isinstance(results, pd.DataFrame)
+
+    def test_returning_scalar_when_requested_and_single_value_resultset_assigns_variable(
+        self, sql_magic, ipython_shell
+    ):
+        """Should return + assign bare scalar when result set was single row/column and asked"""
+        results = sql_magic.execute('@sqlite the_sum << #scalar select 1 + 2')
+        assert isinstance(results, int)
+        assert results == 3
+
+        # ... and also bound to var 'the_sum'
+        assert ipython_shell.user_ns['the_sum'] is results
+
+    def test_two_colums_single_row_becomes_dataframe(self, sql_magic, ipython_shell):
+        """Should return dataframe in face of multiple columns / single row"""
+        results = sql_magic.execute('@sqlite select 1 as a, 2 as b')
+        assert isinstance(results, pd.DataFrame)
+        assert len(results) == 1
+
+        assert results['a'].tolist() == [1]
+        assert results['b'].tolist() == [2]
+
     def test_assigment_to_variable(self, sql_magic, ipython_shell):
         """Test that when the 'varname << select ...' syntax is used, the df is returned
         as the main execute result, and varname is side-effect assigned to."""
@@ -83,12 +128,10 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['a_value'] = a_value
 
         ## jinjasql expansion!
-        results = sql_magic.execute('@sqlite select b from int_table where a = {{a_value}}')
-        assert isinstance(results, pd.DataFrame)
-
-        # One row as from populated_sqlite_database
-        assert len(results) == 1
-        assert results['b'].tolist() == [expected_b_value]
+        results = sql_magic.execute('@sqlite #scalar select b from int_table where a = {{a_value}}')
+        # Single row + column == scalar, as from populated_sqlite_database
+        assert isinstance(results, int)
+        assert results == expected_b_value
 
     def test_in_query_template(self, sql_magic, ipython_shell):
         """Test an in clause expanded from a list. Requires '| inclause' formatter"""
@@ -105,29 +148,36 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['str_id_val'] = 'a'
 
         results = sql_magic.execute(
-            '@sqlite select int_col from str_table where str_id = {{str_id_val}}'
+            '@sqlite #scalar select int_col from str_table where str_id = {{str_id_val}}'
         )
 
-        assert len(results) == 1
-        assert results['int_col'].tolist() == [1]
+        # Scalar result.
+        assert results == 1
 
     @pytest.mark.parametrize('ret_col,expected_value', [('a', 1), ('b', 2)])
     def test_sqlsafe(self, sql_magic, ipython_shell, ret_col, expected_value):
         """Test template that gets projected column name via jinja2. Requires '|sqlsafe' formatter"""
         ipython_shell.user_ns['ret_col'] = ret_col
 
-        results = sql_magic.execute('@sqlite select {{ret_col | sqlsafe}} from int_table where a=1')
+        results = sql_magic.execute(
+            '@sqlite #scalar select {{ret_col | sqlsafe}} from int_table where a=1'
+        )
 
-        assert len(results) == 1
-        assert results[ret_col].tolist() == [expected_value]
+        # Scalar result.
+        assert results == expected_value
 
-    @pytest.mark.parametrize('do_filter,expected_values', [(True, [2]), (False, [2, 5])])
+    @pytest.mark.parametrize('do_filter,expected_values', [(True, 2), (False, [2, 5])])
     def test_conditional_filter(self, sql_magic, ipython_shell, do_filter, expected_values):
         """Test jijna conditional in the template"""
         ipython_shell.user_ns['do_filter'] = do_filter
 
         results = sql_magic.execute(
-            '@sqlite select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
+            '@sqlite #scalar select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
         )
 
-        assert results['b'].tolist() == expected_values
+        if isinstance(expected_values, int):
+            # returned just a scalar
+            assert results == expected_values
+        else:
+            # multi-rows comes wrapped in dataframe
+            assert results['b'].tolist() == expected_values

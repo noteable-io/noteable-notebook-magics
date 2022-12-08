@@ -124,7 +124,13 @@ class SqlMagic(Magics, Configurable):
                 return
 
             # Is a vanilla SQL statement. Run it.
-            result = noteable_magics.sql.run.run(conn, parsed["sql"], self, user_ns)
+            result = noteable_magics.sql.run.run(
+                conn,
+                parsed["sql"],
+                self,
+                user_ns,
+                skip_boxing_scalar_result=parsed['skip_boxing_scalar_result'],
+            )
 
             if parsed["result_var"]:
                 # Silently assign the result to this named variable, ENG-4711.
