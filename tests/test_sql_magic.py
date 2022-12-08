@@ -11,7 +11,7 @@ class TestSqlMagic:
         'invocation',
         [
             '@sqlite select a, b from int_table',  # as from line magic invocation
-            '@sqlite\nselect a, b from int_table',  # as from cell magic / Planar Ally
+            '@sqlite\nselect a, b\nfrom int_table',  # as from cell magic / Planar Ally
         ],
     )
     def test_basic_query(self, invocation, sql_magic, ipython_shell):
