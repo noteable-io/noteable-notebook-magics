@@ -489,10 +489,7 @@ class TestBootstrapDatasource:
     def test_had_bad_sqlite_database_files(self, datasource_id, bad_pathname: str):
         """If configured with neither a path within project nor exactly ':memory:', then
         bootstrapping should fail (currently silently w/o creating the datasource)
-
-        (Am thinking about capturing bootstrapping failures into a side system though that
-        SQL magic would consult if / when the desired connection is not found, then return
-        the queued up error message. Then would be best of both worlds.)"""
+        """
 
         human_name = 'My Bad SQLite'
         bad_sqlite = DatasourceJSONs(
@@ -524,6 +521,10 @@ class TestBootstrapDatasource:
         assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
             datasource_id
         )
+
+        # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is
+        # attempted to be used, this get_bootstrapping_failure() message will show back up, surfacing
+        # the real problem to the user.
 
 
 class TestEnsureRequirements:
