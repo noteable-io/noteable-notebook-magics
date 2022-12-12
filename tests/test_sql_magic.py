@@ -4,6 +4,9 @@
 import pandas as pd
 import pytest
 
+from noteable_magics import datasources
+from tests.conftest import DatasourceJSONs
+
 
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestSqlMagic:
@@ -128,7 +131,7 @@ class TestSqlMagic:
         # the cell's output. (This is more integration test-y, or at least higher-level unit-test-y.)
         assert sql_magic.execute('@45645675 select true') is None
         captured = capsys.readouterr()
-        assert captured.out == f"{expected_message}\n"
+        assert captured.err == f"{expected_message}\n"
 
         # Finally, the total number of known connections should have remained the same.
         assert len(Connection.connections) == initial_connection_count
@@ -202,3 +205,40 @@ class TestJinjaTemplatesWithinSqlMagic:
         else:
             # multi-rows comes wrapped in dataframe
             assert results['b'].tolist() == expected_values
+
+
+def test_trying_to_use_broken_bootstrapped_connection(sql_magic, datasource_id, capsys):
+    """ """
+
+    bad_sqlite = DatasourceJSONs(
+        meta_dict={
+            'required_python_modules': [],
+            'allow_datasource_dialect_autoinstall': False,
+            'drivername': 'sqlite',
+            'sqlmagic_autocommit': False,
+            'name': 'Broken at bootstrapping SQLite',
+        },
+        dsn_dict={
+            # Bad / illegal path here.
+            'database': "/usr/bin/bash",
+        },
+    )
+
+    # Will fail bootstrapping and cache failure message for referencing when
+    # the connection is tried to be used in a SQL cell.
+    datasources.bootstrap_datasource(
+        datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
+    )
+
+    # Simulate use in a SQL cell ...
+    results = sql_magic.execute(f'@{datasource_id}\nselect true')
+
+    assert results is None
+
+    captured = capsys.readouterr()
+
+    assert 'Please check data connection configuration' in captured.err
+    assert (
+        'SQLite database files should be located within either the project or in /tmp, got "/usr/bin/bash"'
+        in captured.err
+    )

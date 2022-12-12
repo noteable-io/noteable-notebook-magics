@@ -158,3 +158,27 @@ def postprocess_snowflake(
         db = dsn_dict['database']
 
         dsn_dict['database'] = f'{db}/{schema}'
+
+
+@register_postprocessor('sqlite')
+def postprocess_sqlite(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Reject if named a path outside of either /tmp or the project itself. Do allow :memory:, however!"""
+
+    if 'database' in dsn_dict:
+        cur_path = dsn_dict['database']
+        if cur_path == '' or cur_path == ':memory:':
+            # Empty path is alias for :memory:, and is fine.
+            return
+
+        # Otherwise the database file should resolve to somewhere within the
+        # current working directory (the project) or /tmp.
+
+        allowed_parents = [str(Path.cwd()), '/tmp']
+        requested = str(Path(cur_path).resolve())
+
+        if not any(requested.startswith(allowed_parent) for allowed_parent in allowed_parents):
+            raise ValueError(
+                f'SQLite database files should be located within either the project or in /tmp, got "{cur_path}"'
+            )

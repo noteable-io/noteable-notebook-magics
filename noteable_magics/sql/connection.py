@@ -30,6 +30,7 @@ def rough_dict_get(dct, sought, default=None):
 class Connection(object):
     current = None
     connections: Dict[str, 'Connection'] = {}
+    bootstrapping_failures: Dict[str, str] = {}
 
     def __init__(self, connect_str=None, name=None, human_name=None, **create_engine_kwargs):
         """
@@ -92,9 +93,15 @@ class Connection(object):
                 # noteable_magics.datasources.bootstrap_datasources() call. Most likely reason for that is because
                 # the user created the datasource _after_ when the kernel was launched and other checks and balances
                 # didn't prevent them from trying to gesture to use it in this kernel session.
-                raise UnknownConnectionError(
-                    "Cannot find data connection. If you recently created this connection, please restart the kernel."
-                )
+
+                # Maybe we've a known bootstrapping problem for it?
+                bootstrapping_error = self.get_bootstrapping_failure(connect_str)
+                if bootstrapping_error:
+                    error_msg = f'Please check data connection configuration, correct, and restart kernel:\n{bootstrapping_error}'
+                else:
+                    error_msg = "Cannot find data connection. If you recently created this connection, please restart the kernel."
+
+                raise UnknownConnectionError(error_msg)
             else:
                 # Hmm. Maybe something desperately wrong at inside of a bootstrapped datasource? Just re-raise.
                 raise
@@ -126,7 +133,7 @@ class Connection(object):
         cls,
         descriptor: Union[str, 'Connection'],
         name: Optional[str] = None,
-        **create_engine_kwargs
+        **create_engine_kwargs,
     ):
         """Sets the current database connection. Will construct and cache new one on the fly if needed."""
 
@@ -168,6 +175,25 @@ class Connection(object):
         for c in cls.connections.values():
             if c.name == name or c.human_name == name:
                 return c._engine
+
+    @classmethod
+    def add_bootstrapping_failure(cls, name: str, human_name: Optional[str], error_message: str):
+        """Remember (short) reason why we could not bootstrap a connection by this name,
+        so that we can tell the user about it if / when they try to use the connection
+        in a SQL cell.
+        """
+
+        cls.bootstrapping_failures[name] = error_message
+        if human_name:
+            cls.bootstrapping_failures[human_name] = error_message
+
+    @classmethod
+    def get_bootstrapping_failure(cls, handle_or_id: str) -> Optional[str]:
+        """Return failure-to-bootstrap reason (if any) related to this
+        datasource by either its sql handle / id ("@3464564") or its human
+        name ("My PostgreSQL")
+        """
+        return rough_dict_get(cls.bootstrapping_failures, handle_or_id)
 
     def _close(cls, descriptor):
         if isinstance(descriptor, Connection):
