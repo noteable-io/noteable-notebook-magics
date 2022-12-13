@@ -2,8 +2,8 @@ import logging
 
 import structlog
 from structlog.contextvars import merge_contextvars
-from structlog.testing import LogCapture
 from structlog.exceptions import DropEvent
+from structlog.testing import LogCapture
 
 
 def rename_event_key(logger, method_name, event_dict):

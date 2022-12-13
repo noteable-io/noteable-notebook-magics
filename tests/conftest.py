@@ -10,7 +10,7 @@ from IPython.core.interactiveshell import InteractiveShell
 from managed_service_fixtures import CockroachDetails
 from sqlalchemy.orm import Session
 
-from noteable_magics.logging import configure_logging, RawLogCapture
+from noteable_magics.logging import RawLogCapture, configure_logging
 from noteable_magics.planar_ally_client.api import PlanarAllyAPI
 from noteable_magics.planar_ally_client.types import (
     FileKind,
