@@ -219,7 +219,8 @@ def postprocess_sqlite(
             dsn_dict['database'] = cur_path = outf.name
 
         # The database file should resolve to somewhere /tmp-y (for now)
-        allowed_parents = [Path('/tmp')]
+        # (Why not use Path.is_relative_to, you ask? 'Cause of ancient python 3.8, that's why.)
+        allowed_parents = ['/tmp']
         if os.environ.get('TMPDIR'):
             # And also TMPDIR, which might not be in /tmp.
             #
@@ -227,11 +228,11 @@ def postprocess_sqlite(
             # need to canonicalize the path so the .startswith() test will work.
             # (on OSX at least under pytest, the NamedTemporaryFile above will be
             # something like /var/tmp/... , which is really /private/var/tmp/...)
-            allowed_parents.append(Path(os.environ.get('TMPDIR')).resolve())
+            allowed_parents.append(str(Path(os.environ.get('TMPDIR')).resolve()))
 
-        requested = Path(cur_path).resolve()
+        requested = str(Path(cur_path).resolve())
 
-        if not any(requested.is_relative_to(allowed_parent) for allowed_parent in allowed_parents):
+        if not any(requested.startswith(allowed_parent) for allowed_parent in allowed_parents):
             raise ValueError(
                 f'SQLite database files should be located within /tmp, got "{cur_path}"'
             )
