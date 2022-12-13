@@ -1,13 +1,16 @@
 import json
 from contextlib import contextmanager
-from typing import Tuple
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
+from uuid import uuid4
 
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
 from managed_service_fixtures import CockroachDetails
 from sqlalchemy.orm import Session
 
-from noteable_magics.logging import configure_logging
+from noteable_magics.logging import RawLogCapture, configure_logging
 from noteable_magics.planar_ally_client.api import PlanarAllyAPI
 from noteable_magics.planar_ally_client.types import (
     FileKind,
@@ -23,6 +26,24 @@ pytest_plugins = 'managed_service_fixtures'
 
 @pytest.fixture(scope="session", autouse=True)
 def _configure_logging():
+    configure_logging(True, "INFO", "DEBUG")
+
+
+@pytest.fixture
+def log_capture():
+    """Reset logs and enable log capture for a test.
+
+    Returns a context manager which returns the list of logged structlog dicts"""
+
+    @contextmanager
+    def _log_capture():
+        logcap = RawLogCapture()
+        configure_logging(True, "INFO", "DEBUG", log_capture=logcap)
+        yield logcap.entries
+
+    yield _log_capture
+
+    # Put back way it was as from _configure_logging auto-fixture.
     configure_logging(True, "INFO", "DEBUG")
 
 
@@ -202,3 +223,52 @@ def populated_cockroach_database(cockroach_database_connection: Tuple[str, str])
     handle, _ = cockroach_database_connection
     connection = Connection.connections[handle]
     populate_database(connection, include_comments=True)
+
+
+@dataclass
+class DatasourceJSONs:
+    meta_dict: Dict[str, Any]
+    dsn_dict: Optional[Dict[str, str]] = None
+    connect_args_dict: Optional[Dict[str, any]] = None
+
+    @property
+    def meta_json(self) -> str:
+        return json.dumps(self.meta_dict)
+
+    @property
+    def dsn_json(self) -> Optional[str]:
+        if self.dsn_dict:
+            return json.dumps(self.dsn_dict)
+
+    @property
+    def connect_args_json(self) -> Optional[str]:
+        if self.connect_args_dict:
+            return json.dumps(self.connect_args_dict)
+
+    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path):
+        """Save our json strings to a tmpdir so can be used to test
+        bootstrap_datasource_from_files or bootstrap_datasources
+        """
+
+        json_str_and_paths = [
+            (self.meta_json, tmpdir / f'{datasource_id}.meta_js'),
+            (self.dsn_json, tmpdir / f'{datasource_id}.dsn_js'),
+            (self.connect_args_json, tmpdir / f'{datasource_id}.ca_js'),
+        ]
+
+        for json_str, path in json_str_and_paths:
+            if json_str:
+                path.write_text(json_str)
+
+
+@pytest.fixture
+def datasource_id_factory() -> Callable[[], str]:
+    def factory_datasource_id():
+        return uuid4().hex
+
+    return factory_datasource_id
+
+
+@pytest.fixture
+def datasource_id(datasource_id_factory) -> str:
+    return datasource_id_factory()

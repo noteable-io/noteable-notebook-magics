@@ -1,8 +1,14 @@
 """ Tests over the data loading magic, "create_or_replace_data_view" """
 
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
+import requests
+
+from noteable_magics import datasources
+from tests.conftest import DatasourceJSONs
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -128,7 +134,7 @@ class TestSqlMagic:
         # the cell's output. (This is more integration test-y, or at least higher-level unit-test-y.)
         assert sql_magic.execute('@45645675 select true') is None
         captured = capsys.readouterr()
-        assert captured.out == f"{expected_message}\n"
+        assert captured.err == f"{expected_message}\n"
 
         # Finally, the total number of known connections should have remained the same.
         assert len(Connection.connections) == initial_connection_count
@@ -202,3 +208,167 @@ class TestJinjaTemplatesWithinSqlMagic:
         else:
             # multi-rows comes wrapped in dataframe
             assert results['b'].tolist() == expected_values
+
+
+@pytest.fixture
+def tests_fixture_data() -> Path:
+    """Return Path pointing to tests/fixture_data/ dir"""
+    return Path(__file__).parent / 'fixture_data'
+
+
+class TestSQLite:
+    """Integration test cases of bootstrapping through to using SQLite datasource type datasource"""
+
+    @pytest.mark.parametrize('memory_spelling', ('', ':memory:'))
+    def test_success_against_memory_only_database(self, sql_magic, datasource_id, memory_spelling):
+        """Test can bootstrap and use against memory, using either empty string or :memory: spellings."""
+
+        self.bootstrap(datasource_id, memory_spelling)
+
+        results = sql_magic.execute(f'@{datasource_id}\n#scalar\nselect 1+2')
+
+        assert results == 3
+
+    def test_success_simulated_loading_database_from_figshare(
+        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
+    ):
+        """Test 'downloading' the database, expecting to find some species in there!"""
+
+        # Simulate successful download from 'https://figshare.com/ndownloader/files/11188550'
+        # We gots the canned file from that URL in `tests/fixture_data/portal_mammals.sqlite`.
+
+        mammals_url = 'mock://mammals_database/'
+        with open(tests_fixture_data / 'portal_mammals.sqlite', 'rb') as response_file:
+            # Set up response for a GET to that URL to return the contents of our canned copy.
+            requests_mock.get(mammals_url, body=response_file)
+
+            # Bootstrap the datasource to 'download' this data file.
+            with log_capture() as logs:
+                self.bootstrap(datasource_id, mammals_url)
+
+            assert logs[0]['event'] == 'Downloading sqlite database initial contents'
+            assert logs[0]['database_url'] == mammals_url
+            assert logs[0]['max_download_seconds'] == 10  # The default when unspecified.
+
+        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+
+        # There oughta be rows in that species table!
+        assert results == 54
+
+    def test_success_simulated_loading_database_from_figshare_nondefault_max_timeout(
+        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
+    ):
+        """Test 'downloading' the database with nondefault max timeout."""
+
+        mammals_url = 'mock://mammals_database/'
+        with open(tests_fixture_data / 'portal_mammals.sqlite', 'rb') as response_file:
+            # Set up response for a GET to that URL to return the contents of our canned copy.
+            requests_mock.get(mammals_url, body=response_file)
+
+            # Bootstrap the datasource to 'download' this data file.
+            with log_capture() as logs:
+                self.bootstrap(datasource_id, mammals_url, max_download_seconds=22)
+
+            assert logs[0]['event'] == 'Downloading sqlite database initial contents'
+            assert logs[0]['database_url'] == mammals_url
+            assert logs[0]['max_download_seconds'] == 22  # Explicitly specified.
+
+        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+
+        # There oughta be rows in that species table!
+        assert results == 54
+
+    # Works great, but not for CICD use.
+    '''
+    def test_succcess_actually_loading_database_from_figshare(self, sql_magic, datasource_id: str):
+        """Test downloading the database, expecting to find some species in there!"""
+
+        mammals_url = 'https://figshare.com/ndownloader/files/11188550'
+
+        # Bootstrap the datasource to download this data file.
+        self.bootstrap(datasource_id, mammals_url)
+
+        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+
+        # There oughta be rows in that species table!
+        assert results == 54
+    '''
+
+    @pytest.mark.parametrize(
+        'exc,expected_substring',
+        [
+            (requests.exceptions.Timeout("Read timed out."), 'Read timed out'),
+            (requests.exceptions.ConnectTimeout('Connect timed out.'), 'Connect timed out'),
+            (
+                requests.exceptions.HTTPError(
+                    '404 Client Error: Not Found for url: mock://failed.download/'
+                ),
+                '404 Client Error',
+            ),
+        ],
+    )
+    def test_failing_download(
+        self, sql_magic, datasource_id, capsys, requests_mock, exc, expected_substring
+    ):
+
+        failing_url = 'mock://failed.download/'
+
+        # Set up to simulate exception coming up while making requests.get() call to try to
+        # download the seed database.
+        requests_mock.get(
+            failing_url,
+            exc=exc,
+        )
+
+        self.bootstrap(datasource_id, failing_url)
+
+        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+
+        assert results is None
+
+        captured = capsys.readouterr()
+
+        assert 'Please check data connection configuration' in captured.err
+        assert expected_substring in captured.err
+
+    @pytest.mark.parametrize('bad_path', ['/usr/bin/bash', 'relative_project_file.sqlite'])
+    def test_fail_bad_pathname(self, sql_magic, datasource_id, bad_path, capsys):
+        """Test providing local database pathname, but in disallowed place."""
+
+        # Not a legal local file -- isn't in a tmp-y place.
+        self.bootstrap(datasource_id, bad_path)
+
+        # Simulate use in a SQL cell ...
+        results = sql_magic.execute(f'@{datasource_id}\nselect true')
+
+        assert results is None
+
+        captured = capsys.readouterr()
+
+        assert 'Please check data connection configuration' in captured.err
+        assert (
+            f'SQLite database files should be located within /tmp, got "{bad_path}"' in captured.err
+        )
+
+    def bootstrap(
+        self, datasource_id: str, database_path_or_url: str, max_download_seconds: int = None
+    ):
+        jsons = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': f'Test Suite SQLite Datasource {datasource_id}',
+            },
+            dsn_dict={
+                'database': database_path_or_url,
+            },
+        )
+
+        if max_download_seconds:
+            jsons.connect_args_dict = {'max_download_seconds': max_download_seconds}
+
+        datasources.bootstrap_datasource(
+            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+        )

@@ -1,9 +1,8 @@
 """ Tests over datasource bootstrapping """
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, List
 from uuid import uuid4
 
 import pkg_resources
@@ -15,6 +14,7 @@ from noteable_magics import datasource_postprocessing, datasources
 from noteable_magics.logging import configure_logging
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.run import _COMMIT_BLACKLIST_DIALECTS
+from tests.conftest import DatasourceJSONs
 
 
 @pytest.fixture
@@ -63,42 +63,6 @@ def datasource_id_factory() -> Callable[[], str]:
 @pytest.fixture
 def datasource_id(datasource_id_factory) -> str:
     return datasource_id_factory()
-
-
-@dataclass
-class DatasourceJSONs:
-    meta_dict: Dict[str, Any]
-    dsn_dict: Optional[Dict[str, str]] = None
-    connect_args_dict: Optional[Dict[str, any]] = None
-
-    @property
-    def meta_json(self) -> str:
-        return json.dumps(self.meta_dict)
-
-    @property
-    def dsn_json(self) -> Optional[str]:
-        if self.dsn_dict:
-            return json.dumps(self.dsn_dict)
-
-    @property
-    def connect_args_json(self) -> Optional[str]:
-        if self.connect_args_dict:
-            return json.dumps(self.connect_args_dict)
-
-    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path):
-        """Save our json strings to a tmpdir so can be used to test
-        bootstrap_datasource_from_files or bootstrap_datasources
-        """
-
-        json_str_and_paths = [
-            (self.meta_json, tmpdir / f'{datasource_id}.meta_js'),
-            (self.dsn_json, tmpdir / f'{datasource_id}.dsn_js'),
-            (self.connect_args_json, tmpdir / f'{datasource_id}.ca_js'),
-        ]
-
-        for json_str, path in json_str_and_paths:
-            if json_str:
-                path.write_text(json_str)
 
 
 class SampleData:
@@ -278,6 +242,47 @@ class SampleData:
             },
             connect_args_dict={
                 'warehouse': 'xxxxxxxxlarge',
+            },
+        ),
+        'explicit-memory-sqlite': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': 'Memory SQLite',
+            },
+            dsn_dict={
+                'database': ':memory:',
+            },
+        ),
+        'implicit-memory-sqlite': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': 'Memory SQLite',
+            },
+            dsn_dict={
+                # Empty database file also ends up with memory-based database.
+                'database': '',
+            },
+        ),
+        'memory-sqlite-also-with-max_download_seconds': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': 'Memory SQLite',
+            },
+            dsn_dict={
+                # Empty database file also ends up with memory-based database.
+                'database': '',
+            },
+            connect_args_dict={
+                'max_download_seconds': '22',
             },
         ),
     }
@@ -461,7 +466,7 @@ class TestBootstrapDatasource:
         # file properly....
 
         # /tmp/{datasource_id}_bigquery_credentials.json should now exist and
-        # contain '{"foo": "bar"}' due to consiracy in
+        # contain '{"foo": "bar"}' due to conspiracy in
         # datasource_postprocessing.postprocess_bigquery
         with open(f'/tmp/{datasource_id}_bigquery_credentials.json') as inf:
             from_json = json.load(inf)
@@ -483,6 +488,47 @@ class TestBootstrapDatasource:
         import psycopg2.extras
 
         assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
+
+    @pytest.mark.parametrize('bad_pathname', ['/dev/foo.db', './../jailbreak.db'])
+    def test_had_bad_sqlite_database_files(self, datasource_id, bad_pathname: str):
+        """If configured with neither a path within project nor exactly ':memory:', then
+        bootstrapping should fail (currently silently w/o creating the datasource)
+        """
+
+        human_name = 'My Bad SQLite'
+        bad_sqlite = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': human_name,
+            },
+            dsn_dict={
+                'database': bad_pathname,
+            },
+        )
+
+        initial_count = len(Connection.connections)
+
+        datasources.bootstrap_datasource(
+            datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_count
+
+        # And should have had a bootstrapping failure against both the datasource_id
+        # and the human name.
+        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
+            human_name
+        )
+        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
+            datasource_id
+        )
+
+        # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is
+        # attempted to be used, this get_bootstrapping_failure() message will show back up, surfacing
+        # the real problem to the user.
 
 
 class TestEnsureRequirements:

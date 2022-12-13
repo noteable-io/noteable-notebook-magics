@@ -1,9 +1,9 @@
 from typing import List
 
+import pandas as pd
 import sqlalchemy
 import sqlparse
 from jinjasql import JinjaSql
-import pandas as pd
 
 
 class ResultSet:

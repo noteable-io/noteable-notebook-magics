@@ -2,6 +2,8 @@ import logging
 
 import structlog
 from structlog.contextvars import merge_contextvars
+from structlog.exceptions import DropEvent
+from structlog.testing import LogCapture
 
 
 def rename_event_key(logger, method_name, event_dict):
@@ -15,7 +17,21 @@ def rename_event_key(logger, method_name, event_dict):
     return event_dict
 
 
-def configure_logging(dev_logging: bool, ext_log_level, app_log_level) -> None:
+class RawLogCapture(LogCapture):
+    """Represents a log of event entries which can be used when testing logging."""
+
+    def __call__(self, _, method_name, event_dict):
+        """
+        The base method adds a `log_level` attribute to the event_dict, but we want
+        our test logs to be as close to the real thing as possible.
+        """
+        self.entries.append(event_dict)
+        raise DropEvent
+
+
+def configure_logging(
+    dev_logging: bool, ext_log_level, app_log_level, log_capture: LogCapture = None
+) -> None:
     """A helper function to configure structured logging and root logger"""
     shared_processors = [
         merge_contextvars,
@@ -37,18 +53,19 @@ def configure_logging(dev_logging: bool, ext_log_level, app_log_level) -> None:
         processor=renderer, foreign_pre_chain=shared_processors
     )
 
-    structlog_processors = [
-        structlog.stdlib.filter_by_level,
-        *shared_processors,
-        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-    ]
+    structlog_processors = [*shared_processors]
+    if log_capture:
+        structlog_processors.append(log_capture)
+    else:
+        structlog_processors.insert(0, structlog.stdlib.filter_by_level)
+        structlog_processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)
 
     structlog.configure(
         processors=structlog_processors,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=not dev_logging,
+        cache_logger_on_first_use=not (dev_logging or log_capture),
     )
 
     try:
