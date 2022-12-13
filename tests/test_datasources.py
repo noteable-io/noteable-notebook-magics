@@ -269,6 +269,22 @@ class SampleData:
                 'database': '',
             },
         ),
+        'memory-sqlite-also-with-max_download_seconds': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': 'Memory SQLite',
+            },
+            dsn_dict={
+                # Empty database file also ends up with memory-based database.
+                'database': '',
+            },
+            connect_args_dict={
+                'max_download_seconds': '22',
+            },
+        ),
     }
 
     @classmethod
@@ -450,7 +466,7 @@ class TestBootstrapDatasource:
         # file properly....
 
         # /tmp/{datasource_id}_bigquery_credentials.json should now exist and
-        # contain '{"foo": "bar"}' due to consiracy in
+        # contain '{"foo": "bar"}' due to conspiracy in
         # datasource_postprocessing.postprocess_bigquery
         with open(f'/tmp/{datasource_id}_bigquery_credentials.json') as inf:
             from_json = json.load(inf)

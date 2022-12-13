@@ -10,7 +10,7 @@ from IPython.core.interactiveshell import InteractiveShell
 from managed_service_fixtures import CockroachDetails
 from sqlalchemy.orm import Session
 
-from noteable_magics.logging import configure_logging
+from noteable_magics.logging import configure_logging, RawLogCapture
 from noteable_magics.planar_ally_client.api import PlanarAllyAPI
 from noteable_magics.planar_ally_client.types import (
     FileKind,
@@ -26,6 +26,24 @@ pytest_plugins = 'managed_service_fixtures'
 
 @pytest.fixture(scope="session", autouse=True)
 def _configure_logging():
+    configure_logging(True, "INFO", "DEBUG")
+
+
+@pytest.fixture
+def log_capture():
+    """Reset logs and enable log capture for a test.
+
+    Returns a context manager which returns the list of logged structlog dicts"""
+
+    @contextmanager
+    def _log_capture():
+        logcap = RawLogCapture()
+        configure_logging(True, "INFO", "DEBUG", log_capture=logcap)
+        yield logcap.entries
+
+    yield _log_capture
+
+    # Put back way it was as from _configure_logging auto-fixture.
     configure_logging(True, "INFO", "DEBUG")
 
 

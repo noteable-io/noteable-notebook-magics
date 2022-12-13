@@ -229,8 +229,8 @@ class TestSQLite:
 
         assert results == 3
 
-    def test_succcess_simulated_loading_database_from_figshare(
-        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock
+    def test_success_simulated_loading_database_from_figshare(
+        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
     ):
         """Test 'downloading' the database, expecting to find some species in there!"""
 
@@ -243,7 +243,35 @@ class TestSQLite:
             requests_mock.get(mammals_url, body=response_file)
 
             # Bootstrap the datasource to 'download' this data file.
-            self.bootstrap(datasource_id, mammals_url)
+            with log_capture() as logs:
+                self.bootstrap(datasource_id, mammals_url)
+
+            assert logs[0]['event'] == 'Downloading sqlite database initial contents'
+            assert logs[0]['database_url'] == mammals_url
+            assert logs[0]['max_download_seconds'] == 10  # The default when unspecified.
+
+        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+
+        # There oughta be rows in that species table!
+        assert results == 54
+
+    def test_success_simulated_loading_database_from_figshare_nondefault_max_timeout(
+        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
+    ):
+        """Test 'downloading' the database with nondefault max timeout."""
+
+        mammals_url = 'mock://mammals_database/'
+        with open(tests_fixture_data / 'portal_mammals.sqlite', 'rb') as response_file:
+            # Set up response for a GET to that URL to return the contents of our canned copy.
+            requests_mock.get(mammals_url, body=response_file)
+
+            # Bootstrap the datasource to 'download' this data file.
+            with log_capture() as logs:
+                self.bootstrap(datasource_id, mammals_url, max_download_seconds=22)
+
+            assert logs[0]['event'] == 'Downloading sqlite database initial contents'
+            assert logs[0]['database_url'] == mammals_url
+            assert logs[0]['max_download_seconds'] == 22  # Explicitly specified.
 
         results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
 
@@ -322,7 +350,9 @@ class TestSQLite:
             f'SQLite database files should be located within /tmp, got "{bad_path}"' in captured.err
         )
 
-    def bootstrap(self, datasource_id: str, database_path_or_url: str):
+    def bootstrap(
+        self, datasource_id: str, database_path_or_url: str, max_download_seconds: int = None
+    ):
         jsons = DatasourceJSONs(
             meta_dict={
                 'required_python_modules': [],
@@ -335,6 +365,9 @@ class TestSQLite:
                 'database': database_path_or_url,
             },
         )
+
+        if max_download_seconds:
+            jsons.connect_args_dict = {'max_download_seconds': max_download_seconds}
 
         datasources.bootstrap_datasource(
             datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json

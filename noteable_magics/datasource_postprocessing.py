@@ -5,6 +5,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import urlparse
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 import requests
 
 # Dict of drivername -> post-processor function that accepts (datasource_id, create_engine_kwargs
@@ -179,6 +183,14 @@ def postprocess_sqlite(
             # Empty path is alias for :memory:, and is fine.
             return
 
+        # Hint as to how long to allow downloading database file could come
+        # in the create_engine_args. It is meant for us here, not actually for
+        # passing along through to sqlalchemy.create_engine().
+
+        # Pop this out of there (and default it) regardless of if the database name implies to download.
+        connect_args = create_engine_kwargs.get('connect_args', {})
+        max_download_seconds = int(connect_args.pop('max_download_seconds', 10))
+
         # If it smells like a URL, we should download, stash it into a tmpfile,
         # and respell dsn_dict['database'] to point to that file. Any exceptions in here
         # will spoil the datasource.
@@ -187,9 +199,14 @@ def postprocess_sqlite(
         # (Sigh, 'mock' as scheme due to cannot cleanly pytest requests-mock http or https urls
         #  for reasons I trust from the requests-mocks docs)
         if parsed.scheme in ('http', 'https', 'ftp', 'mock'):
-            max_download_time = 10  # seconds. What do we want this to be?
+            logger.info(
+                'Downloading sqlite database initial contents',
+                datasource_id=datasource_id,
+                database_url=dsn_dict['database'],
+                max_download_seconds=max_download_seconds,
+            )
 
-            resp = requests.get(dsn_dict['database'], stream=True, timeout=max_download_time)
+            resp = requests.get(dsn_dict['database'], stream=True, timeout=max_download_seconds)
 
             resp.raise_for_status()
 
