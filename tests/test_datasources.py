@@ -269,18 +269,6 @@ class SampleData:
                 'database': '',
             },
         ),
-        'file-sqlite': DatasourceJSONs(
-            meta_dict={
-                'required_python_modules': [],
-                'allow_datasource_dialect_autoinstall': False,
-                'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
-                'name': 'Memory SQLite',
-            },
-            dsn_dict={
-                'database': 'local_project_file.db',
-            },
-        ),
     }
 
     @classmethod
