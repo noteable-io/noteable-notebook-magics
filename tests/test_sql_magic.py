@@ -157,56 +157,41 @@ class TestDDLStatements:
     def test_ddl_lifecycle(self, conn_name: str, sql_magic, capsys):
         table_name = f'test_table_{uuid4().hex}'
 
-        try:
-            r = sql_magic.execute(
-                f'{conn_name}\ncreate table {table_name}(id int not null primary key, name text not null)'
-            )
-            # Will have printed 'Done.' to stdout.
-            assert r is None  # No concrete results back from SQLA on a CREATE TABLE statement.
+        r = sql_magic.execute(
+            f'{conn_name}\ncreate table {table_name}(id int not null primary key, name text not null)'
+        )
+        # Will have printed 'Done.' to stdout.
+        assert r is None  # No concrete results back from SQLA on a CREATE TABLE statement.
 
-            r = sql_magic.execute(
-                f"{conn_name}\ninsert into {table_name} (id, name) values (1, 'billy'), (2, 'bob')"
-            )
-            # Returns the count of rows affected as a scalar.
-            assert r == 2
-            # Will also have printed out the rowcount to stdout.
+        r = sql_magic.execute(
+            f"{conn_name}\ninsert into {table_name} (id, name) values (1, 'billy'), (2, 'bob')"
+        )
+        # Returns the count of rows affected as a scalar.
+        assert r == 2
+        # Will also have printed out the rowcount to stdout.
 
-            r = sql_magic.execute(f"{conn_name}\ndelete from {table_name} where name = 'billy'")
-            # Just one row affected here, and printed to stdout
-            assert r == 1
+        r = sql_magic.execute(f"{conn_name}\ndelete from {table_name} where name = 'billy'")
+        # Just one row affected here, and printed to stdout
+        assert r == 1
 
-            captured = capsys.readouterr()
-            assert captured.out == 'Done.\n2 rows affected.\n1 row affected.\n'
-
-        finally:
-            # Now drop the table, whose presence will anger some other tests. Don't want to do the
-            # table create via fixture, 'cause, well, really need to do it inside
-            # a test via the magic as point of the test and ENG-5268.
-            #
-            # (A fixture that discovers any non-expected table in default schema and drops it upon cleanup
-            #  would be welcome revision in the future, though. In the mean time, pragmatism.)
-            #
-            sql_magic.execute(f"{conn_name}\ndrop table {table_name}")
+        captured = capsys.readouterr()
+        assert captured.out == 'Done.\n2 rows affected.\n1 row affected.\n'
 
     @pytest.mark.parametrize('conn_name', ['@cockroach'])
     def test_insert_returning_returns_dataframe(self, conn_name: str, sql_magic):
         table_name = f'test_table_{uuid4().hex}'
 
-        try:
-            sql_magic.execute(
-                f'{conn_name}\ncreate table {table_name}(id serial not null primary key, name text not null)'
-            )
+        sql_magic.execute(
+            f'{conn_name}\ncreate table {table_name}(id serial not null primary key, name text not null)'
+        )
 
-            r = sql_magic.execute(
-                f"{conn_name}\ninsert into {table_name} (name) values ('billy'), ('bob') returning id"
-            )
+        r = sql_magic.execute(
+            f"{conn_name}\ninsert into {table_name} (name) values ('billy'), ('bob') returning id"
+        )
 
-            assert isinstance(r, pd.DataFrame)
-            assert r.columns.tolist() == ['id']
-            assert all(isinstance(idval, int) for idval in r['id'].tolist())
-
-        finally:
-            sql_magic.execute(f"{conn_name}\ndrop table {table_name}")
+        assert isinstance(r, pd.DataFrame)
+        assert r.columns.tolist() == ['id']
+        assert all(isinstance(idval, int) for idval in r['id'].tolist())
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")

@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
 from managed_service_fixtures import CockroachDetails
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from noteable_magics.logging import RawLogCapture, configure_logging
@@ -140,6 +141,10 @@ def mock_display(mocker):
     return mocker.patch("noteable_magics.sql.meta_commands.display")
 
 
+KNOWN_TABLES = set(('int_table', 'str_table', 'references_int_table', 'str_int_view'))
+"""The table / view names in default schema that populate_database() will create. See cleanup_any_extra_tables()"""
+
+
 def populate_database(connection: Connection, include_comments=False):
 
     # Must actually do the table building transactionally, especially adding comments, else
@@ -185,6 +190,28 @@ def populate_database(connection: Connection, include_comments=False):
         db.commit()
 
 
+def cleanup_any_extra_tables(connection: Connection):
+    """Remove any tables in default schema that aren't what populate_database above creates"""
+
+    inspector = inspect(connection._engine)
+
+    relations = set(inspector.get_table_names())
+    relations.update(inspector.get_view_names())
+
+    unexpected_relations = relations - KNOWN_TABLES
+
+    for unexpected_relation in unexpected_relations:
+        try:
+            with Session(connection._engine) as db:
+                db.execute(f'drop table {unexpected_relation}')
+                db.commit()
+        except Exception:
+            # Maybe it was a view?
+            with Session(connection._engine) as db:
+                db.execute(f'drop view {unexpected_relation}')
+                db.commit()
+
+
 @pytest.fixture
 def sqlite_database_connection() -> Tuple[str, str]:
     """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
@@ -201,6 +228,10 @@ def populated_sqlite_database(sqlite_database_connection: Tuple[str, str]) -> No
     handle, _ = sqlite_database_connection
     connection = Connection.connections[handle]
     populate_database(connection)
+
+    yield
+
+    cleanup_any_extra_tables(connection)
 
 
 # For tests talking to a live cockroachdb
@@ -223,10 +254,26 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
 
 
 @pytest.fixture(scope='session')
-def populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
+def session_populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
     handle, _ = cockroach_database_connection
     connection = Connection.connections[handle]
     populate_database(connection, include_comments=True)
+
+
+@pytest.fixture
+def populated_cockroach_database(
+    session_populated_cockroach_database, cockroach_database_connection: Tuple[str, str]
+) -> None:
+    """Function-scoped version of session_populated_cockroach_database, cleans up any newly created tables
+    after each function.
+    """
+
+    yield
+
+    handle, _ = cockroach_database_connection
+    connection = Connection.connections[handle]
+
+    cleanup_any_extra_tables(connection)
 
 
 @dataclass
