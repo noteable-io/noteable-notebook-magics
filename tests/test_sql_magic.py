@@ -71,6 +71,16 @@ class TestSqlMagic:
         results = sql_magic.execute('@sqlite #scalar select a from int_table')
         assert isinstance(results, pd.DataFrame)
 
+    def test_select_no_rows_from_table_produces_zero_row_dataframe_with_expected_columns(
+        self, sql_magic
+    ):
+        # Will match 0 rows, but should be returned as 0-row three-column'd dataframe.
+        results = sql_magic.execute('@sqlite select a, b, c from int_table where a = -12')
+
+        assert isinstance(results, pd.DataFrame)
+        assert len(results) == 0
+        assert results.columns.tolist() == ['a', 'b', 'c']
+
     @pytest.mark.parametrize(
         'invocation',
         [
