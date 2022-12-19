@@ -1,5 +1,6 @@
 import re
 from typing import List, Optional, Tuple
+from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -388,6 +389,24 @@ class TestSingleRelationCommand:
             re.IGNORECASE + re.MULTILINE + re.DOTALL,
         )
         assert matcher.search(html_contents)
+
+    def test_against_uuid_column(self, sql_magic, ipython_namespace):
+        """Test that we can introspect into a table that has a UUID column.
+
+        Because SQLA's UUID handling class doesn't implement .as_generic(),
+        our SingleRelationCommand needed to grow a try/except block.
+        """
+        table_name = f'test_table_{uuid4().hex}'
+
+        sql_magic.execute(
+            f'@cockroach\ncreate table {table_name}(id uuid not null primary key, name text not null)'
+        )
+
+        sql_magic.execute(fr'@cockroach \describe {table_name}')
+
+        df = ipython_namespace['_']
+
+        assert df['Type'].tolist() == ['uuid', 'varchar']
 
     def test_against_schema_qualified_view(self, sql_magic, ipython_namespace, mock_display):
         # Sub-case of test_against_view(), but when schema-qualified.
