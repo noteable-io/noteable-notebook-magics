@@ -2,11 +2,11 @@
 
 
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 import pytest
 import requests
-from uuid import uuid4
 
 from noteable_magics import datasources
 from tests.conftest import DatasourceJSONs

@@ -21,7 +21,6 @@ from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.magic import SqlMagic
 from noteable_magics.sql.run import add_commit_blacklist_dialect
 
-
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
 
