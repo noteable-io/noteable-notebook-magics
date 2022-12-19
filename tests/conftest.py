@@ -19,6 +19,8 @@ from noteable_magics.planar_ally_client.types import (
 )
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.magic import SqlMagic
+from noteable_magics.sql.run import add_commit_blacklist_dialect
+
 
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
@@ -211,6 +213,9 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
     from noteable_magics.datasource_postprocessing import _install_psycopg2_interrupt_fix
 
     _install_psycopg2_interrupt_fix()
+
+    # CRDB will by default be in autocommit mode, so must prevent trying to double-commit.
+    add_commit_blacklist_dialect('cockroachdb')
 
     handle = '@cockroach'
     human_name = "My Cockroach Connection"
