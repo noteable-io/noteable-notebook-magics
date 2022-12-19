@@ -178,6 +178,26 @@ class TestDDLStatements:
             #
             sql_magic.execute(f"{conn_name}\ndrop table {table_name}")
 
+    @pytest.mark.parametrize('conn_name', ['@cockroach'])
+    def test_insert_returning_returns_dataframe(self, conn_name: str, sql_magic):
+        table_name = f'test_table_{uuid4().hex}'
+
+        try:
+            sql_magic.execute(
+                f'{conn_name}\ncreate table {table_name}(id serial not null primary key, name text not null)'
+            )
+
+            r = sql_magic.execute(
+                f"{conn_name}\ninsert into {table_name} (name) values ('billy'), ('bob') returning id"
+            )
+
+            assert isinstance(r, pd.DataFrame)
+            assert r.columns.tolist() == ['id']
+            assert all(isinstance(idval, int) for idval in r['id'].tolist())
+
+        finally:
+            sql_magic.execute(f"{conn_name}\ndrop table {table_name}")
+
 
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestJinjaTemplatesWithinSqlMagic:
