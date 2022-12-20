@@ -1,5 +1,6 @@
 import re
 from typing import List, Optional, Tuple
+from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -97,7 +98,7 @@ class TestListSchemas:
         sql_magic.execute(r'@sqlite \schemas foo')
         out, err = capsys.readouterr()
         assert (
-            out
+            err
             == '\\schemas does not expect arguments\n(Use "\\help \\schemas"" for more assistance)\n'
         )
 
@@ -389,6 +390,24 @@ class TestSingleRelationCommand:
         )
         assert matcher.search(html_contents)
 
+    def test_against_uuid_column(self, sql_magic, ipython_namespace):
+        """Test that we can introspect into a table that has a UUID column.
+
+        Because SQLA's UUID handling class doesn't implement .as_generic(),
+        our SingleRelationCommand needed to grow a try/except block.
+        """
+        table_name = f'test_table_{uuid4().hex}'
+
+        sql_magic.execute(
+            f'@cockroach\ncreate table {table_name}(id uuid not null primary key, name text not null)'
+        )
+
+        sql_magic.execute(fr'@cockroach \describe {table_name}')
+
+        df = ipython_namespace['_']
+
+        assert df['Type'].tolist() == ['uuid', 'varchar']
+
     def test_against_schema_qualified_view(self, sql_magic, ipython_namespace, mock_display):
         # Sub-case of test_against_view(), but when schema-qualified.
         # Test that we schema qualify correctly in the <h2> when schema was explicitly mentioned.
@@ -436,22 +455,22 @@ class TestSingleRelationCommand:
     def test_hate_more_than_one_arg(self, sql_magic, capsys):
         sql_magic.execute(r'@sqlite \d foo bar')
         out, err = capsys.readouterr()
-        assert out.startswith(r'Usage: \d [[schema].[relation_name]]')
+        assert err.startswith(r'Usage: \d [[schema].[relation_name]]')
 
     def test_nonexistent_table(self, sql_magic, capsys):
         sql_magic.execute(r'@cockroach \d foobar')
         out, err = capsys.readouterr()
-        assert out.startswith(r'Relation foobar does not exist')
+        assert err.startswith(r'Relation foobar does not exist')
 
     def test_nonexistent_schema_qualified_table(self, sql_magic, capsys):
         sql_magic.execute(r'@cockroach \d public.foobar')
         out, err = capsys.readouterr()
-        assert out.startswith(r'Relation public.foobar does not exist')
+        assert err.startswith(r'Relation public.foobar does not exist')
 
     def test_nonexistent_schema(self, sql_magic, capsys):
         sql_magic.execute(r'@cockroach \d sdfsdfsdf.foobar')
         out, err = capsys.readouterr()
-        assert out.startswith(r'Relation sdfsdfsdf.foobar does not exist')
+        assert err.startswith(r'Relation sdfsdfsdf.foobar does not exist')
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -484,12 +503,12 @@ class TestHelp:
     def test_help_hates_unknown_subcommands(self, sql_magic, capsys):
         sql_magic.execute(r'@sqlite \help \foo')
         out, err = capsys.readouterr()
-        assert out == 'Unknown command "\\foo"\n(Use "\\help" for more assistance)\n'
+        assert err == 'Unknown command "\\foo"\n(Use "\\help" for more assistance)\n'
 
     def test_help_wants_at_most_a_single_arg(self, sql_magic, capsys):
         sql_magic.execute(r'@sqlite \help \foo \bar')
         out, err = capsys.readouterr()
-        assert out == 'Usage: \\help [command]\n(Use "\\help" for more assistance)\n'
+        assert err == 'Usage: \\help [command]\n(Use "\\help" for more assistance)\n'
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -497,7 +516,7 @@ class TestMisc:
     def test_unknown_command(self, sql_magic, capsys):
         sql_magic.execute(r'@sqlite \unknown_subcommand')
         out, err = capsys.readouterr()
-        assert out == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
+        assert err == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
 
     def test_handles_sql_comment_at_front(self, sql_magic, capsys, ipython_namespace):
         """Test that even if the cell starts with a comment line, can still invoke a meta-command properly"""

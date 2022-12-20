@@ -1,3 +1,5 @@
+import sys
+
 from IPython.core.magic import Magics, cell_magic, line_magic, magics_class, needs_local_scope
 from IPython.core.magic_arguments import argument, magic_arguments
 from sqlalchemy.exc import (
@@ -108,7 +110,7 @@ class SqlMagic(Magics, Configurable):
             )
         except noteable_magics.sql.connection.UnknownConnectionError as e:
             # Cell referenced a datasource we don't know about. Exception will have a short + sweet message.
-            print(e)
+            eprint(str(e))
             return None
 
         if not parsed["sql"]:
@@ -160,13 +162,13 @@ class SqlMagic(Magics, Configurable):
 
             if not is_fatal:
                 if self.short_errors:
-                    print(e)
+                    eprint(str(e))
 
                     if isinstance(e, MetaCommandException):
                         if hasattr(e, 'invoked_with'):
-                            print(rf'(Use "\help {e.invoked_with}"" for more assistance)')
+                            eprint(rf'(Use "\help {e.invoked_with}"" for more assistance)')
                         else:
-                            print(r'(Use "\help" for more assistance)')
+                            eprint(r'(Use "\help" for more assistance)')
 
                 else:
                     raise
@@ -185,7 +187,7 @@ class SqlMagic(Magics, Configurable):
                 #
                 conn._engine.dispose()
                 conn._session = None
-                print(
+                eprint(
                     "Encoutered the following unexpected exception while trying to run the statement."
                     " Closed the connection just to be safe. Re-run the cell to try again!\n\n"
                 )
@@ -200,3 +202,7 @@ def load_ipython_extension(ip):
 
     # js = "IPython.CodeCell.config_defaults.highlight_modes['magic_sql'] = {'reg':[/^%%sql/]};"
     ip.register_magics(SqlMagic)
+
+
+def eprint(error_message: str) -> None:
+    print(error_message, file=sys.stderr)

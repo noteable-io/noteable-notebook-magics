@@ -405,8 +405,15 @@ class SingleRelationCommand(MetaCommand):
 
         for col in column_dicts:
             names.append(col['name'])
+
             # Convert the possibly db-centric TypeEngine instance to a sqla-generic type string
-            types.append(str(col['type'].as_generic()).lower())
+            try:
+                type_name = str(col['type'].as_generic()).lower()
+            except NotImplementedError:
+                # ENG-5268: More esoteric types like UUID do not implement .as_generic()
+                type_name = str(col['type']).replace('()', '').lower()
+
+            types.append(type_name)
             nullables.append(col['nullable'])
             defaults.append(col['default'])
             if 'comment' in col:

@@ -1,13 +1,17 @@
 import json
 from contextlib import contextmanager
-from typing import Tuple
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
+from uuid import uuid4
 
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
 from managed_service_fixtures import CockroachDetails
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from noteable_magics.logging import configure_logging
+from noteable_magics.logging import RawLogCapture, configure_logging
 from noteable_magics.planar_ally_client.api import PlanarAllyAPI
 from noteable_magics.planar_ally_client.types import (
     FileKind,
@@ -16,6 +20,7 @@ from noteable_magics.planar_ally_client.types import (
 )
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.magic import SqlMagic
+from noteable_magics.sql.run import add_commit_blacklist_dialect
 
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
@@ -23,6 +28,24 @@ pytest_plugins = 'managed_service_fixtures'
 
 @pytest.fixture(scope="session", autouse=True)
 def _configure_logging():
+    configure_logging(True, "INFO", "DEBUG")
+
+
+@pytest.fixture
+def log_capture():
+    """Reset logs and enable log capture for a test.
+
+    Returns a context manager which returns the list of logged structlog dicts"""
+
+    @contextmanager
+    def _log_capture():
+        logcap = RawLogCapture()
+        configure_logging(True, "INFO", "DEBUG", log_capture=logcap)
+        yield logcap.entries
+
+    yield _log_capture
+
+    # Put back way it was as from _configure_logging auto-fixture.
     configure_logging(True, "INFO", "DEBUG")
 
 
@@ -118,6 +141,10 @@ def mock_display(mocker):
     return mocker.patch("noteable_magics.sql.meta_commands.display")
 
 
+KNOWN_TABLES = set(('int_table', 'str_table', 'references_int_table', 'str_int_view'))
+"""The table / view names in default schema that populate_database() will create. See cleanup_any_extra_tables()"""
+
+
 def populate_database(connection: Connection, include_comments=False):
 
     # Must actually do the table building transactionally, especially adding comments, else
@@ -163,6 +190,28 @@ def populate_database(connection: Connection, include_comments=False):
         db.commit()
 
 
+def cleanup_any_extra_tables(connection: Connection):
+    """Remove any tables in default schema that aren't what populate_database above creates"""
+
+    inspector = inspect(connection._engine)
+
+    relations = set(inspector.get_table_names())
+    relations.update(inspector.get_view_names())
+
+    unexpected_relations = relations - KNOWN_TABLES
+
+    for unexpected_relation in unexpected_relations:
+        try:
+            with Session(connection._engine) as db:
+                db.execute(f'drop table {unexpected_relation}')
+                db.commit()
+        except Exception:
+            # Maybe it was a view?
+            with Session(connection._engine) as db:
+                db.execute(f'drop view {unexpected_relation}')
+                db.commit()
+
+
 @pytest.fixture
 def sqlite_database_connection() -> Tuple[str, str]:
     """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
@@ -180,6 +229,10 @@ def populated_sqlite_database(sqlite_database_connection: Tuple[str, str]) -> No
     connection = Connection.connections[handle]
     populate_database(connection)
 
+    yield
+
+    cleanup_any_extra_tables(connection)
+
 
 # For tests talking to a live cockroachdb
 @pytest.fixture(scope='session')
@@ -191,6 +244,9 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
 
     _install_psycopg2_interrupt_fix()
 
+    # CRDB will by default be in autocommit mode, so must prevent trying to double-commit.
+    add_commit_blacklist_dialect('cockroachdb')
+
     handle = '@cockroach'
     human_name = "My Cockroach Connection"
     Connection.set(managed_cockroach.sync_dsn, name=handle, human_name=human_name)
@@ -198,7 +254,72 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
 
 
 @pytest.fixture(scope='session')
-def populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
+def session_populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
     handle, _ = cockroach_database_connection
     connection = Connection.connections[handle]
     populate_database(connection, include_comments=True)
+
+
+@pytest.fixture
+def populated_cockroach_database(
+    session_populated_cockroach_database, cockroach_database_connection: Tuple[str, str]
+) -> None:
+    """Function-scoped version of session_populated_cockroach_database, cleans up any newly created tables
+    after each function.
+    """
+
+    yield
+
+    handle, _ = cockroach_database_connection
+    connection = Connection.connections[handle]
+
+    cleanup_any_extra_tables(connection)
+
+
+@dataclass
+class DatasourceJSONs:
+    meta_dict: Dict[str, Any]
+    dsn_dict: Optional[Dict[str, str]] = None
+    connect_args_dict: Optional[Dict[str, any]] = None
+
+    @property
+    def meta_json(self) -> str:
+        return json.dumps(self.meta_dict)
+
+    @property
+    def dsn_json(self) -> Optional[str]:
+        if self.dsn_dict:
+            return json.dumps(self.dsn_dict)
+
+    @property
+    def connect_args_json(self) -> Optional[str]:
+        if self.connect_args_dict:
+            return json.dumps(self.connect_args_dict)
+
+    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path):
+        """Save our json strings to a tmpdir so can be used to test
+        bootstrap_datasource_from_files or bootstrap_datasources
+        """
+
+        json_str_and_paths = [
+            (self.meta_json, tmpdir / f'{datasource_id}.meta_js'),
+            (self.dsn_json, tmpdir / f'{datasource_id}.dsn_js'),
+            (self.connect_args_json, tmpdir / f'{datasource_id}.ca_js'),
+        ]
+
+        for json_str, path in json_str_and_paths:
+            if json_str:
+                path.write_text(json_str)
+
+
+@pytest.fixture
+def datasource_id_factory() -> Callable[[], str]:
+    def factory_datasource_id():
+        return uuid4().hex
+
+    return factory_datasource_id
+
+
+@pytest.fixture
+def datasource_id(datasource_id_factory) -> str:
+    return datasource_id_factory()

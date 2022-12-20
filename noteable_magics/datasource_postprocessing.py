@@ -1,6 +1,15 @@
+import os
 from base64 import b64decode
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
+from urllib.parse import urlparse
+
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+import requests
 
 # Dict of drivername -> post-processor function that accepts (datasource_id, create_engine_kwargs
 # dict) pair and is expected to mutate create_engine_kwargs as needed.
@@ -158,3 +167,72 @@ def postprocess_snowflake(
         db = dsn_dict['database']
 
         dsn_dict['database'] = f'{db}/{schema}'
+
+
+@register_postprocessor('sqlite')
+def postprocess_sqlite(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Expect to have either a URL provided which we should download and place into TMPDIR as the database file,
+    or no such thing implying to run in memory mode.
+    """
+
+    if 'database' in dsn_dict:
+        cur_path = dsn_dict['database']
+        if cur_path == '' or cur_path == ':memory:':
+            # Empty path is alias for :memory:, and is fine.
+            return
+
+        # Hint as to how long to allow downloading database file could come
+        # in the create_engine_args. It is meant for us here, not actually for
+        # passing along through to sqlalchemy.create_engine().
+
+        # Pop this out of there (and default it) regardless of if the database name implies to download.
+        connect_args = create_engine_kwargs.get('connect_args', {})
+        max_download_seconds = int(connect_args.pop('max_download_seconds', 10))
+
+        # If it smells like a URL, we should download, stash it into a tmpfile,
+        # and respell dsn_dict['database'] to point to that file. Any exceptions in here
+        # will spoil the datasource.
+        parsed = urlparse(dsn_dict['database'])
+
+        # (Sigh, 'mock' as scheme due to cannot cleanly pytest requests-mock http or https urls
+        #  for reasons I trust from the requests-mocks docs)
+        if parsed.scheme in ('http', 'https', 'ftp', 'mock'):
+            logger.info(
+                'Downloading sqlite database initial contents',
+                datasource_id=datasource_id,
+                database_url=dsn_dict['database'],
+                max_download_seconds=max_download_seconds,
+            )
+
+            resp = requests.get(dsn_dict['database'], stream=True, timeout=max_download_seconds)
+
+            resp.raise_for_status()
+
+            # Save to a durable tmpfile
+            with NamedTemporaryFile(delete=False) as outf:
+                for chunk in resp.iter_content(chunk_size=2048):
+                    outf.write(chunk)
+
+            # Point to the resulting file.
+            dsn_dict['database'] = cur_path = outf.name
+
+        # The database file should resolve to somewhere /tmp-y (for now)
+        # (Why not use Path.is_relative_to, you ask? 'Cause of ancient python 3.8, that's why.)
+        allowed_parents = ['/tmp']
+        if os.environ.get('TMPDIR'):
+            # And also TMPDIR, which might not be in /tmp.
+            #
+            # On OSX, /var is symlink to /private/var, so to get test suite passing
+            # need to canonicalize the path so the .startswith() test will work.
+            # (on OSX at least under pytest, the NamedTemporaryFile above will be
+            # something like /var/tmp/... , which is really /private/var/tmp/...)
+            allowed_parents.append(str(Path(os.environ.get('TMPDIR')).resolve()))
+
+        requested = str(Path(cur_path).resolve())
+
+        if not any(requested.startswith(allowed_parent) for allowed_parent in allowed_parents):
+            raise ValueError(
+                f'SQLite database files should be located within /tmp, got "{cur_path}"'
+            )
