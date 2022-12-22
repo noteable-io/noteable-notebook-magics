@@ -32,13 +32,20 @@ jobs:
       - name: Checkout the code
         uses: actions/checkout@v2
 
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2.0.0
+        with:
+          poetry-version: 1.2.2
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        id: setup_python
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+          cache: poetry
 
-      - name: Install tox dependencies
-        run: pip install tox poetry
+      - name: Install tox
+        run: pip install tox
 
       - name: Install CockroachDB
         uses: ./.github/actions/setup-cockroachdb
@@ -46,11 +53,11 @@ jobs:
       # Run all of the tests
       - name: Flake8 - Style guide enforcement
         run: tox -e flake8
-        if: ${{ matrix.python-version == 3.9 }} 
+        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Black - Format check
         run: tox -e black-check
-        if: ${{ matrix.python-version == 3.9 }} 
+        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Isort - Import format check
         run: tox -e isort-check
@@ -58,7 +65,7 @@ jobs:
 
       - name: Safety - Python dependency vulnerability check
         run: tox -e safety
-        if: ${{ matrix.python-version == 3.9 }} 
+        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Set env
         id: vars
