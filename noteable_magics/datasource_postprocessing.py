@@ -3,7 +3,7 @@ from base64 import b64decode
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import structlog
 
@@ -236,3 +236,27 @@ def postprocess_sqlite(
             raise ValueError(
                 f'SQLite database files should be located within /tmp, got "{cur_path}"'
             )
+
+
+@register_postprocessor('awsathena')
+def postprocess_awsathena(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    """Postprocess awsathena details:
+
+        1. Host will be just the region name. Expand to -> athena.{region_name}.amazonaws.com
+        2. Username + password will be AWS access key id + secret value. Needs to be quote_plus protected.
+        3. Likewise the 's3_staging_dir' present in create_engine_kwargs.
+
+    See https://github.com/laughingman7743/PyAthena/
+    """
+
+    # 1. Flesh out host
+    dsn_dict['host'] = f"athena.{dsn_dict['host']}.amazonaws.com"
+
+    # 2. quote_plus username / password
+    dsn_dict['username'] = quote_plus(dsn_dict['username'])
+    dsn_dict['password'] = quote_plus(dsn_dict['password'])
+
+    # 3. quote_plus s3_staging_dir
+    create_engine_kwargs['s3_staging_dir'] = quote_plus(create_engine_kwargs['s3_staging_dir'])

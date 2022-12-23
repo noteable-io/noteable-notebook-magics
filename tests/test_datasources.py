@@ -285,6 +285,22 @@ class SampleData:
                 'max_download_seconds': '22',
             },
         ),
+        'awsathena': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["PyAthena[SQLAlchemy]"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'awsathena+rest',
+                'sqlmagic_autocommit': False,
+                'name': 'My AWS Athena',
+            },
+            dsn_dict={
+                'host': 'us-west-1',
+                'username': 'MYKEYID',
+                'password': 'MyKeyValueHoHoHo',
+                'database': 'default_database',
+            },
+            connect_args_dict={'s3_staging_dir': 's3://myamazonawsbucket/results/'},
+        ),
     }
 
     @classmethod
@@ -626,3 +642,34 @@ def test_postprocess_snowflake(dsn_dict, expected):
 
     datasource_postprocessing.postprocess_snowflake(None, dsn_dict, {})
     assert dsn_dict == expected
+
+
+@pytest.mark.parametrize(
+    'input_dicts,expected_dicts',
+    [
+        (
+            # Should expand initial host value of AWS region to whole hostname; quote_plus affects username, password, s2_staging_dir
+            (
+                # input DSN dict
+                {'host': 'us-west-1', 'username': 'ADFGD:/', 'password': 'MMHq:/'},
+                # input connect args dict
+                {'s3_staging_dir': 's3://myamazonbucket/results/'},
+            ),
+            (
+                # Resulting DSN dict
+                {
+                    'host': 'athena.us-west-1.amazonaws.com',
+                    'username': 'ADFGD%3A%2F',
+                    'password': 'MMHq%3A%2F',
+                },
+                # resulting connect args dict
+                {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'},
+            ),
+        ),
+    ],
+)
+def test_postprocess_awsathena(input_dicts, expected_dicts):
+    dsn_dict, create_engine_dict = input_dicts
+    datasource_postprocessing.postprocess_awsathena(None, dsn_dict, create_engine_dict)
+    assert dsn_dict == expected_dicts[0]
+    assert create_engine_dict == expected_dicts[1]
