@@ -1,6 +1,6 @@
 """ Tests over the data loading magic, "create_or_replace_data_view" """
 
-
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -426,3 +426,70 @@ class TestSQLite:
         datasources.bootstrap_datasource(
             datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
         )
+
+
+class TestAmazonAthena:
+    """These tests will only work if the following env vars are set (see the fixture below). Otherwise the
+    fixture will skip the test (i.e. CICD)
+
+    But James has locally set all these according to his AWS account + test Athena setup, and it actually works.
+
+    This is technically an integration test against external services needing secrets, whose services cost money,
+    so won't run in CICD.
+    """
+
+    @pytest.fixture
+    def athena_datasource_handle(self, datasource_id):
+        """Bootstrap AWS Athena account / database that should have the AWS example 'cloudfront_logs' table configured
+        from environment variables. Returns the datasource id / handle.
+
+        If any of these env vars are not set (Github CICD), then the test(s) will be skipped.
+        """
+        conn_info = (
+            os.environ.get('AWSATHENA_KEY_ID'),
+            os.environ.get('AWSATHENA_KEY_SECRET'),
+            os.environ.get('AWSATHENA_REGION'),
+            os.environ.get('AWSATHENA_DATABASE'),
+            os.environ.get('AWSATHENA_S3_STAGING_DIR'),
+        )
+
+        if not all(conn_info):
+            pytest.skip(
+                'Required environment variables not set to run AWS Athena connectivity tests'
+            )
+
+        # As if these came from Gate / Vault.
+        jsons = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["PyAthena[SQLAlchemy]"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'awsathena+rest',
+                'sqlmagic_autocommit': False,
+                'name': 'My AWS Athena',
+            },
+            dsn_dict={
+                'host': conn_info[2],
+                'username': conn_info[0],
+                'password': conn_info[1],
+                'database': conn_info[3],
+            },
+            connect_args_dict={'s3_staging_dir': conn_info[4]},
+        )
+
+        # Should get postprocessed properly by postprocess_awsathena(), otherwise test
+        # will definitely fail.
+        datasources.bootstrap_datasource(
+            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+        )
+
+        return datasource_id
+
+    def test_select(self, athena_datasource_handle, sql_magic):
+        # Run 2x to ensure that we won't have autocommit issues.
+
+        for _ in range(2):
+            results = sql_magic.execute(
+                f'@{athena_datasource_handle} #scalar select count(*) from cloudfront_logs'
+            )
+
+            assert results == 4996
