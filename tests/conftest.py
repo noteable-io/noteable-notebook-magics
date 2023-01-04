@@ -158,10 +158,17 @@ def populate_database(connection: Connection, include_comments=False):
         db.execute('insert into int_table (a, b, c) values (1, 2, 3), (4, 5, 6)')
 
         db.execute(
-            "create table str_table(str_id text not null default 'foonly', int_col int default 22)"
+            """create table str_table(
+                str_id text not null default 'f'
+                    constraint single_char_str_id check (length(str_id) = 1),
+                int_col int default 22
+                    constraint only_even_int_col_values check (int_col % 2 = 0),
+                constraint never_f_10 check (not (str_id = 'f' and int_col = 10))
+             )
+            """
         )
         db.execute(
-            "insert into str_table(str_id, int_col) values ('a', 1), ('b', 2), ('c', 3), ('d', null)"
+            "insert into str_table(str_id, int_col) values ('a', 2), ('b', 2), ('c', 4), ('d', null)"
         )
 
         db.execute(
