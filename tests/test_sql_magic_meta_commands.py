@@ -536,14 +536,22 @@ class TestSingleRelationCommand:
             'Definition',
         ]
 
-        assert sorted(constraint_df['Constraint'].tolist()) == sorted(
-            ('never_f_10', 'single_char_str_id', 'only_even_int_col_values')
-        )
+        # Should be alpha sorted by constraint name.
+        assert constraint_df['Constraint'].tolist() == [
+            'never_f_10',
+            'only_even_int_col_values',
+            'single_char_str_id',
+        ]
 
         # The SQL dialects convert the constraint expressions back to strings with slightly
-        # varying spellings (as expected), so can't simply blindly assert. But this one happens
-        # to be regurgitated consistently between sqlite and CRDB.
-        assert 'length(str_id) = 1' in constraint_df['Definition'].tolist()
+        # varying spellings (as expected), so can't simply blindly assert all of them.
+        constraint_definitions = constraint_df['Definition'].tolist()
+
+        # This one happens to be regurgitated consistently between sqlite and CRDB.
+        assert 'length(str_id) = 1' in constraint_definitions
+        # Little gentler for the other two.
+        assert any("str_id = 'f'" in cd.lower() for cd in constraint_definitions)
+        assert any("int_col % 2" in cd.lower() for cd in constraint_definitions)
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
         sql_magic.execute(r'@sqlite \d')

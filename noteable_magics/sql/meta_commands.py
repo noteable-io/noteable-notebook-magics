@@ -493,7 +493,7 @@ def constraints_dataframe(
 
     constraint_dicts: List[dict] = inspector.get_check_constraints(table_name, schema)
 
-    for constraint_dict in constraint_dicts:
+    for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
         names.append(constraint_dict['name'])
         definitions.append(constraint_dict['sqltext'])
 
