@@ -549,9 +549,9 @@ class TestSingleRelationCommand:
 
         # This one happens to be regurgitated consistently between sqlite and CRDB.
         assert 'length(str_id) = 1' in constraint_definitions
-        # Little gentler for the other two.
-        assert any("str_id = 'f'" in cd.lower() for cd in constraint_definitions)
-        assert any("int_col % 2" in cd.lower() for cd in constraint_definitions)
+        # Little gentler substring matching for the other two.
+        assert any("str_id = 'f'" in cd for cd in constraint_definitions)
+        assert any("int_col % 2" in cd for cd in constraint_definitions)
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
         sql_magic.execute(r'@sqlite \d')
