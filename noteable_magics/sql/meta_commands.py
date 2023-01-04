@@ -455,9 +455,14 @@ class SingleRelationCommand(MetaCommand):
 
                 display(HTML('\n'.join(html_buf)))
         else:
-            # Is a table. Let's go get indices, foreign keys. If meaningful dataframe returned, transform to
+            # Is a table. Let's go get indices, foreign keys, other table constraints.
+            # If meaningful dataframe returned for any of these, transform to
             # HTML for presentation (DEX only expects at most a single DF display()ed per cell) and display it.
-            for secondary_function in (index_dataframe, foreignkeys_dataframe):
+            for secondary_function in (
+                index_dataframe,
+                foreignkeys_dataframe,
+                constraints_dataframe,
+            ):
                 secondary_df = secondary_function(inspector, relation_name, schema)
                 if len(secondary_df):
                     display(secondary_dataframe_to_html(secondary_df))
@@ -476,6 +481,32 @@ class SingleRelationCommand(MetaCommand):
             table = schema_table
 
         return (schema, table)
+
+
+def constraints_dataframe(
+    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+) -> DataFrame:
+    """Transform results from inspector.get_check_constraints() into a single dataframe for display() purposes"""
+
+    names: List[str] = []
+    definitions: List[str] = []
+
+    constraint_dicts: List[dict] = inspector.get_check_constraints(table_name, schema)
+
+    for constraint_dict in constraint_dicts:
+        names.append(constraint_dict['name'])
+        definitions.append(constraint_dict['sqltext'])
+
+    df = DataFrame(
+        {
+            'Constraint': names,
+            'Definition': definitions,
+        }
+    )
+
+    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Check Constraints'
+
+    return set_dataframe_metadata(df, title=title)
 
 
 def foreignkeys_dataframe(
@@ -735,6 +766,9 @@ class SchemaStrippingInspector:
 
     def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
+
+    def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)

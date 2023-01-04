@@ -490,15 +490,60 @@ class TestSingleRelationCommand:
         # str_table on sqlite will not have any primary key or any indices at all
         # (all tables in cockroach have an implicit PK, so can't test with it)
 
-        # So the only output should be the dataframe. Not a subsequent HTML blob describing indices.
+        # The output should NOT include an HTML blob describing indices.
         sql_magic.execute(r'@sqlite \d str_table')
 
-        assert len(mock_display.call_args_list) == 1
+        assert len(mock_display.call_args_list) == 2  # main df, constraints df-as-html
 
         df = mock_display.call_args_list[0].args[0]
+        assert isinstance(df, pd.DataFrame)
         assert df.attrs['noteable']['decoration']['title'] == 'Table "str_table" Structure'
 
-        assert isinstance(df, pd.DataFrame)
+        # Test test_constraints() will exercise this further. Only mention it here
+        # because will be returned and should not be talking about primary key / indices.
+        constraint_html = mock_display.call_args_list[1].args[0].data
+        assert constraint_html.startswith(
+            '<br />\n<h2>Table <code>str_table</code> Constraints</h2>'
+        )
+
+    # All CRDB tables have a primary key, so conditionally expect it to be described.
+    @pytest.mark.parametrize(
+        'handle,expected_display_callcount', [('@cockroach', 3), ('@sqlite', 2)]
+    )
+    def test_constraints(
+        self, handle, expected_display_callcount, sql_magic, ipython_namespace, mock_display
+    ):
+
+        sql_magic.execute(rf'{handle} \d str_table')
+
+        assert (
+            len(mock_display.call_args_list) == expected_display_callcount
+        )  # main df, maybe index html, constraints df-as-html
+
+        # The constraints HTML blob will be the final one always.
+        constraint_html = mock_display.call_args_list[-1].args[0].data
+        assert constraint_html.startswith(
+            '<br />\n<h2>Table <code>str_table</code> Check Constraints</h2>'
+        )
+
+        # Convert back to dataframe
+        constraint_df = pd.read_html(constraint_html)[0]
+
+        assert len(constraint_df) == 3  # Three check constraints on this table
+
+        assert constraint_df.columns.tolist() == [
+            'Constraint',
+            'Definition',
+        ]
+
+        assert sorted(constraint_df['Constraint'].tolist()) == sorted(
+            ('never_f_10', 'single_char_str_id', 'only_even_int_col_values')
+        )
+
+        # The SQL dialects convert the constraint expressions back to strings with slightly
+        # varying spellings (as expected), so can't simply blindly assert. But this one happens
+        # to be regurgitated consistently between sqlite and CRDB.
+        assert 'length(str_id) = 1' in constraint_df['Definition'].tolist()
 
     def test_no_args_gets_table_list(self, sql_magic, ipython_namespace):
         sql_magic.execute(r'@sqlite \d')
