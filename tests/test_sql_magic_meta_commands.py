@@ -503,7 +503,7 @@ class TestSingleRelationCommand:
         # because will be returned and should not be talking about primary key / indices.
         constraint_html = mock_display.call_args_list[1].args[0].data
         assert constraint_html.startswith(
-            '<br />\n<h2>Table <code>str_table</code> Constraints</h2>'
+            '<br />\n<h2>Table <code>str_table</code> Check Constraints</h2>'
         )
 
     # All CRDB tables have a primary key, so conditionally expect it to be described.

@@ -233,7 +233,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         )
 
         # Scalar result.
-        assert results == 1
+        assert results == 2
 
     @pytest.mark.parametrize('ret_col,expected_value', [('a', 1), ('b', 2)])
     def test_sqlsafe(self, sql_magic, ipython_shell, ret_col, expected_value):
