@@ -424,6 +424,68 @@ class TestSingleRelationCommand:
             '<br />\n<h2>View <code>public.str_int_view</code> Definition</h2>'
         ), html_contents
 
+    @pytest.mark.parametrize(
+        'handle,schema', [('@cockroach', ''), ('@cockroach', 'public'), ('@sqlite', '')]
+    )
+    def test_foreign_keys(self, sql_magic, ipython_namespace, mock_display, handle, schema):
+        """Describing table `references_int_table` should talk about a foreign key over to int_table"""
+
+        # If was asked with schema qualification, then various outputs will also be schema qualified.
+        qualified_references_int_table = (
+            f'{schema}.references_int_table' if schema else 'references_int_table'
+        )
+        qualified_int_table = f'{schema}.int_table' if schema else 'int_table'
+
+        sql_magic.execute(rf'{handle} \d {qualified_references_int_table}')
+
+        assert (
+            len(mock_display.call_args_list) == 3
+        )  # main structure DF, index DF-as-html, foreign key DF-as-html.
+        fk_html = mock_display.call_args_list[2].args[0]
+        assert isinstance(fk_html, HTML)
+        html_contents: str = fk_html.data
+
+        assert html_contents.startswith(
+            f'<br />\n<h2>Table <code>{qualified_references_int_table}</code> Foreign Keys</h2>'
+        ), html_contents
+
+        # Convert the HTML table back to dataframe to complete test.
+        fk_df = pd.read_html(html_contents)[0]
+
+        assert fk_df.columns.tolist() == [
+            'Foreign Key',
+            'Columns',
+            'Referenced Table',
+            'Referenced Columns',
+        ]
+        assert fk_df['Columns'].tolist() == ['a_id']
+        assert fk_df['Referenced Table'].tolist() == [qualified_int_table]
+        assert fk_df['Referenced Columns'].tolist() == ['a']
+
+        # Also test against a table with a compound foreign key. Must create table pair ad hoc. Will be cleaned
+        # up upon test cleanup.
+
+        sql_magic.execute(
+            f'{handle}\ncreate table {qualified_int_table}_2 (a int, b int, primary key(a, b))'
+        )
+
+        sql_magic.execute(
+            f'{handle}\ncreate table {qualified_references_int_table}_2 (a_ref int primary key, b_ref int, constraint a_b_fk foreign key (a_ref, b_ref) references {qualified_int_table}_2(a, b))'
+        )
+
+        mock_display.reset_mock()
+
+        sql_magic.execute(fr'{handle} \describe {qualified_references_int_table}_2')
+
+        assert (
+            len(mock_display.call_args_list) == 3
+        )  # main structure DF, index DF-as-html, foreign key DF-as-html.
+        fk2_html = mock_display.call_args_list[2].args[0]
+
+        fk2_df = pd.read_html(fk2_html.data)[0]
+        assert fk2_df['Columns'][0] == 'a_ref, b_ref'
+        assert fk2_df['Referenced Columns'][0] == 'a, b'
+
     def test_against_table_without_a_primary_key(self, sql_magic, ipython_namespace, mock_display):
         # str_table on sqlite will not have any primary key or any indices at all
         # (all tables in cockroach have an implicit PK, so can't test with it)

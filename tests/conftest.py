@@ -200,10 +200,14 @@ def cleanup_any_extra_tables(connection: Connection):
 
     unexpected_relations = relations - KNOWN_TABLES
 
+    # CRDB needs 'cascade' to be able to drop tables referenced with FKs. SQLite does
+    # not recognize, however.
+    maybe_cascade = 'cascade' if 'cockroach' in str(connection._engine) else ''
+
     for unexpected_relation in unexpected_relations:
         try:
             with Session(connection._engine) as db:
-                db.execute(f'drop table {unexpected_relation}')
+                db.execute(f'drop table {unexpected_relation} {maybe_cascade}')
                 db.commit()
         except Exception:
             # Maybe it was a view?

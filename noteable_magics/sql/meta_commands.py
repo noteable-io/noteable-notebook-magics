@@ -455,11 +455,12 @@ class SingleRelationCommand(MetaCommand):
 
                 display(HTML('\n'.join(html_buf)))
         else:
-            # Is a table. Let's go get indices and transform to a dataframe for
-            # presentation.
-            index_df = index_dataframe(inspector, relation_name, schema)
-            if len(index_df):
-                display(secondary_dataframe_to_html(index_df))
+            # Is a table. Let's go get indices, foreign keys. If meaningful dataframe returned, transform to
+            # HTML for presentation (DEX only expects at most a single DF display()ed per cell) and display it.
+            for secondary_function in (index_dataframe, foreignkeys_dataframe):
+                secondary_df = secondary_function(inspector, relation_name, schema)
+                if len(secondary_df):
+                    display(secondary_dataframe_to_html(secondary_df))
 
         return main_relation_df, False
 
@@ -475,6 +476,44 @@ class SingleRelationCommand(MetaCommand):
             table = schema_table
 
         return (schema, table)
+
+
+def foreignkeys_dataframe(
+    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+) -> DataFrame:
+    """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
+
+    names: List[str] = []  # Will be '(unnamed)' if the constraint was not named
+    constrained_columns: List[str] = []  # Will be comma separated list for compound FKs
+    referenced_qualified_tables: List[str] = []
+    referenced_columns: List[str] = []  # Will be comma separated list for compound FKs
+
+    fkey_dicts = inspector.get_foreign_keys(table_name, schema)
+
+    for fk_dict in fkey_dicts:
+        if fk_dict['referred_schema']:
+            # Schema qualify the table.
+            referred_table = f"{fk_dict['referred_schema']}.{fk_dict['referred_table']}"
+        else:
+            referred_table = fk_dict['referred_table']
+
+        referenced_qualified_tables.append(referred_table)
+        names.append(fk_dict.get('name', '(unnamed)'))
+        constrained_columns.append(', '.join(fk_dict.get('constrained_columns')))
+        referenced_columns.append(', '.join(fk_dict.get('referred_columns')))
+
+    df = DataFrame(
+        {
+            'Foreign Key': names,
+            'Columns': constrained_columns,
+            'Referenced Table': referenced_qualified_tables,
+            'Referenced Columns': referenced_columns,
+        }
+    )
+
+    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Foreign Keys'
+
+    return set_dataframe_metadata(df, title=title)
 
 
 def index_dataframe(
@@ -693,6 +732,9 @@ class SchemaStrippingInspector:
 
     def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
         return self.underlying_inspector.get_pk_constraint(table_name, schema=schema)
+
+    def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)
