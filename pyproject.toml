@@ -41,9 +41,7 @@ sqlalchemy-cockroachdb = "^1.4.4"
 pyathena = {extras = ["sqlalchemy"], version = "^2.18.1"}
 
 
-
-
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 black = "^22.1.0"
 flake8 = "^4.0.1"
 isort = "^5.10.1"
