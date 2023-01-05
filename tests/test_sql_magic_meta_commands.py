@@ -439,7 +439,7 @@ class TestSingleRelationCommand:
         assert isinstance(fk_html, HTML)
         html_contents: str = fk_html.data
 
-        assert html_contents.startswith(f'<br />\n<h2>Foreign Keys</h2>'), html_contents
+        assert html_contents.startswith('<br />\n<h2>Foreign Keys</h2>'), html_contents
 
         # Convert the HTML table back to dataframe to complete test.
         fk_df = pd.read_html(html_contents)[0]
