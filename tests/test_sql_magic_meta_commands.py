@@ -324,9 +324,7 @@ class TestSingleRelationCommand:
         # 2) HTML describing the indices
         index_df_html = mock_display.call_args_list[1].args[0]
         assert isinstance(index_df_html, HTML)
-        assert (
-            '<h2>Table <code>int_table</code> Indices</h2>' in index_df_html.data
-        )  # title was projected.
+        assert '<h2>Indexes</h2>' in index_df_html.data  # title was projected.
 
         # Convert the HTML spelling of the indices back into a DF to test the output.
         df_from_index_html = pd.read_html(index_df_html.data)[0]
@@ -380,9 +378,7 @@ class TestSingleRelationCommand:
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
-        assert html_contents.startswith(
-            '<br />\n<h2>View <code>str_int_view</code> Definition</h2>'
-        )
+        assert html_contents.startswith('<br />\n<h2>View Definition</h2>')
         # Some dialects include a 'CREATE VIEW' statement, others just start with 'select\n', and will vary by case.
         matcher = re.compile(
             '.*<pre>.*select.*s.str_id, s.int_col.*</pre>$',
@@ -420,9 +416,7 @@ class TestSingleRelationCommand:
         html_obj = mock_display.call_args_list[1].args[0]
         assert isinstance(html_obj, HTML)
         html_contents: str = html_obj.data
-        assert html_contents.startswith(
-            '<br />\n<h2>View <code>public.str_int_view</code> Definition</h2>'
-        ), html_contents
+        assert html_contents.startswith('<br />\n<h2>View Definition</h2>'), html_contents
 
     @pytest.mark.parametrize(
         'handle,schema', [('@cockroach', ''), ('@cockroach', 'public'), ('@sqlite', '')]
@@ -445,9 +439,7 @@ class TestSingleRelationCommand:
         assert isinstance(fk_html, HTML)
         html_contents: str = fk_html.data
 
-        assert html_contents.startswith(
-            f'<br />\n<h2>Table <code>{qualified_references_int_table}</code> Foreign Keys</h2>'
-        ), html_contents
+        assert html_contents.startswith(f'<br />\n<h2>Foreign Keys</h2>'), html_contents
 
         # Convert the HTML table back to dataframe to complete test.
         fk_df = pd.read_html(html_contents)[0]
@@ -502,9 +494,7 @@ class TestSingleRelationCommand:
         # Test test_constraints() will exercise this further. Only mention it here
         # because will be returned and should not be talking about primary key / indices.
         constraint_html = mock_display.call_args_list[1].args[0].data
-        assert constraint_html.startswith(
-            '<br />\n<h2>Table <code>str_table</code> Check Constraints</h2>'
-        )
+        assert constraint_html.startswith('<br />\n<h2>Check Constraints</h2>')
 
     # All CRDB tables have a primary key, so conditionally expect it to be described.
     @pytest.mark.parametrize(
@@ -522,9 +512,7 @@ class TestSingleRelationCommand:
 
         # The constraints HTML blob will be the final one always.
         constraint_html = mock_display.call_args_list[-1].args[0].data
-        assert constraint_html.startswith(
-            '<br />\n<h2>Table <code>str_table</code> Check Constraints</h2>'
-        )
+        assert constraint_html.startswith('<br />\n<h2>Check Constraints</h2>')
 
         # Convert back to dataframe
         constraint_df = pd.read_html(constraint_html)[0]

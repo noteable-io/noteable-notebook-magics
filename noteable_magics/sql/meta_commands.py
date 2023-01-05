@@ -449,7 +449,7 @@ class SingleRelationCommand(MetaCommand):
                 display_view_name = displayable_relation_name(schema, relation_name)  # noqa: F841
                 html_buf = []
                 html_buf.append('<br />')
-                html_buf.append(f'<h2>View <code>{display_view_name}</code> Definition</h2>')
+                html_buf.append('<h2>View Definition</h2>')
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
@@ -504,9 +504,7 @@ def constraints_dataframe(
         }
     )
 
-    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Check Constraints'
-
-    return set_dataframe_metadata(df, title=title)
+    return set_dataframe_metadata(df, title='Check Constraints')
 
 
 def foreignkeys_dataframe(
@@ -542,9 +540,7 @@ def foreignkeys_dataframe(
         }
     )
 
-    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Foreign Keys'
-
-    return set_dataframe_metadata(df, title=title)
+    return set_dataframe_metadata(df, title='Foreign Keys')
 
 
 def index_dataframe(
@@ -584,9 +580,7 @@ def index_dataframe(
 
     df = DataFrame({'Index': index_names, 'Columns': column_lists, 'Unique': uniques})
 
-    title = f'Table <code>{displayable_relation_name(schema, table_name)}</code> Indices'
-
-    return set_dataframe_metadata(df, title=title)
+    return set_dataframe_metadata(df, title='Indexes')
 
 
 def set_dataframe_metadata(df: DataFrame, title=None) -> DataFrame:
