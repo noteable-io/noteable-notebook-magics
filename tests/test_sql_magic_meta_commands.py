@@ -8,6 +8,7 @@ from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
+from noteable_magics.sql.gate_messaging_types import RelationStructureDescription
 from noteable_magics.sql.meta_commands import (
     IntrospectAndStoreDatabaseCommand,
     SchemaStrippingInspector,
@@ -15,7 +16,7 @@ from noteable_magics.sql.meta_commands import (
     convert_relation_glob_to_regex,
     parse_schema_and_relation_glob,
 )
-from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES_AND_KINDS
+from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES, KNOWN_TABLES_AND_KINDS
 
 
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
@@ -596,7 +597,7 @@ class TestFullIntrospection:
         IntrospectAndStoreDatabaseCommand.JWT_PATHNAME = original_jwt_pathname
 
     @pytest.fixture()
-    def patch_introspection_command(self, mocker, patched_jwt, requests_mock):
+    def patched_requests_mock(self, mocker, patched_jwt, requests_mock):
         # IntrospectAndStoreDatabaseCommand.inform_gate_relation() gonna try to do a POST
         # to this URL.
         requests_mock.post(
@@ -604,7 +605,9 @@ class TestFullIntrospection:
             status_code=204,
         )
 
-    def test_full_introspection(self, sql_magic, capsys, patch_introspection_command):
+        yield requests_mock
+
+    def test_full_introspection(self, sql_magic, capsys, patched_requests_mock):
         sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
         out, err = capsys.readouterr()
 
@@ -615,6 +618,22 @@ class TestFullIntrospection:
 
         assert 'Done storing discovered table and view structures' in out
 
+        # One POST per relation discovered (as currently implemented)
+        assert len(patched_requests_mock.request_history) == len(KNOWN_TABLES_AND_KINDS)
+        assert all(req.method == 'POST' for req in patched_requests_mock.request_history)
+
+        # Each POST body should be a RelationStructureDescription, whose
+        # relation_names should add up to be all the expected ones.
+        described_relation_names = set()
+        for req in patched_requests_mock.request_history:
+            if req.method == 'POST' and req.url.endswith('/schema/relation'):
+                posted_json = req.json()
+                # Should correspond to RelationStructureDescription
+                from_json = RelationStructureDescription(**posted_json)
+                described_relation_names.add(from_json.relation_name)
+
+        assert described_relation_names == set(KNOWN_TABLES)
+
 
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestHelp:
@@ -622,7 +641,9 @@ class TestHelp:
         sql_magic.execute(r'@sqlite \help')
         results = ipython_namespace['_']
 
-        assert len(results) == len(_all_command_classes) - 1  # avoids talking about HelpCommand
+        assert (
+            len(results) == len(_all_command_classes) - 2
+        )  # avoids talking about HelpCommand, IntrospectAndStoreDatabaseCommand
         assert results.columns.tolist() == ['Command', 'Description', 'Documentation']
 
         # Each description and documentation value should end with a period
