@@ -9,11 +9,13 @@ from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.meta_commands import (
+    IntrospectAndStoreDatabaseCommand,
     SchemaStrippingInspector,
     _all_command_classes,
     convert_relation_glob_to_regex,
     parse_schema_and_relation_glob,
 )
+from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES_AND_KINDS
 
 
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
@@ -22,7 +24,7 @@ class TestListSchemas:
         'connection_handle,expected_results',
         [
             ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main'}),
-            ('@cockroach', {'num_schemas': 3, 'primary_schema_name': 'public'}),
+            (COCKROACH_HANDLE, {'num_schemas': 3, 'primary_schema_name': 'public'}),
         ],
     )
     @pytest.mark.parametrize(
@@ -109,7 +111,7 @@ class TestRelationsCommand:
         'connection_handle',
         [
             '@sqlite',
-            '@cockroach',
+            COCKROACH_HANDLE,
         ],
     )
     @pytest.mark.parametrize(
@@ -163,7 +165,7 @@ class TestRelationsCommand:
         mock_display,
     ):
         # Show all relations in all schemas.
-        sql_magic.execute(r'@cockroach \list *.*')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \list *.*')
 
         results = ipython_namespace['_']
         mock_display.assert_called_with(results)
@@ -181,7 +183,7 @@ class TestRelationsCommand:
         ]
 
         # Show all relations in single glob'd schema (matches 'public' only)
-        sql_magic.execute(r'@cockroach \list p*.*')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \list p*.*')
         results = ipython_namespace['_']
         assert len(results) == 4
         assert set(results['Schema'].tolist()) == set(('public',))
@@ -195,7 +197,7 @@ class TestRelationsCommand:
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\list *', r'\list']:
-            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'{COCKROACH_HANDLE} {invocation_and_maybe_arg}')
             results = ipython_namespace['_']
             assert len(results) == 4
             assert results['Schema'][0] == 'public'
@@ -216,7 +218,7 @@ class TestTablesCommand:
         mock_display,
     ):
         # Show only tables (no views) in all schemas. Also test out assignment to non='_' var.
-        results = sql_magic.execute(r'@cockroach tables << \tables *.*')
+        results = sql_magic.execute(rf'{COCKROACH_HANDLE} tables << \tables *.*')
 
         results = ipython_namespace['tables']
         mock_display.assert_called_with(results)
@@ -234,7 +236,7 @@ class TestTablesCommand:
         ]
 
         # Show all relations in single glob'd schema (matches 'public' only)
-        sql_magic.execute(r'@cockroach \tables p*.*')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \tables p*.*')
         results = ipython_namespace['_']
 
         assert len(results) == 3
@@ -244,7 +246,7 @@ class TestTablesCommand:
         # Show all tables in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\tables *', r'\tables', r'\dt']:
-            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'{COCKROACH_HANDLE} {invocation_and_maybe_arg}')
             results = ipython_namespace['_']
 
         assert len(results) == 3
@@ -256,7 +258,7 @@ class TestTablesCommand:
 class TestViewsCommand:
     def test_list_views(self, sql_magic, ipython_namespace):
         # Show only views (no tables) in all schemas.
-        sql_magic.execute(r'@cockroach \views *.*')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \views *.*')
         results = ipython_namespace['_']
 
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
@@ -265,7 +267,7 @@ class TestViewsCommand:
         assert results[results.Schema == 'public']['View'].tolist() == ['str_int_view']
 
         # Show all views in single glob'd schema (matches 'public' only)
-        sql_magic.execute(r'@cockroach \views p*.*')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \views p*.*')
         results = ipython_namespace['_']
         assert len(results) == 1
         assert results['Schema'][0] == 'public'
@@ -274,7 +276,7 @@ class TestViewsCommand:
         # Show all views in default schema, which in crdb, happens to be named 'public'
         # (either single asterisk arg, or no arg at all)
         for invocation_and_maybe_arg in [r'\views *', r'\views', r'\dv']:
-            sql_magic.execute(f'@cockroach {invocation_and_maybe_arg}')
+            sql_magic.execute(f'{COCKROACH_HANDLE} {invocation_and_maybe_arg}')
             results = ipython_namespace['_']
             assert len(results) == 1
             assert results['Schema'][0] == 'public'
@@ -285,7 +287,7 @@ class TestViewsCommand:
 class TestSingleRelationCommand:
     @pytest.mark.parametrize(
         'handle,defaults_include_int8,expected_pk_index_name',
-        [('@cockroach', True, 'int_table_pkey'), ('@sqlite', False, '(unnamed primary key)')],
+        [(COCKROACH_HANDLE, True, 'int_table_pkey'), ('@sqlite', False, '(unnamed primary key)')],
     )
     def test_table_without_schema(
         self,
@@ -341,7 +343,7 @@ class TestSingleRelationCommand:
 
     @pytest.mark.parametrize('invocation', [r'\describe', r'\d'])
     def test_varying_invocation(self, sql_magic, ipython_namespace, invocation: str):
-        sql_magic.execute(rf'@cockroach {invocation} public.int_table')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} {invocation} public.int_table')
         results = ipython_namespace['_']
 
         assert len(results) == 3
@@ -349,7 +351,9 @@ class TestSingleRelationCommand:
         assert results['Type'].tolist() == ['integer'] * 3
         assert results['Nullable'].tolist() == [False] * 3
 
-    @pytest.mark.parametrize('handle,text_type', [('@cockroach', 'varchar'), ('@sqlite', 'text')])
+    @pytest.mark.parametrize(
+        'handle,text_type', [(COCKROACH_HANDLE, 'varchar'), ('@sqlite', 'text')]
+    )
     def test_against_view(
         self, sql_magic, ipython_namespace, handle: str, text_type: str, mock_display
     ):
@@ -395,10 +399,10 @@ class TestSingleRelationCommand:
         table_name = f'test_table_{uuid4().hex}'
 
         sql_magic.execute(
-            f'@cockroach\ncreate table {table_name}(id uuid not null primary key, name text not null)'
+            f'{COCKROACH_HANDLE}\ncreate table {table_name}(id uuid not null primary key, name text not null)'
         )
 
-        sql_magic.execute(fr'@cockroach \describe {table_name}')
+        sql_magic.execute(fr'{COCKROACH_HANDLE} \describe {table_name}')
 
         df = ipython_namespace['_']
 
@@ -408,7 +412,7 @@ class TestSingleRelationCommand:
         # Sub-case of test_against_view(), but when schema-qualified.
         # Test that we schema qualify correctly in the <h2> when schema was explicitly mentioned.
 
-        sql_magic.execute(r'@cockroach \describe public.str_int_view')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \describe public.str_int_view')
 
         df = mock_display.call_args_list[0].args[0]
         assert df.attrs['noteable']['decoration']['title'] == 'View "public.str_int_view" Structure'
@@ -419,7 +423,7 @@ class TestSingleRelationCommand:
         assert html_contents.startswith('<br />\n<h2>View Definition</h2>'), html_contents
 
     @pytest.mark.parametrize(
-        'handle,schema', [('@cockroach', ''), ('@cockroach', 'public'), ('@sqlite', '')]
+        'handle,schema', [(COCKROACH_HANDLE, ''), (COCKROACH_HANDLE, 'public'), ('@sqlite', '')]
     )
     def test_foreign_keys(self, sql_magic, ipython_namespace, mock_display, handle, schema):
         """Describing table `references_int_table` should talk about a foreign key over to int_table"""
@@ -498,7 +502,7 @@ class TestSingleRelationCommand:
 
     # All CRDB tables have a primary key, so conditionally expect it to be described.
     @pytest.mark.parametrize(
-        'handle,expected_display_callcount', [('@cockroach', 3), ('@sqlite', 2)]
+        'handle,expected_display_callcount', [(COCKROACH_HANDLE, 3), ('@sqlite', 2)]
     )
     def test_constraints(
         self, handle, expected_display_callcount, sql_magic, ipython_namespace, mock_display
@@ -561,19 +565,55 @@ class TestSingleRelationCommand:
         assert err.startswith(r'Usage: \d [[schema].[relation_name]]')
 
     def test_nonexistent_table(self, sql_magic, capsys):
-        sql_magic.execute(r'@cockroach \d foobar')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \d foobar')
         out, err = capsys.readouterr()
         assert err.startswith(r'Relation foobar does not exist')
 
     def test_nonexistent_schema_qualified_table(self, sql_magic, capsys):
-        sql_magic.execute(r'@cockroach \d public.foobar')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \d public.foobar')
         out, err = capsys.readouterr()
         assert err.startswith(r'Relation public.foobar does not exist')
 
     def test_nonexistent_schema(self, sql_magic, capsys):
-        sql_magic.execute(r'@cockroach \d sdfsdfsdf.foobar')
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \d sdfsdfsdf.foobar')
         out, err = capsys.readouterr()
         assert err.startswith(r'Relation sdfsdfsdf.foobar does not exist')
+
+
+@pytest.mark.usefixtures("populated_cockroach_database")
+class TestFullIntrospection:
+    @pytest.fixture()
+    def patched_jwt(self, tmp_path):
+
+        original_jwt_pathname = IntrospectAndStoreDatabaseCommand.JWT_PATHNAME
+        tmp_jwt_path = tmp_path / 'kernel_jwt'
+        tmp_jwt_path.write_text('kerneljwtcontents')
+
+        IntrospectAndStoreDatabaseCommand.JWT_PATHNAME = str(tmp_jwt_path)
+
+        yield
+
+        IntrospectAndStoreDatabaseCommand.JWT_PATHNAME = original_jwt_pathname
+
+    @pytest.fixture()
+    def patch_introspection_command(self, mocker, patched_jwt, requests_mock):
+        # IntrospectAndStoreDatabaseCommand.inform_gate_relation() gonna try to do a POST
+        # to this URL.
+        requests_mock.post(
+            f"http://gate.default/api/v1/datasources/{COCKROACH_UUID}/schema/relation",
+            status_code=204,
+        )
+
+    def test_full_introspection(self, sql_magic, capsys, patch_introspection_command):
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
+        out, err = capsys.readouterr()
+
+        assert out.startswith('Discovered 4 relations')
+        for name, kind in KNOWN_TABLES_AND_KINDS:
+            assert f'Introspected {kind} public.{name}' in out
+            assert f'Stored structure of public.{name}' in out
+
+        assert 'Done storing discovered table and view structures' in out
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")

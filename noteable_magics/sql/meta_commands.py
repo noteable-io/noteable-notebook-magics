@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
+import pathlib
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from uuid import UUID
 
+import requests
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
@@ -10,6 +16,12 @@ from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
+from noteable_magics.sql.gate_messaging_types import (  # UniqueConstraintModel, # not quite implemented yet, should be by time ENG-5357 is completed.; CheckConstraintModel,; ForeignKeysModel,
+    ColumnModel,
+    IndexModel,
+    RelationKind,
+    RelationStructureDescription,
+)
 
 __all__ = ['MetaCommandException', 'run_meta_command']
 
@@ -56,6 +68,9 @@ class MetaCommand:
 
     # What variable name to assign the 'primary' output to, if any
     assign_to_varname: Optional[str]
+
+    # Should this class's command be documented by \help?
+    include_in_help = True
 
     def __init__(self, shell: InteractiveShell, conn: Connection, assign_to_varname: Optional[str]):
         self.shell = shell
@@ -483,6 +498,249 @@ class SingleRelationCommand(MetaCommand):
         return (schema, table)
 
 
+class IntrospectAndStoreDatabaseCommand(MetaCommand):
+    """Introspect entire database, store each discovered table or view
+    into Gate for front-end visualization and navigation."""
+
+    description = "Introspect entire database and message Gate with the discovered results"
+    invokers = [r'\introspect']
+    accepts_args = False
+
+    include_in_help = False
+
+    # Schemas to never introspect into.
+    avoid_schemas = set(('information_schema', 'pg_catalog', 'crdb_internal'))
+
+    def get_datasource_id(self) -> UUID:
+        handle = self.conn.name
+        return UUID(handle[1:])
+
+    # As expected in real kernels in Notable. Overridden in test suite.
+    JWT_PATHNAME = "/vault/secrets/jwt"
+
+    def get_auth_header(self):
+        jwt = pathlib.Path(self.JWT_PATHNAME).read_text()
+
+        return {"Authorization": f"Bearer {jwt}"}
+
+    def all_table_and_views(self, inspector) -> List[Tuple[str, str, str]]:
+        """Returns list of (schema name, relation name, table-or-view) tuples"""
+
+        results = []
+
+        default_schema = inspector.default_schema_name
+        all_schemas = set(inspector.get_schema_names())
+        all_schemas.difference_update(self.avoid_schemas)
+        if default_schema not in all_schemas:
+            all_schemas.add(default_schema)
+
+        for sn in sorted(all_schemas):
+            table_names = set(inspector.get_table_names(sn))
+            view_names = inspector.get_view_names(sn)
+
+            # Some dialects (lookin' at you, cockroach) return view names as both view
+            # names and table names. Sigh. We'd like to only return the counts of
+            # the definite tables, though, so ...
+            if view_names:
+                # Remove any view names from our pristeen list of table names.
+                table_names.difference_update(view_names)
+
+            for tn in table_names:
+                results.append((sn, tn, 'table'))
+
+            for vn in view_names:
+                results.append((sn, vn, 'view'))
+
+        return results
+
+    def fully_introspect(
+        self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str, kind: str
+    ) -> RelationStructureDescription:
+
+        columns = self.introspect_columns(inspector, schema_name, relation_name)
+
+        # Always introspect indexes, even if a view, because materialized views
+        # can have indexes.
+        indexes = self.introspect_indexes(inspector, schema_name, relation_name)
+
+        # XXXX Pick up here.
+        unique_constraints = []
+        check_constraints = []
+        foreign_keys = []
+
+        if kind == 'view':
+            view_definition = inspector.get_view_definition(relation_name, schema_name)
+            primary_key_name = None
+            primary_key_columns = []
+        else:
+            view_definition = None
+            primary_key_name, primary_key_columns = self.introspect_primary_key(
+                inspector, relation_name, schema_name
+            )
+
+        print(f'Introspected {kind} {schema_name}.{relation_name}')
+
+        return RelationStructureDescription(
+            schema_name=schema_name,
+            relation_name=relation_name,
+            kind=RelationKind(kind),
+            view_definition=view_definition,
+            primary_key_name=primary_key_name,
+            primary_key_columns=primary_key_columns,
+            columns=columns,
+            indexes=indexes,
+            unique_constraints=unique_constraints,
+            check_constraints=check_constraints,
+            foreign_keys=foreign_keys,
+        )
+
+    def introspect_indexes(self, inspector, schema_name, relation_name) -> List[IndexModel]:
+
+        indexes = []
+
+        index_dicts = inspector.get_indexes(relation_name, schema_name)
+
+        for index_dict in sorted(index_dicts):
+
+            indexes.append(
+                IndexModel(
+                    name=index_dict['name'],
+                    columns=index_dict['column_names'],
+                    is_unique=index_dict['unique'],
+                )
+            )
+
+        return indexes
+
+    def introspect_primary_key(
+        self, inspector, relation_name, schema_name
+    ) -> Tuple[str, List[str]]:
+        primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
+
+        pkey_name = primary_index_dict.get('name', '(unnamed primary key)')
+        return pkey_name, primary_index_dict['constrained_columns']
+
+    def introspect_columns(
+        self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str
+    ) -> List[ColumnModel]:
+
+        column_dicts = inspector.get_columns(relation_name, schema=schema_name)
+
+        retlist = []
+
+        for col in column_dicts:
+            comment = col.get('comment')  # Some dialects do not return.
+
+            try:
+                type_name = str(col['type'].as_generic()).lower()
+            except NotImplementedError:
+                # ENG-5268: More esoteric types like UUID do not implement .as_generic()
+                type_name = str(col['type']).replace('()', '').lower()
+
+            retlist.append(
+                ColumnModel(
+                    name=col['name'],
+                    is_nullable=col['nullable'],
+                    data_type=type_name,
+                    default_expression=col['default'],
+                    comment=comment,
+                )
+            )
+
+        return retlist
+
+    def inform_gate_start(self, auth_header: dict, datasource_id: UUID):
+        """Tell gate to forget about any prior structures known for this datasource"""
+
+        # No route implemented for this yet, but need one, otherwise Gate-side will
+        # never forget about dropped tables/views.
+
+        pass
+
+    def inform_gate_relation(
+        self,
+        auth_header: dict,
+        datasource_id,
+        relation_description: RelationStructureDescription,
+    ):
+        as_dict_from_json = json.loads(relation_description.json())
+
+        resp = requests.post(
+            f"http://gate.default/api/v1/datasources/{datasource_id}/schema/relation",
+            json=as_dict_from_json,
+            headers=auth_header,
+        )
+
+        if resp.status_code == 204:
+            print(
+                f'Stored structure of {relation_description.schema_name}.{relation_description.relation_name}'
+            )
+        else:
+            print(
+                f'Failed storing structure of {relation_description.schema_name}.{relation_description.relation_name}: {resp.status_code}, {resp.text}'
+            )
+
+    def run(self, invoked_as: str, args: List[str]) -> None:
+        inspector = self.get_inspector()
+
+        start = time.monotonic()
+
+        def delta():
+            nonlocal start
+
+            now = time.monotonic()
+            ret = now - start
+            start = now
+
+            return ret
+
+        relations_and_kinds = self.all_table_and_views(inspector)
+        print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
+
+        ds_id = self.get_datasource_id()
+        auth_header = self.get_auth_header()
+
+        # JSON-able schema descriptions to tell Gate about.
+        message_queue: List[RelationStructureDescription] = []
+
+        # Introspect each relation concurrently.
+        # TODO: Take concurrency as a param?
+        with ThreadPoolExecutor(max_workers=5) as executor:
+
+            future_to_relation = {
+                executor.submit(
+                    self.fully_introspect, inspector, schema_name, relation_name, kind
+                ): (schema_name, relation_name, kind)
+                for (schema_name, relation_name, kind) in relations_and_kinds
+            }
+
+            for future in as_completed(future_to_relation):
+                schema_name, relation_name, kind = future_to_relation[future]
+                try:
+                    message_queue.append(future.result())
+                except Exception as exc:
+                    print(f'Exception for {schema_name}.{relation_name}: {exc}')
+
+        table_introspection_delta = delta()
+        print(
+            f'Done introspecting in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
+        )
+
+        # Now report each result back to gate, currently one at a time. Done completely
+        # after just for relative timing measurements.
+
+        if message_queue:
+            # Clear out any prior known relations for this datasource.
+            self.inform_gate_start(auth_header, ds_id)
+
+            for message in message_queue:
+                self.inform_gate_relation(auth_header, ds_id, message)
+
+            print(f'Done storing discovered table and view structures in {delta()}')
+
+        return (None, False)
+
+
 def constraints_dataframe(
     inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
 ) -> DataFrame:
@@ -633,6 +891,8 @@ class HelpCommand(MetaCommand):
     invokers = ['\\help']
     accepts_args = True
 
+    include_in_help = False
+
     def run(self, invoked_as: str, args: List[str]) -> Tuple[DataFrame, bool]:
         # If no args, will return DF describing usage of all registered subcommands.
         # If run with exactly one subcommand, find it in registry and just talk about that one.
@@ -644,8 +904,8 @@ class HelpCommand(MetaCommand):
         if not args:
             # display all the help.
             commands = sorted(
-                # Omit talking about myself.
-                (cls for cls in _all_command_classes if cls is not HelpCommand),
+                # Only document the ones wanting to be documented.
+                (cls for cls in _all_command_classes if cls.include_in_help),
                 key=lambda cls: cls.description,
             )
         else:
@@ -703,6 +963,7 @@ _all_command_classes = [
     TablesCommand,
     ViewsCommand,
     SchemasCommand,
+    IntrospectAndStoreDatabaseCommand,
     HelpCommand,
 ]
 _registry = {}

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
@@ -141,7 +141,14 @@ def mock_display(mocker):
     return mocker.patch("noteable_magics.sql.meta_commands.display")
 
 
-KNOWN_TABLES = set(('int_table', 'str_table', 'references_int_table', 'str_int_view'))
+KNOWN_TABLES_AND_KINDS = [
+    ('int_table', 'table'),
+    ('str_table', 'table'),
+    ('references_int_table', 'table'),
+    ('str_int_view', 'view'),
+]
+KNOWN_TABLES = set(tk[0] for tk in KNOWN_TABLES_AND_KINDS)
+
 """The table / view names in default schema that populate_database() will create. See cleanup_any_extra_tables()"""
 
 
@@ -246,6 +253,24 @@ def populated_sqlite_database(sqlite_database_connection: Tuple[str, str]) -> No
 
 
 # For tests talking to a live cockroachdb
+
+# Need to have its SQL cell handle derived from a UUID for the \introspect tests,
+# but also want it to be visually distinguished in the tests so we can tell is
+# the cockroach db being parameterized over, esp. when listing out failed tests.
+#
+# In reality, all of the real and non-legacy DuckDB and/or BigQuery datasources
+# bootstrapped into noteable kernels will have their 'sql handles' be based off of
+# the hex of their datasource UUID primary key value. But the only portion of our
+# codebase over here in kernel magic land that needs to know that these handles
+# are most of the time structured in this fashion is when reporting discovered table
+# structures back to Gate with the SQL cell meta command \introspect.
+#
+# (This is the closest spelling to 'cockroach' I'm going to bother making in hex)
+#
+COCKROACH_UUID = UUID('cccccccc-0000-cccc-0000-cccccccccccc')
+COCKROACH_HANDLE = f"@{COCKROACH_UUID.hex}"
+
+
 @pytest.fixture(scope='session')
 def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[str, str]:
 
@@ -258,10 +283,9 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
     # CRDB will by default be in autocommit mode, so must prevent trying to double-commit.
     add_commit_blacklist_dialect('cockroachdb')
 
-    handle = '@cockroach'
     human_name = "My Cockroach Connection"
-    Connection.set(managed_cockroach.sync_dsn, name=handle, human_name=human_name)
-    return handle, human_name
+    Connection.set(managed_cockroach.sync_dsn, name=COCKROACH_HANDLE, human_name=human_name)
+    return COCKROACH_HANDLE, human_name
 
 
 @pytest.fixture(scope='session')

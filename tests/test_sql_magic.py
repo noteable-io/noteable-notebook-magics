@@ -9,7 +9,7 @@ import pytest
 import requests
 
 from noteable_magics import datasources
-from tests.conftest import DatasourceJSONs
+from tests.conftest import COCKROACH_HANDLE, DatasourceJSONs
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
@@ -153,7 +153,7 @@ class TestSqlMagic:
 
 @pytest.mark.usefixtures("populated_cockroach_database", "populated_sqlite_database")
 class TestDDLStatements:
-    @pytest.mark.parametrize('conn_name', ['@sqlite', '@cockroach'])
+    @pytest.mark.parametrize('conn_name', ['@sqlite', COCKROACH_HANDLE])
     def test_ddl_lifecycle(self, conn_name: str, sql_magic, capsys):
         table_name = f'test_table_{uuid4().hex}'
 
@@ -177,7 +177,7 @@ class TestDDLStatements:
         captured = capsys.readouterr()
         assert captured.out == 'Done.\n2 rows affected.\n1 row affected.\n'
 
-    @pytest.mark.parametrize('conn_name', ['@cockroach'])
+    @pytest.mark.parametrize('conn_name', [COCKROACH_HANDLE])
     def test_insert_returning_returns_dataframe(self, conn_name: str, sql_magic):
         table_name = f'test_table_{uuid4().hex}'
 
