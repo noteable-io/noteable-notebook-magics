@@ -131,7 +131,9 @@ class RelationStructureDescription(BaseModel):
     kind: RelationKind = Field(description="Relation type: table or a view")
     relation_comment: Optional[str] = Field(description="Optional comment describing the relation.")
     view_definition: Optional[str] = Field(description="Definition of the view if kind=view")
-    primary_key_name: Optional[str] = Field(description="Name of the primary key constraint")
+    primary_key_name: Optional[str] = Field(
+        description="Name of the primary key constraint, if any"
+    )
 
     # Now the plural fields.
     primary_key_columns: List[str] = Field(
@@ -153,6 +155,18 @@ class RelationStructureDescription(BaseModel):
             values.get("kind") == RelationKind.table
         ):
             raise ValueError("Views require definitions, tables must not have view definition")
+
+        return values
+
+    @root_validator
+    def pkey_name_only_if_has_pkey_columns(cls, values):
+        if len(values.get("primary_key_columns")) > 0 and not values.get('primary_key_name'):
+            raise ValueError("primary_key_columns requires nonempty primary_key_name")
+        elif (
+            len(values.get("primary_key_columns")) == 0
+            and values.get('primary_key_name') is not None
+        ):
+            raise ValueError("No primary_key_columns requires primary_key_name = None")
 
         return values
 

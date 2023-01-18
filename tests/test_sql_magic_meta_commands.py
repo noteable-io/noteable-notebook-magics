@@ -650,6 +650,10 @@ class TestFullIntrospection:
 
                 if from_json.primary_key_name and from_json.primary_key_columns:
                     had_primary_key_columns = True
+                else:
+                    assert (
+                        from_json.primary_key_name is None and from_json.primary_key_columns == []
+                    )
 
                 if from_json.columns:
                     had_columns = True

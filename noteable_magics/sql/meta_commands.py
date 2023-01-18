@@ -16,7 +16,7 @@ from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.gate_messaging_types import (  # UniqueConstraintModel, # not quite implemented yet, should be by time ENG-5357 is completed.; CheckConstraintModel,; ForeignKeysModel,
+from noteable_magics.sql.gate_messaging_types import (
     CheckConstraintModel,
     ColumnModel,
     ForeignKeysModel,
@@ -511,22 +511,95 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     include_in_help = False
 
+    # How many threads to use to introspect individual tables or views.
     MAX_INTROSPECTION_THREADS = 10
 
-    # Schemas to never introspect into.
-    avoid_schemas = set(('information_schema', 'pg_catalog', 'crdb_internal'))
-
-    def get_datasource_id(self) -> UUID:
-        handle = self.conn.name
-        return UUID(handle[1:])
+    # Schemas to never introspect into. Will need to augment / research for each
+    # new datasource type supported.
+    AVOID_SCHEMAS = set(('information_schema', 'pg_catalog', 'crdb_internal'))
 
     # As expected in real kernels in Notable. Overridden in test suite.
     JWT_PATHNAME = "/vault/secrets/jwt"
 
-    def get_auth_header(self):
-        jwt = pathlib.Path(self.JWT_PATHNAME).read_text()
+    def run(self, invoked_as: str, args: List[str]) -> None:
+        """Drive introspecting whole database, POSTing results back to Gate for storage.
 
-        return {"Authorization": f"Bearer {jwt}"}
+        Not really intended for end-user interactive use.
+        """
+        inspector = self.get_inspector()
+
+        start = time.monotonic()
+
+        def delta() -> float:
+            """Record new timing section, kindof like a stopwatch lap timer.
+            Returns the prior 'lap' time.
+            """
+            nonlocal start
+
+            now = time.monotonic()
+            ret = now - start
+            start = now
+
+            return ret
+
+        relations_and_kinds = self.all_table_and_views(inspector)
+        print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
+
+        ds_id = self.get_datasource_id()
+        auth_header = self.get_auth_header()
+
+        # JSON-able schema descriptions to tell Gate about.
+        message_queue: List[RelationStructureDescription] = []
+
+        # Introspect each relation concurrently.
+        # TODO: Take minimum concurrency as a param?
+        with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
+
+            future_to_relation = {
+                executor.submit(
+                    self.fully_introspect, inspector, schema_name, relation_name, kind
+                ): (schema_name, relation_name, kind)
+                for (schema_name, relation_name, kind) in relations_and_kinds
+            }
+
+            for future in as_completed(future_to_relation):
+                schema_name, relation_name, kind = future_to_relation[future]
+                try:
+                    message_queue.append(future.result())
+                except Exception as exc:
+                    print(f'Exception for {schema_name}.{relation_name}: {exc}')
+
+        table_introspection_delta = delta()
+        print(
+            f'Done introspecting in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
+        )
+
+        # Now report each result back to gate, currently one at a time. Done completely
+        # after just for relative timing measurements.
+
+        # TODO: Could do the messaging back to gate either one-at-a-time in the worker threads,
+        # or in bulkier chunks either in the main thread when Gate offers a bulk API,
+        # or could use httpx and an event loop, ...
+
+        # But right now doing the messaging back to gate back here in the main thread just one
+        # request at a time.
+
+        if message_queue:
+            # Clear out any prior known relations for this datasource.
+            self.inform_gate_start(auth_header, ds_id)
+
+            for message in message_queue:
+                self.inform_gate_relation(auth_header, ds_id, message)
+
+            print(f'Done storing discovered table and view structures in {delta()}')
+
+        # run() contract: return what to bind to the SQL cell variable name, and if display() needs
+        # to be called on it. Nothing and nope!
+        return (None, False)
+
+    ###
+    # All of the rest of the methods end up assisting run(), directly or indirectly
+    ###
 
     def all_table_and_views(self, inspector) -> List[Tuple[str, str, str]]:
         """Returns list of (schema name, relation name, table-or-view) tuples"""
@@ -535,7 +608,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
-        all_schemas.difference_update(self.avoid_schemas)
+        all_schemas.difference_update(self.AVOID_SCHEMAS)
         if default_schema not in all_schemas:
             all_schemas.add(default_schema)
 
@@ -562,12 +635,19 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
 
+        """Drive introspecting into this single relation, making all the necessary Introspector API
+        calls to learn all of the relation's sub-structures.
+
+        Returns a RelationStructureDescription pydantic model, suitable to POST back to Gate with.
+        """
+
         columns = self.introspect_columns(inspector, schema_name, relation_name)
 
         # Always introspect indexes, even if a view, because materialized views
         # can have indexes.
         indexes = self.introspect_indexes(inspector, schema_name, relation_name)
 
+        # Likewise unique constraints? Those _might_ be definable on materialized views?
         unique_constraints = self.introspect_unique_constraints(
             inspector, schema_name, relation_name
         )
@@ -608,6 +688,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def introspect_foreign_keys(
         self, inspector, schema_name, relation_name
     ) -> List[ForeignKeysModel]:
+        """Introspect all foreign keys for a table, describing the results as a List[ForeignKeysModel]"""
 
         fkeys: List[ForeignKeysModel] = []
 
@@ -629,6 +710,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def introspect_check_constraints(
         self, inspector, schema_name, relation_name
     ) -> List[CheckConstraintModel]:
+        """Introspect all check constraints for a table, describing the results as a List[CheckConstraintModel]"""
 
         constraints: List[CheckConstraintModel] = []
 
@@ -642,6 +724,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def introspect_unique_constraints(
         self, inspector, schema_name, relation_name
     ) -> List[UniqueConstraintModel]:
+        """Introspect all unique constraints for a table, describing the results as a List[UniqueConstraintModel]"""
 
         constraints: List[UniqueConstraintModel] = []
 
@@ -653,7 +736,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         return constraints
 
     def introspect_indexes(self, inspector, schema_name, relation_name) -> List[IndexModel]:
-
+        """Introspect all indexes for a table or materialized view, describing the results as a List[IndexModel]"""
         indexes = []
 
         index_dicts = inspector.get_indexes(relation_name, schema_name)
@@ -672,11 +755,19 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     def introspect_primary_key(
         self, inspector, relation_name, schema_name
-    ) -> Tuple[str, List[str]]:
+    ) -> Tuple[Optional[str], List[str]]:
+        """Introspect the primary key of a table, returning the pkey name and list of columns in the primary key (if any).
+
+        If no primary key index is defined, will return None for name, empty list for columns.
+        """
         primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
 
         pkey_name = primary_index_dict.get('name', '(unnamed primary key)')
-        return pkey_name, primary_index_dict['constrained_columns']
+
+        if primary_index_dict['constrained_columns']:
+            return pkey_name, primary_index_dict['constrained_columns']
+        else:
+            return '', []  # None, []
 
     def introspect_columns(
         self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str
@@ -721,6 +812,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         datasource_id,
         relation_description: RelationStructureDescription,
     ):
+        """POST this `relation_description` up to Gate for storage, relating to `datasource_id`"""
+
         as_dict_from_json = json.loads(relation_description.json())
 
         resp = requests.post(
@@ -738,65 +831,21 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
                 f'Failed storing structure of {relation_description.schema_name}.{relation_description.relation_name}: {resp.status_code}, {resp.text}'
             )
 
-    def run(self, invoked_as: str, args: List[str]) -> None:
-        inspector = self.get_inspector()
+    def get_datasource_id(self) -> UUID:
+        """Convert a noteable_magics.sql.connection.Connection's name to the original
+        UUID Gate knew it as.
 
-        start = time.monotonic()
+        Will fail with ValueError if attempted against a legacy datasource handle like '@noteable', so
+        please don't try to introspect within SQL cells from those.
+        """
+        handle = self.conn.name
+        return UUID(handle[1:])
 
-        def delta():
-            nonlocal start
+    def get_auth_header(self):
+        """Set up the auth header dict for making requests directly to Gate"""
+        jwt = pathlib.Path(self.JWT_PATHNAME).read_text()
 
-            now = time.monotonic()
-            ret = now - start
-            start = now
-
-            return ret
-
-        relations_and_kinds = self.all_table_and_views(inspector)
-        print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
-
-        ds_id = self.get_datasource_id()
-        auth_header = self.get_auth_header()
-
-        # JSON-able schema descriptions to tell Gate about.
-        message_queue: List[RelationStructureDescription] = []
-
-        # Introspect each relation concurrently.
-        # TODO: Take concurrency as a param?
-        with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
-
-            future_to_relation = {
-                executor.submit(
-                    self.fully_introspect, inspector, schema_name, relation_name, kind
-                ): (schema_name, relation_name, kind)
-                for (schema_name, relation_name, kind) in relations_and_kinds
-            }
-
-            for future in as_completed(future_to_relation):
-                schema_name, relation_name, kind = future_to_relation[future]
-                try:
-                    message_queue.append(future.result())
-                except Exception as exc:
-                    print(f'Exception for {schema_name}.{relation_name}: {exc}')
-
-        table_introspection_delta = delta()
-        print(
-            f'Done introspecting in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
-        )
-
-        # Now report each result back to gate, currently one at a time. Done completely
-        # after just for relative timing measurements.
-
-        if message_queue:
-            # Clear out any prior known relations for this datasource.
-            self.inform_gate_start(auth_header, ds_id)
-
-            for message in message_queue:
-                self.inform_gate_relation(auth_header, ds_id, message)
-
-            print(f'Done storing discovered table and view structures in {delta()}')
-
-        return (None, False)
+        return {"Authorization": f"Bearer {jwt}"}
 
 
 def constraints_dataframe(
