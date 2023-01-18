@@ -511,6 +511,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     include_in_help = False
 
+    MAX_INTROSPECTION_THREADS = 10
+
     # Schemas to never introspect into.
     avoid_schemas = set(('information_schema', 'pg_catalog', 'crdb_internal'))
 
@@ -761,7 +763,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         # Introspect each relation concurrently.
         # TODO: Take concurrency as a param?
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
 
             future_to_relation = {
                 executor.submit(
