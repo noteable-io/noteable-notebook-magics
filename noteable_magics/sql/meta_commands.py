@@ -17,10 +17,13 @@ from sqlalchemy.engine.reflection import Inspector
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.gate_messaging_types import (  # UniqueConstraintModel, # not quite implemented yet, should be by time ENG-5357 is completed.; CheckConstraintModel,; ForeignKeysModel,
+    CheckConstraintModel,
     ColumnModel,
+    ForeignKeysModel,
     IndexModel,
     RelationKind,
     RelationStructureDescription,
+    UniqueConstraintModel,
 )
 
 __all__ = ['MetaCommandException', 'run_meta_command']
@@ -563,20 +566,26 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         # can have indexes.
         indexes = self.introspect_indexes(inspector, schema_name, relation_name)
 
-        # XXXX Pick up here.
-        unique_constraints = []
-        check_constraints = []
-        foreign_keys = []
+        unique_constraints = self.introspect_unique_constraints(
+            inspector, schema_name, relation_name
+        )
 
         if kind == 'view':
             view_definition = inspector.get_view_definition(relation_name, schema_name)
             primary_key_name = None
             primary_key_columns = []
+            check_constraints = []
+            foreign_keys = []
         else:
             view_definition = None
             primary_key_name, primary_key_columns = self.introspect_primary_key(
                 inspector, relation_name, schema_name
             )
+            check_constraints = self.introspect_check_constraints(
+                inspector, schema_name, relation_name
+            )
+
+            foreign_keys = self.introspect_foreign_keys(inspector, schema_name, relation_name)
 
         print(f'Introspected {kind} {schema_name}.{relation_name}')
 
@@ -594,13 +603,60 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             foreign_keys=foreign_keys,
         )
 
+    def introspect_foreign_keys(
+        self, inspector, schema_name, relation_name
+    ) -> List[ForeignKeysModel]:
+
+        fkeys: List[ForeignKeysModel] = []
+
+        fkey_dicts = inspector.get_foreign_keys(relation_name, schema_name)
+
+        for fkey in sorted(fkey_dicts, key=lambda d: d['name']):
+            fkeys.append(
+                ForeignKeysModel(
+                    name=fkey['name'],
+                    referenced_schema=fkey['referred_schema'],
+                    referenced_relation=fkey['referred_table'],
+                    columns=fkey['constrained_columns'],
+                    referenced_columns=fkey['referred_columns'],
+                )
+            )
+
+        return fkeys
+
+    def introspect_check_constraints(
+        self, inspector, schema_name, relation_name
+    ) -> List[CheckConstraintModel]:
+
+        constraints: List[CheckConstraintModel] = []
+
+        constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
+
+        for cd in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(CheckConstraintModel(name=cd['name'], expression=cd['sqltext']))
+
+        return constraints
+
+    def introspect_unique_constraints(
+        self, inspector, schema_name, relation_name
+    ) -> List[UniqueConstraintModel]:
+
+        constraints: List[UniqueConstraintModel] = []
+
+        constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
+
+        for cd in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(UniqueConstraintModel(name=cd['name'], columns=cd['column_names']))
+
+        return constraints
+
     def introspect_indexes(self, inspector, schema_name, relation_name) -> List[IndexModel]:
 
         indexes = []
 
         index_dicts = inspector.get_indexes(relation_name, schema_name)
 
-        for index_dict in sorted(index_dicts):
+        for index_dict in sorted(index_dicts, key=lambda d: d['name']):
 
             indexes.append(
                 IndexModel(
@@ -1027,6 +1083,12 @@ class SchemaStrippingInspector:
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)
+
+    def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
+
+    def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
 
     # Now the value-adding filtering methods.
     def get_table_names(self, schema: Optional[str] = None) -> List[str]:

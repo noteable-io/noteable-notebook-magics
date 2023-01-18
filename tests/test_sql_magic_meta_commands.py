@@ -611,7 +611,9 @@ class TestFullIntrospection:
         sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
         out, err = capsys.readouterr()
 
+        assert 'Exception' not in out
         assert out.startswith('Discovered 4 relations')
+
         for name, kind in KNOWN_TABLES_AND_KINDS:
             assert f'Introspected {kind} public.{name}' in out
             assert f'Stored structure of public.{name}' in out
@@ -625,14 +627,50 @@ class TestFullIntrospection:
         # Each POST body should be a RelationStructureDescription, whose
         # relation_names should add up to be all the expected ones.
         described_relation_names = set()
+
+        # Across the tables, shoulda observed indexes, primary key names,
+        # columns, ...
+        had_columns = False
+        had_primary_key_columns = False
+        had_indexes = False
+        had_unique_constraints = False
+        had_check_constraints = False
+        had_foreign_keys = False
+
         for req in patched_requests_mock.request_history:
             if req.method == 'POST' and req.url.endswith('/schema/relation'):
                 posted_json = req.json()
+
                 # Should correspond to RelationStructureDescription
                 from_json = RelationStructureDescription(**posted_json)
                 described_relation_names.add(from_json.relation_name)
 
+                if from_json.indexes:
+                    had_indexes = True
+
+                if from_json.primary_key_name and from_json.primary_key_columns:
+                    had_primary_key_columns = True
+
+                if from_json.columns:
+                    had_columns = True
+
+                if from_json.unique_constraints:
+                    had_unique_constraints = True
+
+                if from_json.check_constraints:
+                    had_check_constraints = True
+
+                if from_json.foreign_keys:
+                    had_foreign_keys = True
+
         assert described_relation_names == set(KNOWN_TABLES)
+
+        assert had_columns
+        assert had_primary_key_columns
+        assert had_indexes
+        assert had_unique_constraints
+        assert had_check_constraints
+        assert had_foreign_keys
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
