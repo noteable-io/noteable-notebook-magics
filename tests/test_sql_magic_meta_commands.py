@@ -688,6 +688,100 @@ class TestFullIntrospection:
         assert out == ''
 
 
+class TestRelationStructure:
+    """Unit tests over RelationStructureDescription pydantic validation."""
+
+    def test_success_no_primary_key(self):
+        # primary_key_name=None is how to describe no primary key / columns.
+        RelationStructureDescription(
+            schema_name='foo',
+            relation_name='bar',
+            kind='table',
+            primary_key_name=None,
+            primary_key_columns=[],
+            # rest is uninteresting for the test.
+            columns=[],
+            indexes=[],
+            unique_constraints=[],
+            check_constraints=[],
+            foreign_keys=[],
+        )
+
+    @pytest.mark.parametrize('pkey_name', ['', 'foo_pkey'])
+    def test_fail_primary_key_no_primary_key_columns(self, pkey_name):
+        # Only None should be allowed, see test_success_no_primary_key()
+        with pytest.raises(
+            ValueError, match="No primary_key_columns requires primary_key_name = None"
+        ):
+            RelationStructureDescription(
+                schema_name='foo',
+                relation_name='bar',
+                kind='table',
+                primary_key_name=pkey_name,
+                primary_key_columns=[],
+                # rest is uninteresting for the test.
+                columns=[],
+                indexes=[],
+                unique_constraints=[],
+                check_constraints=[],
+                foreign_keys=[],
+            )
+
+    def test_fail_primary_key_columns_no_primary_key_name(self):
+        with pytest.raises(
+            ValueError, match="primary_key_columns requires nonempty primary_key_name"
+        ):
+            RelationStructureDescription(
+                schema_name='foo',
+                relation_name='bar',
+                kind='table',
+                primary_key_name=None,
+                primary_key_columns=['id'],
+                # rest is uninteresting for the test.
+                columns=[],
+                indexes=[],
+                unique_constraints=[],
+                check_constraints=[],
+                foreign_keys=[],
+            )
+
+    def test_success_view_with_definition(self):
+        RelationStructureDescription(
+            schema_name='foo',
+            relation_name='bar',
+            kind='view',
+            view_definition='select 1',
+            # rest is uninteresting for the test.
+            primary_key_name=None,
+            primary_key_columns=[],
+            columns=[],
+            indexes=[],
+            unique_constraints=[],
+            check_constraints=[],
+            foreign_keys=[],
+        )
+
+    @pytest.mark.parametrize('kind,view_defn', [('table', 'select 1'), ('view', None)])
+    def test_fail_view_kind_vs_view_defn_mismatch(self, kind, view_defn):
+        with pytest.raises(
+            ValueError, match="Views require definitions, tables must not have view definition"
+        ):
+            RelationStructureDescription(
+                schema_name='foo',
+                relation_name='bar',
+                kind=kind,
+                view_definition=view_defn,
+                # rest is uninteresting for the test.
+                primary_key_name=None,
+                primary_key_columns=[],
+                columns=[],
+                indexes=[],
+                unique_constraints=[],
+                check_constraints=[],
+                foreign_keys=[],
+            )
+
+
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestHelp:
     def test_general_help(self, sql_magic, ipython_namespace):

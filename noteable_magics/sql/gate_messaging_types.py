@@ -151,6 +151,11 @@ class RelationStructureDescription(BaseModel):
 
     @root_validator
     def view_definition_vs_kind(cls, values):
+        """Fail if a tring to describe a view with None for the view definition. At worst
+        empty string is allowed.
+
+        Likewise, if describing a table, then view definition _must_ be None.
+        """
         if not (values.get("view_definition") is None) == (
             values.get("kind") == RelationKind.table
         ):
