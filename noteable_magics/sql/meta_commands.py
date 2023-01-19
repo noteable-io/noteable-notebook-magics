@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import sys
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
@@ -526,6 +526,19 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         Not really intended for end-user interactive use.
         """
+
+        try:
+            ds_id = self.get_datasource_id()
+        except ValueError:
+            # Tried to introspect a datasource whose kernel-side handle in the connections dict
+            # wasn't coercable back into a UUID. This could be the case for the pre-datasource
+            # legacy connections, '@noteable' for DuckDB or the legacy BigQuery connection.
+            # Cannot continue, in that there's no place to store the results gate-side, since there's
+            # no corresponding datasources row to relate to.
+
+            print('Cannot introspect into this resource.', file=sys.stderr)
+            return (None, False)
+
         inspector = self.get_inspector()
 
         start = time.monotonic()
@@ -545,7 +558,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         relations_and_kinds = self.all_table_and_views(inspector)
         print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
 
-        ds_id = self.get_datasource_id()
         auth_header = self.get_auth_header()
 
         # JSON-able schema descriptions to tell Gate about.
@@ -584,12 +596,15 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         # But right now doing the messaging back to gate back here in the main thread just one
         # request at a time.
 
+        session = requests.Session()
+        session.headers.update(auth_header)
+
         if message_queue:
             # Clear out any prior known relations for this datasource.
-            self.inform_gate_start(auth_header, ds_id)
+            self.inform_gate_start(session, ds_id)
 
             for message in message_queue:
-                self.inform_gate_relation(auth_header, ds_id, message)
+                self.inform_gate_relation(session, ds_id, message)
 
             print(f'Done storing discovered table and view structures in {delta()}')
 
@@ -612,9 +627,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         if default_schema not in all_schemas:
             all_schemas.add(default_schema)
 
-        for sn in sorted(all_schemas):
-            table_names = set(inspector.get_table_names(sn))
-            view_names = inspector.get_view_names(sn)
+        for schema_name in sorted(all_schemas):
+            table_names = set(inspector.get_table_names(schema_name))
+            view_names = inspector.get_view_names(schema_name)
 
             # Some dialects (lookin' at you, cockroach) return view names as both view
             # names and table names. Sigh. We'd like to only return the counts of
@@ -623,11 +638,11 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
                 # Remove any view names from our pristeen list of table names.
                 table_names.difference_update(view_names)
 
-            for tn in table_names:
-                results.append((sn, tn, 'table'))
+            for table_name in table_names:
+                results.append((schema_name, table_name, 'table'))
 
-            for vn in view_names:
-                results.append((sn, vn, 'view'))
+            for view_name in view_names:
+                results.append((schema_name, view_name, 'view'))
 
         return results
 
@@ -716,8 +731,12 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
 
-        for cd in sorted(constraint_dicts, key=lambda d: d['name']):
-            constraints.append(CheckConstraintModel(name=cd['name'], expression=cd['sqltext']))
+        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(
+                CheckConstraintModel(
+                    name=constraint_dict['name'], expression=constraint_dict['sqltext']
+                )
+            )
 
         return constraints
 
@@ -730,8 +749,12 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
 
-        for cd in sorted(constraint_dicts, key=lambda d: d['name']):
-            constraints.append(UniqueConstraintModel(name=cd['name'], columns=cd['column_names']))
+        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(
+                UniqueConstraintModel(
+                    name=constraint_dict['name'], columns=constraint_dict['column_names']
+                )
+            )
 
         return constraints
 
@@ -767,7 +790,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         if primary_index_dict['constrained_columns']:
             return pkey_name, primary_index_dict['constrained_columns']
         else:
-            return '', []  # None, []
+            return None, []
 
     def introspect_columns(
         self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str
@@ -798,7 +821,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return retlist
 
-    def inform_gate_start(self, auth_header: dict, datasource_id: UUID):
+    def inform_gate_start(self, session: requests.Session, datasource_id: UUID):
         """Tell gate to forget about any prior structures known for this datasource"""
 
         # No route implemented for this yet, but need one, otherwise Gate-side will
@@ -808,18 +831,15 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     def inform_gate_relation(
         self,
-        auth_header: dict,
+        session: requests.Session,
         datasource_id,
         relation_description: RelationStructureDescription,
     ):
         """POST this `relation_description` up to Gate for storage, relating to `datasource_id`"""
 
-        as_dict_from_json = json.loads(relation_description.json())
-
-        resp = requests.post(
+        resp = session.post(
             f"http://gate.default/api/v1/datasources/{datasource_id}/schema/relation",
-            json=as_dict_from_json,
-            headers=auth_header,
+            json=relation_description.dict(),
         )
 
         if resp.status_code == 204:

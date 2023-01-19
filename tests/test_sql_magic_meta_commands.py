@@ -651,6 +651,7 @@ class TestFullIntrospection:
                 if from_json.primary_key_name and from_json.primary_key_columns:
                     had_primary_key_columns = True
                 else:
+                    #
                     assert (
                         from_json.primary_key_name is None and from_json.primary_key_columns == []
                     )
@@ -675,6 +676,16 @@ class TestFullIntrospection:
         assert had_unique_constraints
         assert had_check_constraints
         assert had_foreign_keys
+
+    @pytest.mark.usefixtures("populated_sqlite_database")
+    def test_cannot_introspect_legacy_datasource(self, sql_magic, capsys):
+        r"""Only datasource-uuid-based connections should be \introspect fodder"""
+
+        sql_magic.execute(r'@sqlite \introspect')
+        out, err = capsys.readouterr()
+
+        assert err == 'Cannot introspect into this resource.\n'
+        assert out == ''
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
