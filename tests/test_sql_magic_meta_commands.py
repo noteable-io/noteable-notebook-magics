@@ -639,10 +639,9 @@ class TestFullIntrospection:
 
         for req in patched_requests_mock.request_history:
             if req.method == 'POST' and req.url.endswith('/schema/relation'):
-                posted_json = req.json()
 
-                # Should correspond to RelationStructureDescription
-                from_json = RelationStructureDescription(**posted_json)
+                # POST body should correspond to RelationStructureDescription describing a single relation.
+                from_json = RelationStructureDescription(**req.json())
                 described_relation_names.add(from_json.relation_name)
 
                 if from_json.indexes:
