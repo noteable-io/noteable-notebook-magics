@@ -1,6 +1,8 @@
+from datetime import datetime
 import re
 from typing import List, Optional, Tuple
 from uuid import uuid4
+import urllib.parse
 
 import pandas as pd
 import pytest
@@ -605,10 +607,20 @@ class TestFullIntrospection:
             status_code=204,
         )
 
+        # And deletes to this one.
+        requests_mock.delete(
+            f"http://gate.default/api/v1/datasources/{COCKROACH_UUID}/schema/relations",
+            status_code=204,
+        )
+
         yield requests_mock
 
     def test_full_introspection(self, sql_magic, capsys, patched_requests_mock):
+
+        introspection_start = datetime.utcnow()
         sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
+        introspection_end = datetime.utcnow()
+
         out, err = capsys.readouterr()
 
         assert 'Exception' not in out
@@ -620,9 +632,19 @@ class TestFullIntrospection:
 
         assert 'Done storing discovered table and view structures' in out
 
-        # One POST per relation discovered (as currently implemented)
-        assert len(patched_requests_mock.request_history) == len(KNOWN_TABLES_AND_KINDS)
-        assert all(req.method == 'POST' for req in patched_requests_mock.request_history)
+        # One POST per relation discovered, and then a single DELETE (as currently implemented)
+        assert len(patched_requests_mock.request_history) == len(KNOWN_TABLES_AND_KINDS) + 1
+        # Remember, booleans are also integers because filthy historical C.
+        assert sum(req.method == 'POST' for req in patched_requests_mock.request_history) == len(
+            KNOWN_TABLES_AND_KINDS
+        )
+
+        # The delete should be the last request, and should specify a since_when timestamp param
+        # which should be between when introspection started and ended (in UTC).
+        delete_request = patched_requests_mock.request_history[-1]
+        assert delete_request.method == 'DELETE'
+        provided_since_when: str = urllib.parse.parse_qs(delete_request.query)['older_than'][0]
+        assert introspection_start < datetime.fromisoformat(provided_since_when) < introspection_end
 
         # Each POST body should be a RelationStructureDescription, whose
         # relation_names should add up to be all the expected ones.
