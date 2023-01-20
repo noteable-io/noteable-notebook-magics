@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import sys
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
@@ -541,6 +542,12 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         inspector = self.get_inspector()
 
+        # On successful completion, will tell Gate to delete any now-orphaned
+        # relations from prior introspections older than this timestamp.
+        introspection_started_at = datetime.utcnow()
+
+        # This and delta() just for development timing figures. Could become yet another
+        # timer context manager implementation.
         start = time.monotonic()
 
         def delta() -> float:
@@ -600,11 +607,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         session.headers.update(auth_header)
 
         if message_queue:
-            # Clear out any prior known relations for this datasource.
-            self.inform_gate_start(session, ds_id)
-
             for message in message_queue:
                 self.inform_gate_relation(session, ds_id, message)
+
+            # Clear out any prior known relations which may not exist anymore in this datasource.
+            #
+            # We do this at the tail end of things, and not the beginning, so as to not eagerly delete
+            # prior known data if we happen to croak due to some unforseen exception while introspecting.
+            self.inform_gate_completed(session, ds_id, introspection_started_at)
 
             print(f'Done storing discovered table and view structures in {delta()}')
 
@@ -821,14 +831,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return retlist
 
-    def inform_gate_start(self, session: requests.Session, datasource_id: UUID):
-        """Tell gate to forget about any prior structures known for this datasource"""
-
-        # No route implemented for this yet, but need one, otherwise Gate-side will
-        # never forget about dropped tables/views.
-
-        pass
-
     def inform_gate_relation(
         self,
         session: requests.Session,
@@ -850,6 +852,16 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             print(
                 f'Failed storing structure of {relation_description.schema_name}.{relation_description.relation_name}: {resp.status_code}, {resp.text}'
             )
+
+    def inform_gate_completed(
+        self, session: requests.Session, datasource_id: UUID, started_at: datetime
+    ):
+        """Tell gate to forget about any structures known for this datasource older than when we
+        started this introspection run."""
+
+        session.delete(
+            f"http://gate.default/api/v1/datasources/{datasource_id}/schema/relations?older_than={started_at.isoformat()}"
+        )
 
     def get_datasource_id(self) -> UUID:
         """Convert a noteable_magics.sql.connection.Connection's name to the original
