@@ -12,7 +12,7 @@ from sqlalchemy.engine.reflection import Inspector
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.gate_messaging_types import RelationStructureDescription
 from noteable_magics.sql.meta_commands import (
-    IntrospectAndStoreDatabaseCommand,
+    RelationStructureMessager,
     SchemaStrippingInspector,
     _all_command_classes,
     convert_relation_glob_to_regex,
@@ -586,24 +586,31 @@ class TestSingleRelationCommand:
 @pytest.mark.usefixtures("populated_cockroach_database")
 class TestFullIntrospection:
     @pytest.fixture()
-    def patched_jwt(self, tmp_path):
+    def patched_relation_structure_messager(self, tmp_path):
 
-        original_jwt_pathname = IntrospectAndStoreDatabaseCommand.JWT_PATHNAME
+        original_jwt_pathname = RelationStructureMessager.JWT_PATHNAME
         tmp_jwt_path = tmp_path / 'kernel_jwt'
         tmp_jwt_path.write_text('kerneljwtcontents')
 
-        IntrospectAndStoreDatabaseCommand.JWT_PATHNAME = str(tmp_jwt_path)
+        RelationStructureMessager.JWT_PATHNAME = str(tmp_jwt_path)
+
+        # Also make it only buffer at most 2 relations so we'll get some intermediate flushes
+        # when introspecting more than 2 relations.
+
+        original_capacity = RelationStructureMessager.CAPACITY
+
+        RelationStructureMessager.CAPACITY = 2
 
         yield
 
-        IntrospectAndStoreDatabaseCommand.JWT_PATHNAME = original_jwt_pathname
+        RelationStructureMessager.JWT_PATHNAME = original_jwt_pathname
+        RelationStructureMessager.CAPACITY = original_capacity
 
     @pytest.fixture()
-    def patched_requests_mock(self, mocker, patched_jwt, requests_mock):
-        # IntrospectAndStoreDatabaseCommand.inform_gate_relation() gonna try to do a POST
-        # to this URL.
+    def patched_requests_mock(self, mocker, patched_relation_structure_messager, requests_mock):
+        # RelationStructureMessager will do POSTs to this URL.
         requests_mock.post(
-            f"http://gate.default/api/v1/datasources/{COCKROACH_UUID}/schema/relation",
+            f"http://gate.default/api/v1/datasources/{COCKROACH_UUID}/schema/relations",
             status_code=204,
         )
 
@@ -617,6 +624,15 @@ class TestFullIntrospection:
 
     def test_full_introspection(self, sql_magic, capsys, patched_requests_mock):
 
+        # Create one more table, for a total of 5, so that exiting the scope of
+        # the RelationStructureMessager will have a dreg to POST.
+        # (see RelationStructureMessager.__exit__())
+
+        sql_magic.execute(
+            rf'{COCKROACH_HANDLE} create table dregs_table (id int primary key not null, name text)'
+        )
+
+        # Now introspect the whole DB.
         introspection_start = datetime.utcnow()
         sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
         introspection_end = datetime.utcnow()
@@ -624,20 +640,16 @@ class TestFullIntrospection:
         out, err = capsys.readouterr()
 
         assert 'Exception' not in out
-        assert out.startswith('Discovered 4 relations')
+
+        # Expect the core tables plus our dregs_table.
+        # (The 'Done.\n' comes from the 'create table' execution creating dregs_table.)
+        assert out.startswith(f'Done.\nDiscovered {len(KNOWN_TABLES) + 1} relations')
 
         for name, kind in KNOWN_TABLES_AND_KINDS:
             assert f'Introspected {kind} public.{name}' in out
             assert f'Stored structure of public.{name}' in out
 
-        assert 'Done storing discovered table and view structures' in out
-
-        # One POST per relation discovered, and then a single DELETE (as currently implemented)
-        assert len(patched_requests_mock.request_history) == len(KNOWN_TABLES_AND_KINDS) + 1
-        # Remember, booleans are also integers because filthy historical C.
-        assert sum(req.method == 'POST' for req in patched_requests_mock.request_history) == len(
-            KNOWN_TABLES_AND_KINDS
-        )
+        assert 'Done introspecting and messaging gate' in out
 
         # The delete should be the last request, and should specify a since_when timestamp param
         # which should be between when introspection started and ended (in UTC).
@@ -659,38 +671,52 @@ class TestFullIntrospection:
         had_check_constraints = False
         had_foreign_keys = False
 
+        post_call_count = 0
         for req in patched_requests_mock.request_history:
-            if req.method == 'POST' and req.url.endswith('/schema/relation'):
+            if req.method == 'POST' and req.url.endswith('/schema/relations'):
 
-                # POST body should correspond to RelationStructureDescription describing a single relation.
-                from_json = RelationStructureDescription(**req.json())
-                described_relation_names.add(from_json.relation_name)
+                post_call_count += 1
+                # POST body should correspond to a list of RelationStructureDescription each describing a single relation.
+                dict_list = req.json()
+                for member_dict in dict_list:
+                    from_json = RelationStructureDescription(**member_dict)
+                    described_relation_names.add(from_json.relation_name)
 
-                if from_json.indexes:
-                    had_indexes = True
+                    if from_json.indexes:
+                        had_indexes = True
 
-                if from_json.primary_key_name and from_json.primary_key_columns:
-                    had_primary_key_columns = True
-                else:
-                    #
-                    assert (
-                        from_json.primary_key_name is None and from_json.primary_key_columns == []
-                    )
+                    if from_json.primary_key_name and from_json.primary_key_columns:
+                        had_primary_key_columns = True
+                    else:
+                        #
+                        assert (
+                            from_json.primary_key_name is None
+                            and from_json.primary_key_columns == []
+                        )
 
-                if from_json.columns:
-                    had_columns = True
+                    if from_json.columns:
+                        had_columns = True
 
-                if from_json.unique_constraints:
-                    had_unique_constraints = True
+                    if from_json.unique_constraints:
+                        had_unique_constraints = True
 
-                if from_json.check_constraints:
-                    had_check_constraints = True
+                    if from_json.check_constraints:
+                        had_check_constraints = True
 
-                if from_json.foreign_keys:
-                    had_foreign_keys = True
+                    if from_json.foreign_keys:
+                        had_foreign_keys = True
 
-        assert described_relation_names == set(KNOWN_TABLES)
+        # Expected 3 POST calls for the 5 tables, since we fixture
+        # tuned RelationStructureMessager.CAPACITY down to 2. Two calls of two
+        # relations each, then a trailing dreg call.
+        assert post_call_count == 3
 
+        # Every expected relation should have been described.
+        expected_relation_names = set(KNOWN_TABLES)  # The default table set
+        expected_relation_names.add('dregs_table')  # plus our per-test extra.
+        assert described_relation_names == expected_relation_names
+
+        # Every substructure variation should have been covered across all these tables/view.
         assert had_columns
         assert had_primary_key_columns
         assert had_indexes

@@ -519,9 +519,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     # new datasource type supported.
     AVOID_SCHEMAS = set(('information_schema', 'pg_catalog', 'crdb_internal'))
 
-    # As expected in real kernels in Notable. Overridden in test suite.
-    JWT_PATHNAME = "/vault/secrets/jwt"
-
     def run(self, invoked_as: str, args: List[str]) -> None:
         """Drive introspecting whole database, POSTing results back to Gate for storage.
 
@@ -542,10 +539,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         inspector = self.get_inspector()
 
-        # On successful completion, will tell Gate to delete any now-orphaned
-        # relations from prior introspections older than this timestamp.
-        introspection_started_at = datetime.utcnow()
-
         # This and delta() just for development timing figures. Could become yet another
         # timer context manager implementation.
         start = time.monotonic()
@@ -565,14 +558,11 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         relations_and_kinds = self.all_table_and_views(inspector)
         print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
 
-        auth_header = self.get_auth_header()
-
-        # JSON-able schema descriptions to tell Gate about.
-        message_queue: List[RelationStructureDescription] = []
-
         # Introspect each relation concurrently.
         # TODO: Take minimum concurrency as a param?
-        with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
+        with ThreadPoolExecutor(
+            max_workers=self.MAX_INTROSPECTION_THREADS
+        ) as executor, RelationStructureMessager(ds_id) as messenger:
 
             future_to_relation = {
                 executor.submit(
@@ -584,39 +574,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             for future in as_completed(future_to_relation):
                 schema_name, relation_name, kind = future_to_relation[future]
                 try:
-                    message_queue.append(future.result())
+                    messenger.queue_for_delivery(future.result())
                 except Exception as exc:
                     print(f'Exception for {schema_name}.{relation_name}: {exc}')
 
         table_introspection_delta = delta()
         print(
-            f'Done introspecting in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
+            f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
         )
-
-        # Now report each result back to gate, currently one at a time. Done completely
-        # after just for relative timing measurements.
-
-        # TODO: Could do the messaging back to gate either one-at-a-time in the worker threads,
-        # or in bulkier chunks either in the main thread when Gate offers a bulk API,
-        # or could use httpx and an event loop, ...
-
-        # But right now doing the messaging back to gate back here in the main thread just one
-        # request at a time.
-
-        session = requests.Session()
-        session.headers.update(auth_header)
-
-        if message_queue:
-            for message in message_queue:
-                self.inform_gate_relation(session, ds_id, message)
-
-            # Clear out any prior known relations which may not exist anymore in this datasource.
-            #
-            # We do this at the tail end of things, and not the beginning, so as to not eagerly delete
-            # prior known data if we happen to croak due to some unforseen exception while introspecting.
-            self.inform_gate_completed(session, ds_id, introspection_started_at)
-
-            print(f'Done storing discovered table and view structures in {delta()}')
 
         # run() contract: return what to bind to the SQL cell variable name, and if display() needs
         # to be called on it. Nothing and nope!
@@ -873,11 +838,93 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         handle = self.conn.name
         return UUID(handle[1:])
 
-    def get_auth_header(self):
-        """Set up the auth header dict for making requests directly to Gate"""
-        jwt = pathlib.Path(self.JWT_PATHNAME).read_text()
 
-        return {"Authorization": f"Bearer {jwt}"}
+class RelationStructureMessager:
+    """Context manager that collects the single-relation descriptions discovered
+    within IntrospectAndStoreDatabaseCommand, buffers up to CAPACITY at a time, then
+    POSTs the current collected group up to Gate in a single bulk POST (which accepts
+    at most 10).
+
+    Upon context exit, be sure to POST any partial remainder, then tell gate
+    we're all done introspecting, allowing it to delete any old now no longer
+    existing structures from prior introspections.
+
+    Helper class simplifying IntrospectAndStoreDatabaseCommand.run().
+    """
+
+    # Overridden in test suite.
+    CAPACITY = 10
+    # As expected in real kernels in Notable. Overridden in test suite.
+    JWT_PATHNAME = "/vault/secrets/jwt"
+
+    _relations: List[RelationStructureDescription]
+    _session: requests.Session
+    _datasource_id: UUID
+    _partition_counter: int
+    _started_at: datetime
+
+    def __init__(self, datasource_id: UUID):
+        self._datasource_id = datasource_id
+
+        # Set up HTTP session to message Gate about what is discovered.
+        self._session = requests.Session()
+        jwt = pathlib.Path(self.JWT_PATHNAME).read_text()
+        self._session.headers.update({"Authorization": f"Bearer {jwt}"})
+
+    def __enter__(self):
+        self._relations = []
+        self._started_at = datetime.utcnow()
+        self._partition_counter = 1
+
+        return self
+
+    def queue_for_delivery(self, relation: RelationStructureDescription):
+        """Stash this discovered relation. If we have enough already
+        to send up to Gate, then do so.
+        """
+        self._relations.append(relation)
+
+        # Time for an intermediate flush?
+        if len(self._relations) == self.CAPACITY:
+            self._message_gate()
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self._message_gate(completed_introspection=True)
+
+    def _message_gate(self, completed_introspection: bool = False):
+
+        base_url = f"http://gate.default/api/v1/datasources/{self._datasource_id}/schema/relations"
+
+        if self._relations:
+            # Assemble buffered relation descriptions into a single bulk upload payload
+            jsonable_message = [
+                relation_description.dict() for relation_description in self._relations
+            ]
+
+            # Upload in a single message.
+            resp = self._session.post(
+                base_url,
+                json=jsonable_message,
+            )
+
+            if resp.status_code == 204:
+                for relation_description in self._relations:
+                    print(
+                        f'Stored structure of {relation_description.schema_name}.{relation_description.relation_name} in partition {self._partition_counter}'
+                    )
+            else:
+                print(
+                    f'Failed storing partition {self._partition_counter}: {resp.status_code}, {resp.text}'
+                )
+
+            # Prepare for next partition.
+            self._partition_counter += 1
+            self._relations = []
+
+        if completed_introspection:
+            # Message indicating all done through asking to clear out any stored relation structures
+            # older than when we started.
+            self._session.delete(f"{base_url}?older_than={self._started_at.isoformat()}")
 
 
 def constraints_dataframe(
