@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-import sys
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 

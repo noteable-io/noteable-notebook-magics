@@ -1,8 +1,8 @@
-from datetime import datetime
 import re
+import urllib.parse
+from datetime import datetime
 from typing import List, Optional, Tuple
 from uuid import uuid4
-import urllib.parse
 
 import pandas as pd
 import pytest
