@@ -760,7 +760,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         """
         primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
 
-        pkey_name = primary_index_dict.get('name', '(unnamed primary key)')
+        # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
+        # Sigh.
+        pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
 
         if primary_index_dict['constrained_columns']:
             return pkey_name, primary_index_dict['constrained_columns']
