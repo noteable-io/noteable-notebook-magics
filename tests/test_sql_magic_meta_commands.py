@@ -724,6 +724,60 @@ class TestFullIntrospection:
         assert had_check_constraints
         assert had_foreign_keys
 
+    @pytest.fixture()
+    def patch_make_all_pks_unnamed(self, mocker):
+        """Monkeypatch SchemaStrippingInspector.get_pk_constraint to describe all primary keys as
+        name = None, as MySQL might have"""
+
+        orig_implementation = SchemaStrippingInspector.get_pk_constraint
+
+        def get_pk_constaint_all_anonymous(
+            self, table_name: str, schema: Optional[str] = None
+        ) -> dict:
+            """Make all primary keys smell unnamed, like some MySQL and/or SingleStore tables may smell"""
+            orig_dict = orig_implementation(self, table_name, schema)
+            orig_dict['name'] = None
+
+            return orig_dict
+
+        SchemaStrippingInspector.get_pk_constraint = get_pk_constaint_all_anonymous
+
+        try:
+            yield
+
+        finally:
+            # Repair the class.
+            SchemaStrippingInspector.get_pk_constraint = orig_implementation
+
+    def test_introspection_vs_unnamed_primary_keys(
+        self, sql_magic, capsys, patched_requests_mock, patch_make_all_pks_unnamed
+    ):
+
+        """Ensure that no problems happen if primary keys are unnamed. We should inject '(unnamed primary key)' in
+        as the name. ENG-5416."""
+
+        # Now introspect the whole DB after having made smell the PKs have no name,
+        sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
+
+        out, err = capsys.readouterr()
+
+        # Look ma, no exceptions in this case anymore!
+        assert 'Exception' not in out
+
+        primary_key_names = set()
+
+        for req in patched_requests_mock.request_history:
+            if req.method == 'POST' and req.url.endswith('/schema/relations'):
+                dict_list = req.json()
+                for member_dict in dict_list:
+                    from_json = RelationStructureDescription(**member_dict)
+
+                    if from_json.primary_key_name and from_json.primary_key_columns:
+                        primary_key_names.add(from_json.primary_key_name)
+
+        # In this test, all pk names will be described as unnamed due to the monkeypatching.
+        assert primary_key_names == set(('(unnamed primary key)',))
+
     @pytest.mark.usefixtures("populated_sqlite_database")
     def test_cannot_introspect_legacy_datasource(self, sql_magic, capsys):
         r"""Only datasource-uuid-based connections should be \introspect fodder"""
