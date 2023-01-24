@@ -756,7 +756,7 @@ class TestFullIntrospection:
         """Ensure that no problems happen if primary keys are unnamed. We should inject '(unnamed primary key)' in
         as the name. ENG-5416."""
 
-        # Now introspect the whole DB after having made smell the PKs have no name,
+        # Introspect the whole DB after having made the PKs have no name via fixture patch_make_all_pks_unnamed().
         sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
 
         out, err = capsys.readouterr()
