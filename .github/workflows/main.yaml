@@ -16,7 +16,7 @@ on:
 jobs:
   # Runs the build for the noteable-notebook-magics project
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     strategy:
       # By default, GitHub will maximize the number of jobs run in parallel
       # depending on the available runners on GitHub-hosted virtual machines.
