@@ -194,31 +194,71 @@ class TestDDLStatements:
         assert all(isinstance(idval, int) for idval in r['id'].tolist())
 
 
-@pytest.mark.usefixtures("populated_sqlite_database")
+@pytest.mark.usefixtures("populated_cockroach_database")
 class TestJinjaTemplatesWithinSqlMagic:
     """Tests over jinjasql integration. See https://github.com/sripathikrishnan/jinjasql"""
+
+    # 1) We test against cockroachdb and not sqlite because the underlying psycopg2 driver
+    # will be more finicky about types coming out of jinja-ized queries.
+
+    # 2) We don't use f-strings to interpolate COCKROACH_HANDLE because the subsequent
+    # jinja syntax is incompatible with f-strings (both use '{}' incompatibly)
 
     @pytest.mark.parametrize('a_value,expected_b_value', [(1, 2), (4, 5)])
     def test_basic_query(self, sql_magic, ipython_shell, a_value, expected_b_value):
         """Test simple template expansion"""
 
         # Each a value corresponds with a different b value, see
-        # populated_sqlite_database().
+        # populate_database() in tests/conftest.py.
         ipython_shell.user_ns['a_value'] = a_value
 
         ## jinjasql expansion!
         results = sql_magic.execute(
-            '@sqlite\n#scalar select b from int_table where a = {{a_value}}'
+            COCKROACH_HANDLE + '\n#scalar select b from int_table where a = {{a_value}}'
         )
         # Single row + column == scalar, as from populated_sqlite_database
         assert isinstance(results, int)
         assert results == expected_b_value
 
+    def test_insert_into(self, sql_magic, ipython_shell, capsys):
+        """Create a one-off table, then test inserting into from python variables interpolated by jinja"""
+
+        sql_magic.execute(
+            COCKROACH_HANDLE + '\n create table scratch(id int not null primary key, name text)'
+        )
+
+        name_value = 'Joe'
+
+        ipython_shell.user_ns['id_value'] = 12
+        ipython_shell.user_ns['name_value'] = name_value
+
+        # Insert into table via Jinja expansion.
+        sql_magic.execute(
+            COCKROACH_HANDLE
+            + '\ninsert into scratch(id, name) values ({{id_value}}, {{name_value}})'
+        )
+
+        captured = capsys.readouterr()
+        assert '1 row affected' in captured.out
+
+        # Now expect the row to be present and we can grab the inserted name
+        # back by interpolated id query.
+        from_sql = sql_magic.execute(
+            COCKROACH_HANDLE + '\n #scalar select name from scratch where id = {{id_value}}'
+        )
+
+        assert isinstance(from_sql, str)
+        assert from_sql == name_value
+
+        # Explicit cleanup -- fixture-level cleanup seems to block indefinitely
+        sql_magic.execute(COCKROACH_HANDLE + '\n drop table scratch')
+
     def test_in_query_template(self, sql_magic, ipython_shell):
         """Test an in clause expanded from a list. Requires '| inclause' formatter"""
         ipython_shell.user_ns['a_values'] = [1, 4]  # both known a values.
         results = sql_magic.execute(
-            '@sqlite select b from int_table where a in {{a_values | inclause}} order by b'
+            COCKROACH_HANDLE
+            + ' select b from int_table where a in {{a_values | inclause}} order by b'
         )
 
         assert len(results) == 2
@@ -229,7 +269,8 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['str_id_val'] = 'a'
 
         results = sql_magic.execute(
-            '@sqlite\n#scalar select int_col from str_table where str_id = {{str_id_val}}'
+            COCKROACH_HANDLE
+            + '\n#scalar select int_col from str_table where str_id = {{str_id_val}}'
         )
 
         # Scalar result.
@@ -241,7 +282,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['ret_col'] = ret_col
 
         results = sql_magic.execute(
-            '@sqlite\n#scalar select {{ret_col | sqlsafe}} from int_table where a=1'
+            COCKROACH_HANDLE + '\n#scalar select {{ret_col | sqlsafe}} from int_table where a=1'
         )
 
         # Scalar result.
@@ -253,7 +294,8 @@ class TestJinjaTemplatesWithinSqlMagic:
         ipython_shell.user_ns['do_filter'] = do_filter
 
         results = sql_magic.execute(
-            '@sqlite\n#scalar select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
+            COCKROACH_HANDLE
+            + '\n#scalar select b from int_table where true {%if do_filter%} and a=1 {% endif %} order by a'
         )
 
         if isinstance(expected_values, int):
