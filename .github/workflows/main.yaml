@@ -71,5 +71,8 @@ jobs:
         id: vars
         run: PY_VER=${{ matrix.python-version }}; echo ::set-output name=tox_py::${PY_VER//.}
 
+      - name: Install tox for running tests with
+        run: pip install tox
+
       - name: Pytest - Unit tests
         run: tox -e py${{ steps.vars.outputs.tox_py }}
