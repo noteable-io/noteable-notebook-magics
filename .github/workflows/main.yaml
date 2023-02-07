@@ -43,6 +43,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: poetry
 
+      - name: Install dependencies
+        shell: bash
+        run: poetry install
+
       - name: Install CockroachDB
         uses: ./.github/actions/setup-cockroachdb
 
