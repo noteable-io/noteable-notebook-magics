@@ -220,6 +220,25 @@ class TestJinjaTemplatesWithinSqlMagic:
         assert isinstance(results, int)
         assert results == expected_b_value
 
+    def test_query_dereferencing_object_attribute(self, sql_magic, ipython_shell):
+        class MyClass:
+            id: int
+
+            def __init__(self, id: int):
+                self.id = id
+
+        mc = MyClass(1)
+
+        ipython_shell.user_ns['mc'] = mc
+
+        ## jinjasql expansion including object attribute dereference!
+        results = sql_magic.execute(
+            COCKROACH_HANDLE + '\n#scalar select b from int_table where a = {{mc.id}}'
+        )
+
+        assert isinstance(results, int)
+        assert results == 2
+
     def test_insert_into(self, sql_magic, ipython_shell, capsys):
         """Create a one-off table, then test inserting into from python variables interpolated by jinja"""
 

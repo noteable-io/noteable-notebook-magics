@@ -43,32 +43,36 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: poetry
 
-      - name: Install tox
-        run: pip install tox
+      - name: Install dependencies
+        shell: bash
+        run: poetry install
 
       - name: Install CockroachDB
         uses: ./.github/actions/setup-cockroachdb
 
       # Run all of the tests
       - name: Flake8 - Style guide enforcement
-        run: tox -e flake8
+        run: poetry run flake8 noteable_magics/ tests/ --count --show-source --statistics --benchmark
         if: ${{ matrix.python-version == 3.9 }}
 
       - name: Black - Format check
-        run: tox -e black-check
+        run: poetry run black --diff noteable_magics/ tests/
         if: ${{ matrix.python-version == 3.9 }}
 
       - name: Isort - Import format check
-        run: tox -e isort-check
+        run: poetry run isort --diff --check noteable_magics/ tests/
         if: ${{ matrix.python-version == 3.9 }}
 
       - name: Safety - Python dependency vulnerability check
-        run: tox -e safety
+        run: poetry export --without-hashes -f requirements.txt | poetry run safety check --stdin -i 51457 -i 51668
         if: ${{ matrix.python-version == 3.9 }}
 
       - name: Set env
         id: vars
         run: PY_VER=${{ matrix.python-version }}; echo ::set-output name=tox_py::${PY_VER//.}
+
+      - name: Install tox for running tests with
+        run: pip install tox
 
       - name: Pytest - Unit tests
         run: tox -e py${{ steps.vars.outputs.tox_py }}

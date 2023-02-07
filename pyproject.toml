@@ -56,6 +56,7 @@ setuptools = "^65.3.0"
 tox = "^3.23.1"
 managed-service-fixtures = "^0.1.5"
 requests-mock = "^1.10.0"
+safety = "^2.3.5"
 
 
 [build-system]
