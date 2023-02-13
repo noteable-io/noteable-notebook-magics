@@ -75,7 +75,7 @@ def bootstrap_datasource(
 
     create_engine_kwargs = {'connect_args': connect_args}
 
-    # 'drivername' comes in via metadata, because reasons.
+    # 'drivername', and is really of form dialect(+drivername), comes in via metadata, because reasons.
     drivername = metadata['drivername']
     dsn_dict['drivername'] = drivername
 
