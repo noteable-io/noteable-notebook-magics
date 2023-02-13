@@ -363,6 +363,21 @@ traitlets = ">=5.3"
 test = ["pytest"]
 
 [[package]]
+name = "commonmark"
+version = "0.9.1"
+description = "Python parser for the CommonMark Markdown spec"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "commonmark-0.9.1-py2.py3-none-any.whl", hash = "sha256:da2f38c92590f83de410ba1a3cbceafbc74fee9def35f9251ba9a971d6d66fd9"},
+    {file = "commonmark-0.9.1.tar.gz", hash = "sha256:452f9dc859be7f06631ddcb328b6919c67984aca654e5fefb3914d54691aed60"},
+]
+
+[package.extras]
+test = ["flake8 (==3.7.8)", "hypothesis (==3.55.3)"]
+
+[[package]]
 name = "coverage"
 version = "7.1.0"
 description = "Code coverage measurement for Python"
@@ -1719,31 +1734,6 @@ pytest-asyncio = ">=0.19.0,<0.20.0"
 pytest-xdist = ">=2.5.0,<3.0.0"
 
 [[package]]
-name = "markdown-it-py"
-version = "2.1.0"
-description = "Python port of markdown-it. Markdown parsing, done right!"
-category = "main"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "markdown-it-py-2.1.0.tar.gz", hash = "sha256:cf7e59fed14b5ae17c0006eff14a2d9a00ed5f3a846148153899a0224e2c07da"},
-    {file = "markdown_it_py-2.1.0-py3-none-any.whl", hash = "sha256:93de681e5c021a432c63147656fe21790bc01231e0cd2da73626f1aa3ac0fe27"},
-]
-
-[package.dependencies]
-mdurl = ">=0.1,<1.0"
-
-[package.extras]
-benchmarking = ["psutil", "pytest", "pytest-benchmark (>=3.2,<4.0)"]
-code-style = ["pre-commit (==2.6)"]
-compare = ["commonmark (>=0.9.1,<0.10.0)", "markdown (>=3.3.6,<3.4.0)", "mistletoe (>=0.8.1,<0.9.0)", "mistune (>=2.0.2,<2.1.0)", "panflute (>=2.1.3,<2.2.0)"]
-linkify = ["linkify-it-py (>=1.0,<2.0)"]
-plugins = ["mdit-py-plugins"]
-profiling = ["gprof2dot"]
-rtd = ["attrs", "myst-parser", "pyyaml", "sphinx", "sphinx-copybutton", "sphinx-design", "sphinx_book_theme"]
-testing = ["coverage", "pytest", "pytest-cov", "pytest-regressions"]
-
-[[package]]
 name = "markupsafe"
 version = "2.1.2"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -1828,18 +1818,6 @@ python-versions = "*"
 files = [
     {file = "mccabe-0.6.1-py2.py3-none-any.whl", hash = "sha256:ab8a6258860da4b6677da4bd2fe5dc2c659cff31b3ee4f7f5d64e79735b80d42"},
     {file = "mccabe-0.6.1.tar.gz", hash = "sha256:dd8d182285a0fe56bace7f45b5e7d1a6ebcbf524e8f3bd87eb0f125271b8831f"},
-]
-
-[[package]]
-name = "mdurl"
-version = "0.1.2"
-description = "Markdown URL utilities"
-category = "main"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"},
-    {file = "mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba"},
 ]
 
 [[package]]
@@ -2971,13 +2949,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "redshift-connector"
-version = "2.0.908"
+version = "2.0.910"
 description = "Redshift interface library"
 category = "main"
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "redshift_connector-2.0.908-py3-none-any.whl", hash = "sha256:bd7afec9adac17ef4cf6d01b38d7cf1a6ac69f06fb599448e727f87b926a63ce"},
+    {file = "redshift_connector-2.0.910-py3-none-any.whl", hash = "sha256:8f5ca07f2bec4a97e7a601ac7f0de9b47495298973c8e4d7f219f995b5682e23"},
 ]
 
 [package.dependencies]
@@ -2986,9 +2964,10 @@ boto3 = ">=1.9.201,<2.0.0"
 botocore = ">=1.12.201,<2.0.0"
 lxml = ">=4.6.5"
 packaging = "*"
-pytz = ">=2020.1,<2022.2"
-requests = ">=2.23.0,<2.28.1"
+pytz = ">=2020.1"
+requests = ">=2.23.0,<3.0.0"
 scramp = ">=1.2.0,<1.5.0"
+setuptools = "*"
 
 [package.extras]
 full = ["numpy", "pandas"]
@@ -3055,20 +3034,20 @@ idna2008 = ["idna"]
 
 [[package]]
 name = "rich"
-version = "13.2.0"
+version = "10.13.0"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
 category = "main"
 optional = false
-python-versions = ">=3.7.0"
+python-versions = ">=3.6.2,<4.0.0"
 files = [
-    {file = "rich-13.2.0-py3-none-any.whl", hash = "sha256:7c963f0d03819221e9ac561e1bc866e3f95a02248c1234daa48954e6d381c003"},
-    {file = "rich-13.2.0.tar.gz", hash = "sha256:f1a00cdd3eebf999a15d85ec498bfe0b1a77efe9b34f645768a54132ef444ac5"},
+    {file = "rich-10.13.0-py3-none-any.whl", hash = "sha256:96d15285b64dbf8154e0717298d2fdfdbbe03da26a392632c23820068f06c3b3"},
+    {file = "rich-10.13.0.tar.gz", hash = "sha256:d80fc76f34d819c481a48f73ec9ac396bed3bd6a16ecd57f9e0654cd89a8fb56"},
 ]
 
 [package.dependencies]
-markdown-it-py = ">=2.1.0,<3.0.0"
+colorama = ">=0.4.0,<0.5.0"
+commonmark = ">=0.9.0,<0.10.0"
 pygments = ">=2.6.0,<3.0.0"
-typing-extensions = {version = ">=4.0.0,<5.0", markers = "python_version < \"3.9\""}
 
 [package.extras]
 jupyter = ["ipywidgets (>=7.5.1,<8.0.0)"]
@@ -3483,14 +3462,14 @@ SQLAlchemy = ">=1,<2"
 
 [[package]]
 name = "sqlalchemy-redshift"
-version = "0.8.11"
+version = "0.8.12"
 description = "Amazon Redshift Dialect for sqlalchemy"
 category = "main"
 optional = false
 python-versions = ">=3.4"
 files = [
-    {file = "sqlalchemy-redshift-0.8.11.tar.gz", hash = "sha256:192e0f03f59934d4df5fbe1f97e73c429fd0f4045431bef92fb3e8d78544a503"},
-    {file = "sqlalchemy_redshift-0.8.11-py2.py3-none-any.whl", hash = "sha256:2b5bf7f8517079cc802732a8df85c882ec375a93c7c9d7862066bfe924644812"},
+    {file = "sqlalchemy-redshift-0.8.12.tar.gz", hash = "sha256:21635da4e6f6b0b516a923ec02508cff409ce0d757e63a1e4fff39265d0b3208"},
+    {file = "sqlalchemy_redshift-0.8.12-py2.py3-none-any.whl", hash = "sha256:06d1d208a5a0ff7be6b8f346ba0ef30450f6d59190b2ba5316349a507c6f36d9"},
 ]
 
 [package.dependencies]
@@ -3818,4 +3797,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "b0b4a7169609f41203a08a5789874eea02bd8ad8f8cb7b1e464d7e183ab020a7"
+content-hash = "d88fb2e86e3225b613bbf4f99321c86f08ed42bb875c201ba2e1e1242b6fd6c8"
