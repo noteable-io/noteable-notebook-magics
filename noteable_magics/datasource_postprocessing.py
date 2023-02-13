@@ -267,27 +267,27 @@ def postprocess_awsathena(
 def postprocess_databricks(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
 ) -> None:
-    """ENG-5517: If cluser_id is present, then make a $HOME/.databricks-connect file
-    with host, token, cluster_id, org_id, port. Also be sure to purge cluster_id, org_id,
-    port from create_engine_kwargs, in that these fields were added for only going into
-    this side file"""
+    """ENG-5517: If cluser_id is present, and `databricks-connect` is in the path, then
+    set up and run it.
+
+    Also be sure to purge cluster_id, org_id, port from create_engine_kwargs, in that these
+    fields were added for only going into this side effect."""
 
     cluster_id_key = 'cluster_id'
     connect_file_opt_keys = [cluster_id_key, 'org_id', 'port']
 
-    # Collect data to json out into $HOME/.databricks-connect if we've got a cluster_id.
+    # Collect data to drive databricks-connect if we've got a cluster_id and script is in $PATH.
     connect_args = create_engine_kwargs['connect_args']
     if cluster_id_key in connect_args and shutil.which('databricks-connect'):
         # host, token (actually, our password field) come from dsn_dict.
-        # (and what they want as 'host' is actually a https:// URL. Sigh.)
+        # (and what databricks-connect wants as 'host' is actually a https:// URL. Sigh.)
         args = {
             'host': f'https://{dsn_dict["host"]}/',
             'token': dsn_dict['password'],
         }
         for key in connect_file_opt_keys:
             if key in connect_args:
-                # be sure to int - > str the workspace/org id and port number as we xfer.
-                args[key] = str(connect_args[key])
+                args[key] = connect_args[key]
 
         connect_file_path = Path(os.environ['HOME']) / '.databricks-connect'
 
@@ -296,11 +296,12 @@ def postprocess_databricks(
             connect_file_path.unlink()
 
         # Now let databricks-connect external command (re)build it and do whatever
-        # else it does. See ENG-5517.
+        # else it does. See ENG-5517. The 'y' at the start accepts the license agreement.
+        # (We've fallen oh so far from Don Libes' tcl Expect for stuff like this.)
         pipeline = f"echo y {args['host']} {args['token']} {args[cluster_id_key]} {args['org_id']} {args['port']} | databricks-connect configure"
         os.system(pipeline)
 
-    # Always be sure to purge these only-for-.databricks-connect file args from create_engine_kwargs,
+    # Always be sure to purge these only-for-databricks-connect file args from create_engine_kwargs,
     # even if not all were present.
     for key in connect_file_opt_keys:
         create_engine_kwargs.pop(key, '')
