@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 from typing import Callable, List
+import os
 from uuid import uuid4
 
 import pkg_resources
@@ -341,7 +342,6 @@ class TestBootstrapDatasources:
 class TestBootstrapDatasource:
     @pytest.mark.parametrize('sample_name', SampleData.all_sample_names())
     def test_success(self, sample_name, datasource_id):
-
         # Clear out connections at the onset, else the get_engine() portion
         # gets confused over human-name conflicts when we've bootstrapped
         # the same sample data repeatedly, namely through having first
@@ -547,6 +547,208 @@ class TestBootstrapDatasource:
         # the real problem to the user.
 
 
+class TestDatabricks:
+    """Test ENG-5517 Very Special Behavior for databricks side-effects if databricks-connect script is
+    in PATH and we have the optional 'cluster_id' datapoint in connect args.
+    """
+
+    @pytest.fixture()
+    def tmp_home(self, tmpdir: Path) -> Path:
+        existing_home = os.environ['HOME']
+
+        new_home = tmpdir / 'home'
+
+        new_home.mkdir()
+
+        os.environ['HOME'] = str(new_home)
+
+        try:
+            yield new_home
+        finally:
+            os.environ['HOME'] = existing_home
+
+    @pytest.fixture()
+    def databricks_connect_in_path(self, tmpdir: Path) -> Path:
+        # Get a mock-ish executable 'databricks-connect' into an element in the path
+        # so that which('databricks-connect') will find something (see databricks post
+        # processor)
+
+        # Make a new subdir of tmpdir, add it to the path, create executable
+        # shell script databricks-connect
+
+        bindir = tmpdir / 'scratch-bin'
+        bindir.mkdir()
+
+        orig_path = os.environ['PATH']
+
+        os.environ['PATH'] = f"{orig_path}:{bindir}"
+
+        scriptpath = bindir / 'databricks-connect'
+        script_output_path = tmpdir / 'connect-inputs.txt'
+
+        # Now make a 'databricks-connect' executable that echos all its stdin to tmpdir/connect-inputs.txt.txt.
+        with open(scriptpath, 'w') as outfile:
+            outfile.write(f'#!/bin/sh\ncat > {script_output_path}\nexit 0\n')
+
+        scriptpath.chmod(0o755)
+
+        try:
+            # Yield the script output path so a test can inspect its contents.
+            yield script_output_path
+
+        finally:
+            # Undo $PATH change
+            os.environ['PATH'] = orig_path
+
+    @pytest.fixture()
+    def jsons_for_extra_behavior(self):
+        """Return a DatasourceJSONs describing databricks that will tickle postprocess_databricks()
+        into doing its extra behavior. Also returns dict of some of the fields within that JSON."""
+
+        hostname = 'dbc-1bab80fc-a74b.cloud.databricks.com'
+        password = 'dapie372d57cefdc078d8ce3936fcb0e22ee'
+        port = 54321
+        org_id = 65475674534576
+        cluster_id = '0122-044839-vx2fk606'
+
+        case_data = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['sqlalchemy-databricks'],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'databricks+connector',
+                'sqlmagic_autocommit': False,  # This one is special!
+                'name': 'Databricks With Extras',
+            },
+            dsn_dict={
+                'username': 'token',
+                'host': hostname,
+                'password': password,
+            },
+            connect_args_dict={
+                "http_path": "sql/protocolv1/o/2414094324684936/0125-220758-m9pfb4c7",
+                "cluster_id": cluster_id,
+                "org_id": org_id,
+                "port": port,
+            },
+        )
+
+        return (
+            case_data,
+            {
+                'hostname': hostname,
+                'password': password,
+                'port': port,
+                'org_id': org_id,
+                'cluster_id': cluster_id,
+            },
+        )
+
+    def test_extra_behavior(
+        self, datasource_id, databricks_connect_in_path, tmp_home, jsons_for_extra_behavior
+    ):
+        """Test creating databricks with extra keys to cause postprocess_databricks() to do its magic"""
+
+        # Make a preexisting tmp_home/.databricks-connect, expect it to get unlinked
+        # (see lines in postprocess_databricks)
+        dotconnect = tmp_home / '.databricks-connect'
+        with dotconnect.open('w') as of:
+            of.write('exists')
+
+        assert dotconnect.exists()
+
+        case_data, case_dict = jsons_for_extra_behavior
+
+        assert 'cluster_id' in case_data.connect_args_dict
+
+        initial_len = len(Connection.connections)
+
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_len + 1
+
+        # Preexisting file should have been unlinked. The real databricks-connect
+        # script would have recreated it, but the mock version we create in fixture
+        # databricks_connect_in_path will create a different file.
+        assert not dotconnect.exists()
+
+        # databricks_connect_in_path is the path where the fake script output was placed
+        assert databricks_connect_in_path.exists()
+
+        # Expect to find things in it. See ENG-5517.
+        # We can only test that we ran this mock script and the known result
+        # of our mock script. What the real one does ... ?
+        contents = databricks_connect_in_path.read().split()
+        assert len(contents) == 6
+        assert contents[0] == 'y'
+        assert contents[1] == f"https://{case_dict['hostname']}/"
+        assert contents[2] == case_dict['password']
+        assert contents[3] == case_dict['cluster_id']
+        assert contents[4] == str(case_dict['org_id'])
+        assert contents[5] == str(case_dict['port'])
+
+    def test_skip_extra_behavior_if_no_databricks_connect(
+        self, datasource_id, tmp_home, jsons_for_extra_behavior
+    ):
+        # Let's create a $HOME/.databricks-connect file. It should remain untouched
+        # since we're not also using fixture databricks_connect_in_path putting the
+        # script in our path.
+
+        dotconnect = tmp_home / '.databricks-connect'
+        with dotconnect.open('w') as of:
+            of.write('preexists')
+
+        assert dotconnect.exists()
+
+        case_data, case_dict = jsons_for_extra_behavior
+
+        initial_len = len(Connection.connections)
+
+        # Should not fail, but won't have done any extra behavior.
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_len + 1
+
+        # Left unchanged
+        assert dotconnect.exists()
+        assert 'preexists' in dotconnect.read()
+
+    def test_skip_extra_behavior_if_no_cluster_id(
+        self, datasource_id, tmp_home, databricks_connect_in_path
+    ):
+        # Let's create a $HOME/.databricks-connect file. It should remain untouched
+        # since we're not also using fixture databricks_connect_in_path putting the
+        # script in our path.
+
+        dotconnect = tmp_home / '.databricks-connect'
+        with dotconnect.open('w') as of:
+            of.write('preexists')
+
+        assert dotconnect.exists()
+
+        case_data = SampleData.get_sample('databricks')
+        assert 'cluster_id' not in case_data.connect_args_dict
+
+        initial_len = len(Connection.connections)
+
+        # Should not have triggered extra behavior -- cluster_id wasn't present (but
+        # we do have a databricks-connect script in the PATH).
+
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_len + 1
+
+        # But won't have breathed on dotconnect file.
+        # Left unchanged
+        assert dotconnect.exists()
+        assert 'preexists' in dotconnect.read()
+
+
 class TestEnsureRequirements:
     def test_already_installed(self, datasource_id):
         requirements = ['pip']
@@ -569,7 +771,6 @@ class TestEnsureRequirements:
 
 class TestInstallPackage:
     def test_install(self, not_installed_package):
-
         pkgname = not_installed_package
 
         # Better not be installed right now!
