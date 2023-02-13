@@ -1,9 +1,9 @@
 """ Tests over datasource bootstrapping """
 
 import json
+import os
 from pathlib import Path
 from typing import Callable, List
-import os
 from uuid import uuid4
 
 import pkg_resources

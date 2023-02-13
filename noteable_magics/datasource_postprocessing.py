@@ -1,7 +1,7 @@
 import os
+import shutil
 from base64 import b64decode
 from pathlib import Path
-import shutil
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
