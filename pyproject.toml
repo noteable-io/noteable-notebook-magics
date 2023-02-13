@@ -14,7 +14,7 @@ openpyxl = "^3.0.7"
 pandas = "^1.5.3"
 pydantic = "^1.9.1"
 python = "^3.8"
-rich = "10.13.0"  # Upgrading breaks progress bars
+rich = "13.2.0"
 unidiff = "^0.6.0"
 xlrd = "^2.0.1"
 prettytable = "^3.3.0"
@@ -31,8 +31,8 @@ jinjasql = {git = "https://github.com/yakhu/jinjasql.git", rev = "f8c62d1bea97d0
 #
 # datasource drivers.
 duckdb-engine = "^0.6.4"
-redshift-connector = {version = "2.0.908"}
-sqlalchemy-redshift = {version = "0.8.11"}
+redshift-connector = {version = "2.0.910"}
+sqlalchemy-redshift = {version = "0.8.12"}
 google-cloud-bigquery-storage = "2.6.3"
 psycopg2-binary = {version = "2.9.5"}
 snowflake-sqlalchemy = {version = "1.4.4"}
