@@ -2,6 +2,7 @@ import os
 import shutil
 from base64 import b64decode
 from pathlib import Path
+from subprocess import PIPE, run
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
@@ -263,6 +264,15 @@ def postprocess_awsathena(
     create_engine_kwargs['s3_staging_dir'] = quote_plus(create_engine_kwargs['s3_staging_dir'])
 
 
+# Hack to ensure this is getting called if the driver name is missing the +connector suffix.
+# TODO: Remove is unnecessary once proven other path is used
+@register_postprocessor('databricks')
+def postprocess_databricks_general(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    postprocess_databricks(datasource_id, dsn_dict, create_engine_kwargs)
+
+
 @register_postprocessor('databricks+connector')
 def postprocess_databricks(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
@@ -299,7 +309,10 @@ def postprocess_databricks(
         # else it does. See ENG-5517. The 'y' at the start accepts the license agreement.
         # (We've fallen oh so far from Don Libes' tcl Expect for stuff like this.)
         pipeline = f"echo y {args['host']} {args['token']} {args[cluster_id_key]} {args['org_id']} {args['port']} | databricks-connect configure"
-        os.system(pipeline)
+        result = run(pipeline, stdout=PIPE, stderr=PIPE, universal_newlines=True, shell=True)
+        if result.returncode != 0:
+            # Failed to exectute the script. Raise an exception.
+            raise ValueError("Failed to execute databricks-connect configure script: " + result.stderr)
 
     # Always be sure to purge these only-for-databricks-connect file args from create_engine_kwargs,
     # even if not all were present.
