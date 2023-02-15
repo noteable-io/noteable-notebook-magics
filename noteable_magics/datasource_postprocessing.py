@@ -302,7 +302,7 @@ def postprocess_databricks(
 {args['token']}
 {args[cluster_id_key]}
 {args['org_id']}
-{args['port']}""".encode())
+{args['port']}""".encode(), timeout=10)
 
         if p.returncode != 0:
             # Failed to exectute the script. Raise an exception.
