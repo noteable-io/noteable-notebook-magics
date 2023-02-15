@@ -2,7 +2,7 @@ import os
 import shutil
 from base64 import b64decode
 from pathlib import Path
-from subprocess import PIPE, Popen
+from subprocess import PIPE, Popen, TimeoutExpired
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
@@ -264,6 +264,9 @@ def postprocess_awsathena(
     create_engine_kwargs['s3_staging_dir'] = quote_plus(create_engine_kwargs['s3_staging_dir'])
 
 
+DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 10  # seconds
+
+
 @register_postprocessor('databricks+connector')
 def postprocess_databricks(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
@@ -271,14 +274,17 @@ def postprocess_databricks(
     """ENG-5517: If cluser_id is present, and `databricks-connect` is in the path, then
     set up and run it.
 
-    Also be sure to purge cluster_id, org_id, port from create_engine_kwargs, in that these
-    fields were added for only going into this side effect."""
+    Also be sure to purge cluster_id, org_id, port from connect_args portion of create_engine_kwargs,
+    in that these fields were added for only going into this side effect."""
 
     cluster_id_key = 'cluster_id'
     connect_file_opt_keys = [cluster_id_key, 'org_id', 'port']
 
     # Collect data to drive databricks-connect if we've got a cluster_id and script is in $PATH.
     connect_args = create_engine_kwargs['connect_args']
+    # Only wanted for getting connect_args. Any additional dereferencing is a bug.
+    del create_engine_kwargs
+
     if cluster_id_key in connect_args and shutil.which('databricks-connect'):
         # host, token (actually, our password field) come from dsn_dict.
         # (and what databricks-connect wants as 'host' is actually a https:// URL. Sigh.)
@@ -297,16 +303,26 @@ def postprocess_databricks(
             connect_file_path.unlink()
 
         p = Popen(['databricks-connect', 'configure'], stdout=PIPE, stdin=PIPE, stderr=PIPE)
-        _stdout, stderr = p.communicate(input=f"""y
-{args['host']}
-{args['token']}
-{args[cluster_id_key]}
-{args['org_id']}
-{args['port']}""".encode(), timeout=10)
+        try:
+            _stdout, stderr = p.communicate(
+                input=f"""y
+    {args['host']}
+    {args['token']}
+    {args[cluster_id_key]}
+    {args['org_id']}
+    {args['port']}""".encode(),
+                timeout=DATABRICKS_CONNECT_SCRIPT_TIMEOUT,
+            )
+        except TimeoutExpired:
+            raise ValueError(
+                f'databricks-connect took longer than {DATABRICKS_CONNECT_SCRIPT_TIMEOUT} seconds to complete.'
+            )
 
         if p.returncode != 0:
             # Failed to exectute the script. Raise an exception.
-            raise ValueError("Failed to execute databricks-connect configure script: " + stderr)
+            raise ValueError(
+                "Failed to execute databricks-connect configure script: " + stderr.decode()
+            )
 
     # Always be sure to purge these only-for-databricks-connect file args from connect_args,
     # even if not all were present.

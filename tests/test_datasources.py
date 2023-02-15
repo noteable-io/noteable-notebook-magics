@@ -554,6 +554,7 @@ class TestDatabricks:
 
     @pytest.fixture()
     def tmp_home(self, tmpdir: Path) -> Path:
+        """Replace $HOME to be a new directory of $TMPDIR, yielding the new Path."""
         existing_home = os.environ['HOME']
 
         new_home = tmpdir / 'home'
@@ -568,10 +569,13 @@ class TestDatabricks:
             os.environ['HOME'] = existing_home
 
     @pytest.fixture()
-    def databricks_connect_in_path(self, tmpdir: Path) -> Path:
-        # Get a mock-ish executable 'databricks-connect' into an element in the path
-        # so that which('databricks-connect') will find something (see databricks post
-        # processor)
+    def databricks_connect_in_path(self, tmpdir: Path) -> tuple[Path, Path]:
+        """Get a mock-ish executable 'databricks-connect' into an element in the path
+        so that which('databricks-connect') will find something (see databricks post
+        processor)
+
+        Yields the new executable's path, plus where it will scribble its own output.
+        """
 
         # Make a new subdir of tmpdir, add it to the path, create executable
         # shell script databricks-connect
@@ -593,15 +597,14 @@ class TestDatabricks:
         scriptpath.chmod(0o755)
 
         try:
-            # Yield the script output path so a test can inspect its contents.
-            yield script_output_path
+            yield scriptpath, script_output_path
 
         finally:
             # Undo $PATH change
             os.environ['PATH'] = orig_path
 
     @pytest.fixture()
-    def jsons_for_extra_behavior(self):
+    def jsons_for_extra_behavior(self) -> tuple[DatasourceJSONs, dict]:
         """Return a DatasourceJSONs describing databricks that will tickle postprocess_databricks()
         into doing its extra behavior. Also returns dict of some of the fields within that JSON."""
 
@@ -643,6 +646,100 @@ class TestDatabricks:
             },
         )
 
+    def test_postprocess_databricks_pops_correctly(self, datasource_id, jsons_for_extra_behavior):
+        """Ensure that postprocess_databricks side effect pops from the correct dict (connect_args,
+        not the containing create_engine_kwargs dict), even w/o databricks-connect
+        being found in the $PATH.
+        """
+
+        keys_expected_to_be_removed = ['cluster_id', 'org_id', 'port']
+        jsons_obj, specific_fields = jsons_for_extra_behavior
+        connect_args = jsons_obj.connect_args_dict
+
+        # All initially there...
+        assert all(key in connect_args for key in keys_expected_to_be_removed)
+
+        create_engine_kwargs = {'connect_args': connect_args}
+
+        datasource_postprocessing.postprocess_databricks(
+            datasource_id,
+            jsons_obj.dsn_dict,
+            create_engine_kwargs,
+        )
+
+        # Should have removed all the keys as side effect of the call.
+        # (Had bug where they were popped from wrong dict originally.)
+        assert not any(key in connect_args for key in keys_expected_to_be_removed)
+
+    def test_errors_from_databricks_connect_are_surfaced(
+        datasource_id, databricks_connect_in_path, tmp_home, jsons_for_extra_behavior
+    ):
+        """Prove that if databricks-connect script exits nonzero, a ValueError is raised
+        and the script's stderr will be within the error message."""
+
+        # Respell the databricks-connect script to always error out, expect that in a ValueError
+        # when calling postprocess_databricks
+
+        script_path, _ = databricks_connect_in_path
+
+        expected_error_message = 'oh noes!'
+
+        # Respell the script to bomb out with message to stderr.
+        with script_path.open('w') as of:
+            of.write('#!/bin/sh\n')
+            of.write(f'echo "{expected_error_message}" 1>&2\n')
+            of.write('exit 1\n')
+
+        jsons_obj, specific_fields = jsons_for_extra_behavior
+        create_engine_kwargs = {'connect_args': jsons_obj.connect_args_dict}
+
+        with pytest.raises(ValueError, match=expected_error_message):
+            datasource_postprocessing.postprocess_databricks(
+                datasource_id,
+                jsons_obj.dsn_dict,
+                create_engine_kwargs,
+            )
+
+    @pytest.fixture()
+    def short_script_timeout(self):
+        """Respell datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT to 1 (second)"""
+        original_value = datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
+
+        datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 1
+
+        try:
+            yield datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
+        finally:
+            datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = original_value
+
+    def test_databricks_connect_taking_too_long(
+        datasource_id, databricks_connect_in_path, short_script_timeout, jsons_for_extra_behavior
+    ):
+        """Prove that if databricks-connect takes longer than allowed to run, that ValueError will
+        be raised with an appropriate message.
+        """
+
+        # Respell the databricks-connect script to take longer than short_script_timeout seconds,
+        # expect that in a ValueError when calling postprocess_databricks.
+
+        script_path, _ = databricks_connect_in_path
+
+        # Respell the script to take longer than new timeout, but to (try to) exit cleanly
+        with script_path.open('w') as of:
+            of.write('#!/bin/sh\n')
+            of.write(f'sleep {short_script_timeout+1}\n')
+            of.write('exit 0\n')
+
+        jsons_obj, specific_fields = jsons_for_extra_behavior
+        create_engine_kwargs = {'connect_args': jsons_obj.connect_args_dict}
+
+        with pytest.raises(ValueError, match=f'databricks-connect took longer than'):
+            datasource_postprocessing.postprocess_databricks(
+                datasource_id,
+                jsons_obj.dsn_dict,
+                create_engine_kwargs,
+            )
+
     def test_extra_behavior(
         self, datasource_id, databricks_connect_in_path, tmp_home, jsons_for_extra_behavior
     ):
@@ -673,13 +770,14 @@ class TestDatabricks:
         # databricks_connect_in_path will create a different file.
         assert not dotconnect.exists()
 
-        # databricks_connect_in_path is the path where the fake script output was placed
-        assert databricks_connect_in_path.exists()
+        # databricks_connect_in_path second member is the path where the fake script output was placed
+        _, script_output = databricks_connect_in_path
+        assert script_output.exists()
 
         # Expect to find things in it. See ENG-5517.
         # We can only test that we ran this mock script and the known result
         # of our mock script. What the real one does ... ?
-        contents = databricks_connect_in_path.read().split()
+        contents = script_output.read().split()
         assert len(contents) == 6
         assert contents[0] == 'y'
         assert contents[1] == f"https://{case_dict['hostname']}/"
