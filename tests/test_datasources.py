@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Tuple
 from uuid import uuid4
 
 import pkg_resources
@@ -569,7 +569,7 @@ class TestDatabricks:
             os.environ['HOME'] = existing_home
 
     @pytest.fixture()
-    def databricks_connect_in_path(self, tmpdir: Path) -> tuple[Path, Path]:
+    def databricks_connect_in_path(self, tmpdir: Path) -> Tuple[Path, Path]:
         """Get a mock-ish executable 'databricks-connect' into an element in the path
         so that which('databricks-connect') will find something (see databricks post
         processor)
@@ -604,7 +604,7 @@ class TestDatabricks:
             os.environ['PATH'] = orig_path
 
     @pytest.fixture()
-    def jsons_for_extra_behavior(self) -> tuple[DatasourceJSONs, dict]:
+    def jsons_for_extra_behavior(self) -> Tuple[DatasourceJSONs, dict]:
         """Return a DatasourceJSONs describing databricks that will tickle postprocess_databricks()
         into doing its extra behavior. Also returns dict of some of the fields within that JSON."""
 
