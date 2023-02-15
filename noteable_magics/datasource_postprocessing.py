@@ -313,7 +313,6 @@ def postprocess_databricks(
     for key in connect_file_opt_keys:
         connect_args.pop(key, '')
 
-
     # Always be sure to purge these only-for-databricks-connect file args from connect_args,
     # even if not all were present.
     for key in connect_file_opt_keys:
