@@ -2,6 +2,7 @@ import os
 import shutil
 from base64 import b64decode
 from pathlib import Path
+from subprocess import PIPE, Popen
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
@@ -295,13 +296,19 @@ def postprocess_databricks(
         if connect_file_path.exists():
             connect_file_path.unlink()
 
-        # Now let databricks-connect external command (re)build it and do whatever
-        # else it does. See ENG-5517. The 'y' at the start accepts the license agreement.
-        # (We've fallen oh so far from Don Libes' tcl Expect for stuff like this.)
-        pipeline = f"echo y {args['host']} {args['token']} {args[cluster_id_key]} {args['org_id']} {args['port']} | databricks-connect configure"
-        os.system(pipeline)
+        p = Popen(['databricks-connect', 'configure'], stdout=PIPE, stdin=PIPE, stderr=PIPE)
+        _stdout, stderr = p.communicate(input=f"""y
+{args['host']}
+{args['token']}
+{args[cluster_id_key]}
+{args['org_id']}
+{args['port']}""".encode(), timeout=10)
 
-    # Always be sure to purge these only-for-databricks-connect file args from create_engine_kwargs,
+        if p.returncode != 0:
+            # Failed to exectute the script. Raise an exception.
+            raise ValueError("Failed to execute databricks-connect configure script: " + stderr)
+
+    # Always be sure to purge these only-for-databricks-connect file args from connect_args,
     # even if not all were present.
     for key in connect_file_opt_keys:
-        create_engine_kwargs.pop(key, '')
+        connect_args.pop(key, '')
