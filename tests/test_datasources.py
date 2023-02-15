@@ -777,7 +777,7 @@ class TestDatabricks:
         # Expect to find things in it. See ENG-5517.
         # We can only test that we ran this mock script and the known result
         # of our mock script. What the real one does ... ?
-        contents = script_output.read().split()
+        contents = script_output.read().split('\n')
         assert len(contents) == 6
         assert contents[0] == 'y'
         assert contents[1] == f"https://{case_dict['hostname']}/"

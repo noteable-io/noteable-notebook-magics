@@ -305,12 +305,14 @@ def postprocess_databricks(
         p = Popen(['databricks-connect', 'configure'], stdout=PIPE, stdin=PIPE, stderr=PIPE)
         try:
             _stdout, stderr = p.communicate(
+                # Indention fugly so as to not prefix each input with whitespace.
+                # And oh, be sure to have a newline betwen each input into the 'interactive' script.
                 input=f"""y
-    {args['host']}
-    {args['token']}
-    {args[cluster_id_key]}
-    {args['org_id']}
-    {args['port']}""".encode(),
+{args['host']}
+{args['token']}
+{args[cluster_id_key]}
+{args['org_id']}
+{args['port']}""".encode(),
                 timeout=DATABRICKS_CONNECT_SCRIPT_TIMEOUT,
             )
         except TimeoutExpired:
