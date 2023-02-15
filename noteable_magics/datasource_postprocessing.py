@@ -308,10 +308,10 @@ def postprocess_databricks(
             # Failed to exectute the script. Raise an exception.
             raise ValueError("Failed to execute databricks-connect configure script: " + stderr)
 
-    # Always be sure to purge these only-for-databricks-connect file args from connect_args,
+    # Always be sure to purge these only-for-databricks-connect file args from create_engine_kwargs,
     # even if not all were present.
     for key in connect_file_opt_keys:
-        connect_args.pop(key, '')
+        create_engine_kwargs.pop(key, '')
 
     # Always be sure to purge these only-for-databricks-connect file args from connect_args,
     # even if not all were present.
