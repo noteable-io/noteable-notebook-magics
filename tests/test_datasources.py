@@ -733,7 +733,7 @@ class TestDatabricks:
         jsons_obj, specific_fields = jsons_for_extra_behavior
         create_engine_kwargs = {'connect_args': jsons_obj.connect_args_dict}
 
-        with pytest.raises(ValueError, match=f'databricks-connect took longer than'):
+        with pytest.raises(ValueError, match='databricks-connect took longer than'):
             datasource_postprocessing.postprocess_databricks(
                 datasource_id,
                 jsons_obj.dsn_dict,
