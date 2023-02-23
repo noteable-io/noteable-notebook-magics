@@ -526,7 +526,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         """
 
         try:
-            ds_id = self.get_datasource_id()
+            ds_id: UUID = self.get_datasource_id()
         except ValueError:
             # Tried to introspect a datasource whose kernel-side handle in the connections dict
             # wasn't coercable back into a UUID. This could be the case for the pre-datasource
@@ -621,7 +621,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         return results
 
     def fully_introspect(
-        self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str, kind: str
+        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
         """Drive introspecting into this single relation, making all the necessary Introspector API
         calls to learn all of the relation's sub-structures.
@@ -674,7 +674,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         )
 
     def introspect_foreign_keys(
-        self, inspector, schema_name, relation_name
+        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ForeignKeysModel]:
         """Introspect all foreign keys for a table, describing the results as a List[ForeignKeysModel]"""
 
@@ -684,16 +684,18 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         # Convert from SQLA foreign key dicts to our ForeignKeysModel. But beware,
         # Snowflake driver reports FKs with None for the target table's schema
-        # (at least sometimes?) so in case then err on inspector.default_schema_name, because
+        # (at least sometimes?) so in case then err on the referencing table's schema, because
         # ForeignKeysModel shared between us and Gate hate None for referred_schema.
 
         for fkey in sorted(fkey_dicts, key=lambda d: d['name']):
             fkeys.append(
                 ForeignKeysModel(
                     name=fkey['name'],
-                    referenced_schema=fkey['referred_schema']
-                    if fkey['referred_schema'] is not None
-                    else inspector.default_schema_name,
+                    referenced_schema=(
+                        fkey['referred_schema']
+                        if fkey['referred_schema'] is not None
+                        else schema_name
+                    ),
                     referenced_relation=fkey['referred_table'],
                     columns=fkey['constrained_columns'],
                     referenced_columns=fkey['referred_columns'],
@@ -756,7 +758,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         return indexes
 
     def introspect_primary_key(
-        self, inspector, relation_name, schema_name
+        self, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
     ) -> Tuple[Optional[str], List[str]]:
         """Introspect the primary key of a table, returning the pkey name and list of columns in the primary key (if any).
 
@@ -774,7 +776,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             return None, []
 
     def introspect_columns(
-        self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str
+        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ColumnModel]:
         column_dicts = inspector.get_columns(relation_name, schema=schema_name)
 
@@ -800,38 +802,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             )
 
         return retlist
-
-    def inform_gate_relation(
-        self,
-        session: requests.Session,
-        datasource_id,
-        relation_description: RelationStructureDescription,
-    ):
-        """POST this `relation_description` up to Gate for storage, relating to `datasource_id`"""
-
-        resp = session.post(
-            f"http://gate.default/api/v1/datasources/{datasource_id}/schema/relation",
-            json=relation_description.dict(),
-        )
-
-        if resp.status_code == 204:
-            print(
-                f'Stored structure of {relation_description.schema_name}.{relation_description.relation_name}'
-            )
-        else:
-            print(
-                f'Failed storing structure of {relation_description.schema_name}.{relation_description.relation_name}: {resp.status_code}, {resp.text}'
-            )
-
-    def inform_gate_completed(
-        self, session: requests.Session, datasource_id: UUID, started_at: datetime
-    ):
-        """Tell gate to forget about any structures known for this datasource older than when we
-        started this introspection run."""
-
-        session.delete(
-            f"http://gate.default/api/v1/datasources/{datasource_id}/schema/relations?older_than={started_at.isoformat()}"
-        )
 
     def get_datasource_id(self) -> UUID:
         """Convert a noteable_magics.sql.connection.Connection's name to the original
