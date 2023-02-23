@@ -563,7 +563,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         with ThreadPoolExecutor(
             max_workers=self.MAX_INTROSPECTION_THREADS
         ) as executor, RelationStructureMessager(ds_id) as messenger:
-
             future_to_relation = {
                 executor.submit(
                     self.fully_introspect, inspector, schema_name, relation_name, kind
@@ -624,7 +623,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def fully_introspect(
         self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
-
         """Drive introspecting into this single relation, making all the necessary Introspector API
         calls to learn all of the relation's sub-structures.
 
@@ -684,11 +682,18 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         fkey_dicts = inspector.get_foreign_keys(relation_name, schema_name)
 
+        # Convert from SQLA foreign key dicts to our ForeignKeysModel. But beware,
+        # Snowflake driver reports FKs with None for the target table's schema
+        # (at least sometimes?) so in case then err on inspector.default_schema_name, because
+        # ForeignKeysModel shared between us and Gate hate None for referred_schema.
+
         for fkey in sorted(fkey_dicts, key=lambda d: d['name']):
             fkeys.append(
                 ForeignKeysModel(
                     name=fkey['name'],
-                    referenced_schema=fkey['referred_schema'],
+                    referenced_schema=fkey['referred_schema']
+                    if fkey['referred_schema'] is not None
+                    else inspector.default_schema_name,
                     referenced_relation=fkey['referred_table'],
                     columns=fkey['constrained_columns'],
                     referenced_columns=fkey['referred_columns'],
@@ -740,7 +745,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         index_dicts = inspector.get_indexes(relation_name, schema_name)
 
         for index_dict in sorted(index_dicts, key=lambda d: d['name']):
-
             indexes.append(
                 IndexModel(
                     name=index_dict['name'],
@@ -772,7 +776,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def introspect_columns(
         self, inspector: 'SchemaStrippingInspector', schema_name: str, relation_name: str
     ) -> List[ColumnModel]:
-
         column_dicts = inspector.get_columns(relation_name, schema=schema_name)
 
         retlist = []
@@ -894,7 +897,6 @@ class RelationStructureMessager:
         self._message_gate(completed_introspection=True)
 
     def _message_gate(self, completed_introspection: bool = False):
-
         base_url = f"http://gate.default/api/v1/datasources/{self._datasource_id}/schema/relations"
 
         if self._relations:
