@@ -15,6 +15,7 @@ from IPython.display import HTML, display
 from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.exc import NoSuchTableError
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.gate_messaging_types import (
@@ -399,21 +400,22 @@ class SingleRelationCommand(MetaCommand):
 
         inspector = self.get_inspector()
 
-        is_view = relation_name in inspector.get_view_names(schema)
-
-        if not is_view:
-            # Ensure is a table
-            if relation_name not in inspector.get_table_names(schema):
-                if schema:
-                    msg = f'Relation {schema}.{relation_name} does not exist'
-                else:
-                    msg = f'Relation {relation_name} does not exist'
-                raise MetaCommandException(msg)
-            rtype = 'Table'
-        else:
+        if is_view := relation_name in inspector.get_view_names(schema):
             rtype = 'View'
+        else:
+            rtype = 'Table'
 
-        column_dicts = inspector.get_columns(relation_name, schema=schema)
+        try:
+            # In some dialects (BigQuery), this will raise NoSuchTableError if
+            # the table doesn't exist. Yay, sane.
+
+            # On some dialects (sigh, PostgreSQL, what are you doing??),
+            # this call may succeed returning empty list even if
+            # the named thing does not exist. But the call to get_pk_constraint()
+            # down below will then raise NoSuchTableError.
+            column_dicts = inspector.get_columns(relation_name, schema=schema)
+        except NoSuchTableError:
+            self._raise_from_no_such_table(schema, relation_name)
 
         # 'Pivot' the dicts from get_columns()
         names = []
@@ -458,7 +460,10 @@ class SingleRelationCommand(MetaCommand):
             DataFrame(data=data), title=f'{rtype} "{displayable_rname}" Structure'
         )
 
-        display(main_relation_df)
+        # Keep a list of things to call display() on. Only do so at the very
+        # end if we don't hit any exceptions.
+
+        displayables = [main_relation_df]
 
         if is_view:
             view_definition = inspector.get_view_definition(relation_name, schema)
@@ -472,7 +477,7 @@ class SingleRelationCommand(MetaCommand):
                 html_buf.append('<br />')
                 html_buf.append(f'<pre>{view_definition}</pre>')
 
-                display(HTML('\n'.join(html_buf)))
+                displayables.append(HTML('\n'.join(html_buf)))
         else:
             # Is a table. Let's go get indices, foreign keys, other table constraints.
             # If meaningful dataframe returned for any of these, transform to
@@ -484,7 +489,11 @@ class SingleRelationCommand(MetaCommand):
             ):
                 secondary_df = secondary_function(inspector, relation_name, schema)
                 if len(secondary_df):
-                    display(secondary_dataframe_to_html(secondary_df))
+                    displayables.append(secondary_dataframe_to_html(secondary_df))
+
+        # Make it this far? Display what we should display.
+        for displayable in displayables:
+            display(displayable)
 
         return main_relation_df, False
 
@@ -971,7 +980,10 @@ def index_dataframe(
     uniques: List[bool] = []
 
     # Primary key index is ... treated special by SQLA for some reason. Sigh.
-    primary_index_dict = inspector.get_pk_constraint(table_name, schema)
+    try:
+        primary_index_dict = inspector.get_pk_constraint(table_name, schema)
+    except NoSuchTableError:
+        _raise_from_no_such_table(schema, table_name)
 
     # If it returned something truthy with nonempty constrained_columns, then
     # we assume it described a real primary key constraint here.
@@ -1215,3 +1227,12 @@ class SchemaStrippingInspector:
         # Remove "schema." from the start of each name if starts with.
         # (name[False:] is equiv to name[0:], 'cause python bools are subclasses of ints)
         return [name[name.startswith(prefix) and len(prefix) :] for name in names]
+
+
+def _raise_from_no_such_table(schema: str, relation_name: str):
+    """Raise a MetaCommandException when eaten a NoSuchTableException"""
+    if schema:
+        msg = f'Relation {schema}.{relation_name} does not exist'
+    else:
+        msg = f'Relation {relation_name} does not exist'
+    raise MetaCommandException(msg)
