@@ -409,7 +409,7 @@ class SingleRelationCommand(MetaCommand):
             # In some dialects (BigQuery), this will raise NoSuchTableError if
             # the table doesn't exist. Yay, sane.
 
-            # On some dialects (sigh, PostgreSQL, what are you doing??),
+            # On some dialects (sigh, CockroachDB, what are you doing??),
             # this call may succeed returning empty list even if
             # the named thing does not exist. But the call to get_pk_constraint()
             # down below will then raise NoSuchTableError.
