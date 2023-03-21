@@ -598,7 +598,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
         all_schemas.difference_update(self.AVOID_SCHEMAS)
-        if default_schema not in all_schemas:
+        if default_schema and default_schema not in all_schemas:
             all_schemas.add(default_schema)
 
         for schema_name in sorted(all_schemas):
@@ -1164,7 +1164,8 @@ class SchemaStrippingInspector:
 
     # Direct passthrough attributes / methods
     @property
-    def default_schema_name(self) -> str:
+    def default_schema_name(self) -> Optional[str]:
+        # BigQuery, Trino dialects may end up returning None.
         return self.underlying_inspector.default_schema_name
 
     def get_schema_names(self) -> List[str]:
@@ -1183,16 +1184,19 @@ class SchemaStrippingInspector:
         return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
 
     def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
+        try:
+            return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
+        except NotImplementedError:
+            return []
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)
 
     def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
-
-    def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
+        try:
+            return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
+        except NotImplementedError:
+            return []
 
     # Now the value-adding filtering methods.
     def get_table_names(self, schema: Optional[str] = None) -> List[str]:
