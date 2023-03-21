@@ -411,7 +411,7 @@ class SingleRelationCommand(MetaCommand):
 
             # On some dialects (sigh, CockroachDB, what are you doing??),
             # this call may succeed returning empty list even if
-            # the named thing does not exist. But the call to get_pk_constraint()
+            # the named relation does not exist. But the call to get_pk_constraint()
             # down below will then raise NoSuchTableError.
             column_dicts = inspector.get_columns(relation_name, schema=schema)
         except NoSuchTableError:
