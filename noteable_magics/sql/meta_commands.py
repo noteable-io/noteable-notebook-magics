@@ -400,11 +400,6 @@ class SingleRelationCommand(MetaCommand):
 
         inspector = self.get_inspector()
 
-        if is_view := relation_name in inspector.get_view_names(schema):
-            rtype = 'View'
-        else:
-            rtype = 'Table'
-
         try:
             # In some dialects (BigQuery), this will raise NoSuchTableError if
             # the table doesn't exist. Yay, sane.
@@ -455,6 +450,11 @@ class SingleRelationCommand(MetaCommand):
             data['Comment'] = comments
 
         displayable_rname = displayable_relation_name(schema, relation_name)
+
+        if is_view := relation_name in inspector.get_view_names(schema):
+            rtype = 'View'
+        else:
+            rtype = 'Table'
 
         main_relation_df = set_dataframe_metadata(
             DataFrame(data=data), title=f'{rtype} "{displayable_rname}" Structure'
