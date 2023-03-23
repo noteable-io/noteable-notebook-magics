@@ -1,9 +1,9 @@
+import json
 import re
 import urllib.parse
 from datetime import datetime
 from typing import List, Optional, Tuple
 from uuid import uuid4
-import json
 
 import pandas as pd
 import pytest
