@@ -621,13 +621,15 @@ class TestFullIntrospection:
         yield requests_mock
 
     def test_full_introspection(self, sql_magic, capsys, patched_requests_mock):
-        # Create some more tables, for a total of 14, so that exiting the scope of
+        # Create some more tables, for a total of > 10, so that exiting the scope of
         # the RelationStructureMessager will have some dregs to POST.
         # (see RelationStructureMessager.__exit__())
 
-        sql_magic.execute(
-            rf'{COCKROACH_HANDLE} create table dregs_table (id int primary key not null, name text)'
-        )
+        NUM_NEW_TABLES = 10
+        for idx in range(NUM_NEW_TABLES):
+            sql_magic.execute(
+                rf'{COCKROACH_HANDLE} create table dregs_table_{idx} (id int primary key not null, name text)'
+            )
 
         # Now introspect the whole DB.
         introspection_start = datetime.utcnow()
@@ -640,7 +642,7 @@ class TestFullIntrospection:
 
         # Expect the core tables plus our dregs_table.
         # (The 'Done.\n' comes from the 'create table' execution creating dregs_table.)
-        assert out.startswith(f'Done.\nDiscovered {len(KNOWN_TABLES) + 1} relations')
+        assert f'\nDiscovered {len(KNOWN_TABLES) + NUM_NEW_TABLES} relations' in out
 
         for name, kind in KNOWN_TABLES_AND_KINDS:
             assert f'Introspected {kind} public.{name}' in out
@@ -702,14 +704,14 @@ class TestFullIntrospection:
                     if from_json.foreign_keys:
                         had_foreign_keys = True
 
-        # Expected 3 POST calls for the 5 tables, since we fixture
-        # tuned RelationStructureMessager.CAPACITY down to 2. Two calls of two
-        # relations each, then a trailing dreg call.
-        assert post_call_count == 3
+        # Expected 7 POST calls for the 14 tables, since we fixture
+        # tuned RelationStructureMessager.CAPACITY down to 2.
+        assert post_call_count == 7
 
         # Every expected relation should have been described.
         expected_relation_names = set(KNOWN_TABLES)  # The default table set
-        expected_relation_names.add('dregs_table')  # plus our per-test extra.
+        for idx in range(NUM_NEW_TABLES):
+            expected_relation_names.add(f'dregs_table_{idx}')  # plus our per-test extras.
         assert described_relation_names == expected_relation_names
 
         # Every substructure variation should have been covered across all these tables/view.
