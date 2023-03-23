@@ -852,8 +852,6 @@ class RelationStructureMessager:
     _partition_counter: int
     _started_at: datetime
 
-    _reported_failure: bool = False
-
     def __init__(self, datasource_id: UUID):
         self._datasource_id = datasource_id
 
