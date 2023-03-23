@@ -531,7 +531,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     def run(self, invoked_as: str, args: List[str]) -> None:
         """Drive introspecting whole database, POSTing results back to Gate for storage.
 
-        Not really intended for end-user interactive use.
+        Not really intended for end-user interactive use. But being wired into an undocumented
+        invocable command let us beta test things before E2E headless introspection was completed.
         """
 
         try:
@@ -543,53 +544,57 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             # Cannot continue, in that there's no place to store the results gate-side, since there's
             # no corresponding datasources row to relate to.
 
+            # This will not happen in modern in any headless introspections -- both Gate and Geas
+            # protect against headlessly introspecting the legacy datasources.
+
             print('Cannot introspect into this resource.', file=sys.stderr)
             return (None, False)
 
-        inspector = self.get_inspector()
+        # RelationStructureMessager handles both:
+        #
+        #   * Uploading batches of successfully discovered relations
+        #   * Catching any exception and reporting it back to gate. Will suppress the exception.
+        #
+        with RelationStructureMessager(ds_id) as messenger:
+            inspector = self.get_inspector()
 
-        # This and delta() just for development timing figures. Could become yet another
-        # timer context manager implementation.
-        start = time.monotonic()
+            # This and delta() just for development timing figures. Could become yet another
+            # timer context manager implementation.
+            start = time.monotonic()
 
-        def delta() -> float:
-            """Record new timing section, kindof like a stopwatch lap timer.
-            Returns the prior 'lap' time.
-            """
-            nonlocal start
+            def delta() -> float:
+                """Record new timing section, kindof like a stopwatch lap timer.
+                Returns the prior 'lap' time.
+                """
+                nonlocal start
 
-            now = time.monotonic()
-            ret = now - start
-            start = now
+                now = time.monotonic()
+                ret = now - start
+                start = now
 
-            return ret
+                return ret
 
-        relations_and_kinds = self.all_table_and_views(inspector)
-        print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
+            relations_and_kinds = self.all_table_and_views(inspector)
+            print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
 
-        # Introspect each relation concurrently.
-        # TODO: Take minimum concurrency as a param?
-        with ThreadPoolExecutor(
-            max_workers=self.MAX_INTROSPECTION_THREADS
-        ) as executor, RelationStructureMessager(ds_id) as messenger:
-            future_to_relation = {
-                executor.submit(
-                    self.fully_introspect, inspector, schema_name, relation_name, kind
-                ): (schema_name, relation_name, kind)
-                for (schema_name, relation_name, kind) in relations_and_kinds
-            }
+            # Introspect each relation concurrently.
+            # TODO: Take minimum concurrency as a param?
+            with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
+                future_to_relation = {
+                    executor.submit(
+                        self.fully_introspect, inspector, schema_name, relation_name, kind
+                    ): (schema_name, relation_name, kind)
+                    for (schema_name, relation_name, kind) in relations_and_kinds
+                }
 
-            for future in as_completed(future_to_relation):
-                schema_name, relation_name, kind = future_to_relation[future]
-                try:
+                for future in as_completed(future_to_relation):
+                    schema_name, relation_name, kind = future_to_relation[future]
                     messenger.queue_for_delivery(future.result())
-                except Exception as exc:
-                    print(f'Exception for {schema_name}.{relation_name}: {exc}')
 
-        table_introspection_delta = delta()
-        print(
-            f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
-        )
+            table_introspection_delta = delta()
+            print(
+                f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
+            )
 
         # run() contract: return what to bind to the SQL cell variable name, and if display() needs
         # to be called on it. Nothing and nope!
@@ -847,6 +852,8 @@ class RelationStructureMessager:
     _partition_counter: int
     _started_at: datetime
 
+    _reported_failure: bool = False
+
     def __init__(self, datasource_id: UUID):
         self._datasource_id = datasource_id
 
@@ -870,12 +877,23 @@ class RelationStructureMessager:
 
         # Time for an intermediate flush?
         if len(self._relations) == self.CAPACITY:
-            self._message_gate()
+            self._send_relations_to_gate()
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self._message_gate(completed_introspection=True)
+        if not exc_value:
+            # Successful introspection completion.
+            self._send_relations_to_gate(completed_introspection=True)
 
-    def _message_gate(self, completed_introspection: bool = False):
+        else:
+            # Hit an exception. Report it back to gate.
+            self._send_error_to_gate(exc_value)
+
+            print(str(exc_value), file=sys.stderr)
+
+            # Suppress the exception from being raised.
+            return True
+
+    def _send_relations_to_gate(self, completed_introspection: bool = False):
         base_url = f"http://gate.default/api/v1/datasources/{self._datasource_id}/schema/relations"
 
         if self._relations:
@@ -896,9 +914,10 @@ class RelationStructureMessager:
                         f'Stored structure of {relation_description.schema_name}.{relation_description.relation_name} in partition {self._partition_counter}'
                     )
             else:
-                print(
-                    f'Failed storing partition {self._partition_counter}: {resp.status_code}, {resp.text}'
-                )
+                error_message = f'Failed storing partition {self._partition_counter}: {resp.status_code}, {resp.text}'
+                print(error_message, file=sys.stderr)
+                # I guess let this kill us now? Arguable either way.
+                raise Exception(error_message)
 
             # Prepare for next partition.
             self._partition_counter += 1
@@ -906,8 +925,23 @@ class RelationStructureMessager:
 
         if completed_introspection:
             # Message indicating all done through asking to clear out any stored relation structures
-            # older than when we started.
+            # older than when we started. Curiously via DELETE, this signals the successful logical
+            # end of the introspection lifecycle.
             self._session.delete(f"{base_url}?older_than={self._started_at.isoformat()}")
+
+    def _send_error_to_gate(self, exception: Exception):
+        # Sigh. Something, anything bad happened. Report it back to Gate.
+        error_message: str = make_introspection_error_human_presentable(exception)
+
+        jsonable_message = {'error': error_message}
+
+        url = f"http://gate.default/api/v1/datasources/{self._datasource_id}/schema/introspection-error"
+
+        # Don't care about the response code. There's nothing we can do at this point.
+        self._session.post(
+            url,
+            json=jsonable_message,
+        )
 
 
 def constraints_dataframe(
@@ -1236,3 +1270,12 @@ def _raise_from_no_such_table(schema: str, relation_name: str):
     else:
         msg = f'Relation {relation_name} does not exist'
     raise MetaCommandException(msg)
+
+
+def make_introspection_error_human_presentable(exception: Exception) -> str:
+    """Convert any exception encountered by introspection into database into a nice human presentable string."""
+
+    # Will ultiamtely become complex due to N kinds of errors x M different SQLA database dialects possibly reporting errors differently
+
+    # But to start with ...
+    return str(exception)
