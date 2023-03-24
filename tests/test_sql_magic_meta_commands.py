@@ -1,3 +1,4 @@
+import json
 import re
 import urllib.parse
 from datetime import datetime
@@ -150,7 +151,6 @@ class TestRelationsCommand:
         ipython_namespace,
         mock_display,
     ):
-
         invocation = f'\\{invocation}'
         sql_magic.execute(f'{connection_handle} {invocation} {argument}')
 
@@ -510,7 +510,6 @@ class TestSingleRelationCommand:
     def test_constraints(
         self, handle, expected_display_callcount, sql_magic, ipython_namespace, mock_display
     ):
-
         sql_magic.execute(rf'{handle} \d str_table')
 
         assert (
@@ -587,7 +586,6 @@ class TestSingleRelationCommand:
 class TestFullIntrospection:
     @pytest.fixture()
     def patched_relation_structure_messager(self, tmp_path):
-
         original_jwt_pathname = RelationStructureMessager.JWT_PATHNAME
         tmp_jwt_path = tmp_path / 'kernel_jwt'
         tmp_jwt_path.write_text('kerneljwtcontents')
@@ -607,7 +605,7 @@ class TestFullIntrospection:
         RelationStructureMessager.CAPACITY = original_capacity
 
     @pytest.fixture()
-    def patched_requests_mock(self, mocker, patched_relation_structure_messager, requests_mock):
+    def patched_requests_mock(self, patched_relation_structure_messager, requests_mock):
         # RelationStructureMessager will do POSTs to this URL.
         requests_mock.post(
             f"http://gate.default/api/v1/datasources/{COCKROACH_UUID}/schema/relations",
@@ -623,14 +621,15 @@ class TestFullIntrospection:
         yield requests_mock
 
     def test_full_introspection(self, sql_magic, capsys, patched_requests_mock):
-
-        # Create one more table, for a total of 5, so that exiting the scope of
-        # the RelationStructureMessager will have a dreg to POST.
+        # Create some more tables, for a total of > 10, so that exiting the scope of
+        # the RelationStructureMessager will have some dregs to POST.
         # (see RelationStructureMessager.__exit__())
 
-        sql_magic.execute(
-            rf'{COCKROACH_HANDLE} create table dregs_table (id int primary key not null, name text)'
-        )
+        NUM_NEW_TABLES = 10
+        for idx in range(NUM_NEW_TABLES):
+            sql_magic.execute(
+                rf'{COCKROACH_HANDLE} create table dregs_table_{idx} (id int primary key not null, name text)'
+            )
 
         # Now introspect the whole DB.
         introspection_start = datetime.utcnow()
@@ -643,7 +642,7 @@ class TestFullIntrospection:
 
         # Expect the core tables plus our dregs_table.
         # (The 'Done.\n' comes from the 'create table' execution creating dregs_table.)
-        assert out.startswith(f'Done.\nDiscovered {len(KNOWN_TABLES) + 1} relations')
+        assert f'\nDiscovered {len(KNOWN_TABLES) + NUM_NEW_TABLES} relations' in out
 
         for name, kind in KNOWN_TABLES_AND_KINDS:
             assert f'Introspected {kind} public.{name}' in out
@@ -674,7 +673,6 @@ class TestFullIntrospection:
         post_call_count = 0
         for req in patched_requests_mock.request_history:
             if req.method == 'POST' and req.url.endswith('/schema/relations'):
-
                 post_call_count += 1
                 # POST body should correspond to a list of RelationStructureDescription each describing a single relation.
                 dict_list = req.json()
@@ -706,14 +704,14 @@ class TestFullIntrospection:
                     if from_json.foreign_keys:
                         had_foreign_keys = True
 
-        # Expected 3 POST calls for the 5 tables, since we fixture
-        # tuned RelationStructureMessager.CAPACITY down to 2. Two calls of two
-        # relations each, then a trailing dreg call.
-        assert post_call_count == 3
+        # Expected 7 POST calls for the 14 tables, since we fixture
+        # tuned RelationStructureMessager.CAPACITY down to 2.
+        assert post_call_count == 7
 
         # Every expected relation should have been described.
         expected_relation_names = set(KNOWN_TABLES)  # The default table set
-        expected_relation_names.add('dregs_table')  # plus our per-test extra.
+        for idx in range(NUM_NEW_TABLES):
+            expected_relation_names.add(f'dregs_table_{idx}')  # plus our per-test extras.
         assert described_relation_names == expected_relation_names
 
         # Every substructure variation should have been covered across all these tables/view.
@@ -723,6 +721,56 @@ class TestFullIntrospection:
         assert had_unique_constraints
         assert had_check_constraints
         assert had_foreign_keys
+
+    @pytest.fixture()
+    def patched_error_requests_mock(
+        self,
+        bad_port_number_cockroach_connection,
+        requests_mock,
+        patched_relation_structure_messager,
+    ):
+        conn_uuid, _ = bad_port_number_cockroach_connection
+
+        # RelationStructureMessager will POST error report here
+        requests_mock.post(
+            f"http://gate.default/api/v1/datasources/{conn_uuid}/schema/introspection-error",
+            status_code=204,
+        )
+
+        yield requests_mock
+
+    def test_broken_datasource_bad_port_number_full_introspection_fail(
+        self, sql_magic, capsys, patched_error_requests_mock, bad_port_number_cockroach_connection
+    ):
+        """Test that if an error, such as inability to connect to the datasource
+        is encountered at introspection time, the error will be POSTed up to gate
+        as per ENG-5774.
+
+        This test tries to introspect a CRDB database with a bad port number that we
+        cannot connect to.
+        """
+
+        _, bad_conn_handle = bad_port_number_cockroach_connection
+        sql_magic.execute(rf'{bad_conn_handle} \introspect')
+
+        out, err = capsys.readouterr()
+
+        assert 'port 999 failed' in err
+        assert 'psycopg2.OperationalError' in err
+
+        # Should have only posted to the error route
+        assert len(patched_error_requests_mock.request_history) == 1
+        post_error_request = patched_error_requests_mock.request_history[0]
+        assert post_error_request.method == 'POST'
+        assert post_error_request.url.endswith('schema/introspection-error')
+
+        error_payload = json.loads(post_error_request.text)
+        assert len(error_payload) == 1 and 'error' in error_payload
+
+        posted_error_msg = error_payload['error']
+
+        assert 'port 999 failed' in posted_error_msg
+        assert 'psycopg2.OperationalError' in posted_error_msg
 
     @pytest.fixture()
     def patch_make_all_pks_unnamed(self, mocker):
@@ -752,7 +800,6 @@ class TestFullIntrospection:
     def test_introspection_vs_unnamed_primary_keys(
         self, sql_magic, capsys, patched_requests_mock, patch_make_all_pks_unnamed
     ):
-
         """Ensure that no problems happen if primary keys are unnamed. We should inject '(unnamed primary key)' in
         as the name. ENG-5416."""
 
@@ -984,5 +1031,4 @@ class TestSchemaStrippingInspector:
 def test_convert_relation_glob_to_regex(
     inp: str, imply_prefix, expected_result: Tuple[Optional[str], Optional[str]], mocker
 ):
-
     assert convert_relation_glob_to_regex(inp, imply_prefix=imply_prefix) == expected_result
