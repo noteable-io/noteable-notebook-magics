@@ -153,7 +153,6 @@ KNOWN_TABLES = set(tk[0] for tk in KNOWN_TABLES_AND_KINDS)
 
 
 def populate_database(connection: Connection, include_comments=False):
-
     # Must actually do the table building transactionally, especially adding comments, else
     # subsequently introspecting CRDB schema will block indefinitely.
     with Session(connection._engine) as db:
@@ -273,7 +272,6 @@ COCKROACH_HANDLE = f"@{COCKROACH_UUID.hex}"
 
 @pytest.fixture(scope='session')
 def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[str, str]:
-
     # CRDB uses psycopg2 driver. Install the extension that makes control-c work
     # and be able to interrupt statements.
     from noteable_magics.datasource_postprocessing import _install_psycopg2_interrupt_fix
@@ -286,6 +284,29 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
     human_name = "My Cockroach Connection"
     Connection.set(managed_cockroach.sync_dsn, name=COCKROACH_HANDLE, human_name=human_name)
     return COCKROACH_HANDLE, human_name
+
+
+@pytest.fixture(scope='session')
+def bad_port_number_cockroach_connection(
+    managed_cockroach: CockroachDetails,
+) -> Tuple[UUID, str]:
+    """Broken cockroach configuration with a bad port number. Won't ever be able to connect.
+
+    Returns the UUID + handle pair.
+    """
+
+    BAD_PORT_COCKROACH_UUID = UUID('badccccc-0000-cccc-0000-cccccccccccc')
+    BAD_COCKROACH_HANDLE = f"@{BAD_PORT_COCKROACH_UUID.hex}"
+
+    as_dict = managed_cockroach.dict()
+    as_dict['sql_port'] = 999  # definitely wrong port.
+
+    bad_cockroach_details = CockroachDetails(**as_dict)
+
+    human_name = "Bad Port Number Cockroach"
+    Connection.set(bad_cockroach_details.sync_dsn, name=BAD_COCKROACH_HANDLE, human_name=human_name)
+
+    return (BAD_PORT_COCKROACH_UUID, BAD_COCKROACH_HANDLE)
 
 
 @pytest.fixture(scope='session')
