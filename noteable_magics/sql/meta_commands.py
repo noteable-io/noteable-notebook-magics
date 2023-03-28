@@ -6,7 +6,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from functools import wraps
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 import requests
@@ -655,12 +656,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         )
 
         if kind == 'view':
-            try:
-                # Some dialects cannot produce.
-                view_definition = inspector.get_view_definition(relation_name, schema_name)
-            except NotImplementedError:
-                view_definition = '(unobtainable)'
-
+            view_definition = inspector.get_view_definition(relation_name, schema_name)
             primary_key_name = None
             primary_key_columns = []
             check_constraints = []
@@ -730,18 +726,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraints: List[CheckConstraintModel] = []
 
-        try:
-            constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
+        constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
 
-            for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
-                constraints.append(
-                    CheckConstraintModel(
-                        name=constraint_dict['name'], expression=constraint_dict['sqltext']
-                    )
+        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(
+                CheckConstraintModel(
+                    name=constraint_dict['name'], expression=constraint_dict['sqltext']
                 )
-        except NotImplementedError:
-            # Sigh. Athena and perhaps others do not implement get_check_constraints()
-            pass
+            )
 
         return constraints
 
@@ -752,18 +744,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraints: List[UniqueConstraintModel] = []
 
-        try:
-            constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
+        constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
 
-            for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
-                constraints.append(
-                    UniqueConstraintModel(
-                        name=constraint_dict['name'], columns=constraint_dict['column_names']
-                    )
+        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+            constraints.append(
+                UniqueConstraintModel(
+                    name=constraint_dict['name'], columns=constraint_dict['column_names']
                 )
-        except NotImplementedError:
-            # Sigh. Athena and perhaps others do not implement get_unique_constraints()
-            pass
+            )
 
         return constraints
 
@@ -1215,6 +1203,25 @@ def run_meta_command(
     instance.do_run(invoker, args)
 
 
+def handle_not_implemented(default: Any = None, default_factory: Callable[[], Any] = None):
+    """Decorator to catch NotImplementedError, return either default constant or
+    whatever  default_factory() returns."""
+    assert default or default_factory
+
+    def wrapper(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            try:
+                func(*args, **kwargs)
+            except NotImplementedError:
+                if default_factory:
+                    default = default_factory()
+
+                return default
+
+        return wrapped
+
+
 class SchemaStrippingInspector:
     """Proxy implementation that removes 'schema.' prefixing from results of underlying
     get_table_names() and get_view_names(). BigQuery dialect inspector seems to include
@@ -1236,6 +1243,7 @@ class SchemaStrippingInspector:
     def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_columns(relation_name, schema=schema)
 
+    @handle_not_implemented('(unobtainable)')
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
         return self.underlying_inspector.get_view_definition(view_name, schema=schema)
 
@@ -1245,20 +1253,16 @@ class SchemaStrippingInspector:
     def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
 
+    @handle_not_implemented(default_factory=list)
     def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        try:
-            return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
-        except NotImplementedError:
-            return []
+        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)
 
+    @handle_not_implemented(default_factory=list)
     def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        try:
-            return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
-        except NotImplementedError:
-            return []
+        return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
 
     # Now the value-adding filtering methods.
     def get_table_names(self, schema: Optional[str] = None) -> List[str]:
