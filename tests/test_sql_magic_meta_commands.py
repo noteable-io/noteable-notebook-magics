@@ -17,6 +17,7 @@ from noteable_magics.sql.meta_commands import (
     SchemaStrippingInspector,
     _all_command_classes,
     convert_relation_glob_to_regex,
+    handle_not_implemented,
     parse_schema_and_relation_glob,
 )
 from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES, KNOWN_TABLES_AND_KINDS
@@ -1032,3 +1033,40 @@ def test_convert_relation_glob_to_regex(
     inp: str, imply_prefix, expected_result: Tuple[Optional[str], Optional[str]], mocker
 ):
     assert convert_relation_glob_to_regex(inp, imply_prefix=imply_prefix) == expected_result
+
+
+class TestHandleNotImplemented:
+    def test_returns_underlying_when_implemented(self):
+        @handle_not_implemented(default='no')
+        def func():
+            return 12
+
+        assert func() == 12
+
+    def test_returns_default_when_not_implemented(self):
+        @handle_not_implemented(default='no')
+        def func():
+            raise NotImplementedError
+
+        assert func() == 'no'
+
+    def test_returns_default_factory_when_not_implemented(self):
+        @handle_not_implemented(default_factory=list)
+        def func():
+            raise NotImplementedError
+
+        assert func() == []
+
+    def test_hates_both_default_and_default_factory(self):
+        with pytest.raises(AssertionError, match='only provide one'):
+
+            @handle_not_implemented(default='no', default_factory=list)
+            def func():
+                raise NotImplementedError
+
+    def test_requires_either_default_or_default_factory(self):
+        with pytest.raises(AssertionError, match='must provide one of'):
+
+            @handle_not_implemented()
+            def func():
+                raise NotImplementedError

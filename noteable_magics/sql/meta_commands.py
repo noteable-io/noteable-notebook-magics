@@ -1206,20 +1206,25 @@ def run_meta_command(
 def handle_not_implemented(default: Any = None, default_factory: Callable[[], Any] = None):
     """Decorator to catch NotImplementedError, return either default constant or
     whatever  default_factory() returns."""
-    assert default or default_factory
+    assert default or default_factory, 'must provide one of default or default_factory'
+    assert not (
+        default and default_factory
+    ), 'only provide one of either default or default_factory'
 
     def wrapper(func):
         @wraps(func)
         def wrapped(*args, **kwargs):
             try:
-                func(*args, **kwargs)
+                return func(*args, **kwargs)
             except NotImplementedError:
                 if default_factory:
-                    default = default_factory()
-
-                return default
+                    return default_factory()
+                else:
+                    return default
 
         return wrapped
+
+    return wrapper
 
 
 class SchemaStrippingInspector:
