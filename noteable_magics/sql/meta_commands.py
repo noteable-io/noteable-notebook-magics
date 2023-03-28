@@ -6,7 +6,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from functools import wraps
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 import requests
@@ -780,14 +781,19 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         """
         primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
 
-        # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
-        # Sigh.
-        pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
+        # Athena dialect returns ... an empty _list_ instead of a dict, contrary to what
+        # https://docs.sqlalchemy.org/en/14/core/reflection.html#sqlalchemy.engine.reflection.Inspector.get_pk_constraint
+        # specifies for the return result from inspector.get_pk_constraint().
+        if isinstance(primary_index_dict, dict):
+            # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
+            # Sigh.
+            pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
 
-        if primary_index_dict['constrained_columns']:
-            return pkey_name, primary_index_dict['constrained_columns']
-        else:
-            return None, []
+            if primary_index_dict['constrained_columns']:
+                return pkey_name, primary_index_dict['constrained_columns']
+
+        # No primary key to be returned.
+        return None, []
 
     def introspect_columns(
         self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
@@ -1197,6 +1203,30 @@ def run_meta_command(
     instance.do_run(invoker, args)
 
 
+def handle_not_implemented(default: Any = None, default_factory: Callable[[], Any] = None):
+    """Decorator to catch NotImplementedError, return either default constant or
+    whatever  default_factory() returns."""
+    assert default or default_factory, 'must provide one of default or default_factory'
+    assert not (
+        default and default_factory
+    ), 'only provide one of either default or default_factory'
+
+    def wrapper(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except NotImplementedError:
+                if default_factory:
+                    return default_factory()
+                else:
+                    return default
+
+        return wrapped
+
+    return wrapper
+
+
 class SchemaStrippingInspector:
     """Proxy implementation that removes 'schema.' prefixing from results of underlying
     get_table_names() and get_view_names(). BigQuery dialect inspector seems to include
@@ -1218,6 +1248,7 @@ class SchemaStrippingInspector:
     def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_columns(relation_name, schema=schema)
 
+    @handle_not_implemented('(unobtainable)')
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
         return self.underlying_inspector.get_view_definition(view_name, schema=schema)
 
@@ -1227,20 +1258,16 @@ class SchemaStrippingInspector:
     def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
 
+    @handle_not_implemented(default_factory=list)
     def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        try:
-            return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
-        except NotImplementedError:
-            return []
+        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
 
     def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_indexes(table_name, schema=schema)
 
+    @handle_not_implemented(default_factory=list)
     def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        try:
-            return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
-        except NotImplementedError:
-            return []
+        return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
 
     # Now the value-adding filtering methods.
     def get_table_names(self, schema: Optional[str] = None) -> List[str]:
