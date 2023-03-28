@@ -655,7 +655,12 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         )
 
         if kind == 'view':
-            view_definition = inspector.get_view_definition(relation_name, schema_name)
+            try:
+                # Some dialects cannot produce.
+                view_definition = inspector.get_view_definition(relation_name, schema_name)
+            except NotImplementedError:
+                view_definition = '(unobtainable)'
+
             primary_key_name = None
             primary_key_columns = []
             check_constraints = []
@@ -725,14 +730,18 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraints: List[CheckConstraintModel] = []
 
-        constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
+        try:
+            constraint_dicts = inspector.get_check_constraints(relation_name, schema_name)
 
-        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
-            constraints.append(
-                CheckConstraintModel(
-                    name=constraint_dict['name'], expression=constraint_dict['sqltext']
+            for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+                constraints.append(
+                    CheckConstraintModel(
+                        name=constraint_dict['name'], expression=constraint_dict['sqltext']
+                    )
                 )
-            )
+        except NotImplementedError:
+            # Sigh. Athena and perhaps others do not implement get_check_constraints()
+            pass
 
         return constraints
 
@@ -743,14 +752,18 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         constraints: List[UniqueConstraintModel] = []
 
-        constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
+        try:
+            constraint_dicts = inspector.get_unique_constraints(relation_name, schema_name)
 
-        for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
-            constraints.append(
-                UniqueConstraintModel(
-                    name=constraint_dict['name'], columns=constraint_dict['column_names']
+            for constraint_dict in sorted(constraint_dicts, key=lambda d: d['name']):
+                constraints.append(
+                    UniqueConstraintModel(
+                        name=constraint_dict['name'], columns=constraint_dict['column_names']
+                    )
                 )
-            )
+        except NotImplementedError:
+            # Sigh. Athena and perhaps others do not implement get_unique_constraints()
+            pass
 
         return constraints
 
@@ -780,14 +793,19 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         """
         primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
 
-        # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
-        # Sigh.
-        pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
+        # Athena dialect returns ... an empty _list_ instead of a dict, contrary to what
+        # https://docs.sqlalchemy.org/en/14/core/reflection.html#sqlalchemy.engine.reflection.Inspector.get_pk_constraint
+        # specifies for the return result from inspector.get_pk_constraint().
+        if isinstance(primary_index_dict, dict):
+            # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
+            # Sigh.
+            pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
 
-        if primary_index_dict['constrained_columns']:
-            return pkey_name, primary_index_dict['constrained_columns']
-        else:
-            return None, []
+            if primary_index_dict['constrained_columns']:
+                return pkey_name, primary_index_dict['constrained_columns']
+
+        # No primary key to be returned.
+        return None, []
 
     def introspect_columns(
         self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
