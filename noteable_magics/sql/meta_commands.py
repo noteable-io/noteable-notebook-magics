@@ -17,6 +17,7 @@ from pandas import DataFrame
 from sqlalchemy import inspect
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.types import TypeEngine
 
 from noteable_magics.sql.connection import Connection
 from noteable_magics.sql.gate_messaging_types import (
@@ -424,11 +425,7 @@ class SingleRelationCommand(MetaCommand):
             names.append(col['name'])
 
             # Convert the possibly db-centric TypeEngine instance to a sqla-generic type string
-            try:
-                type_name = str(col['type'].as_generic()).lower()
-            except NotImplementedError:
-                # ENG-5268: More esoteric types like UUID do not implement .as_generic()
-                type_name = str(col['type']).replace('()', '').lower()
+            type_name = determine_column_type_name(col['type'])
 
             types.append(type_name)
             nullables.append(col['nullable'])
@@ -805,11 +802,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         for col in column_dicts:
             comment = col.get('comment')  # Some dialects do not return.
 
-            try:
-                type_name = str(col['type'].as_generic()).lower()
-            except NotImplementedError:
-                # ENG-5268: More esoteric types like UUID do not implement .as_generic()
-                type_name = str(col['type']).replace('()', '').lower()
+            type_name = determine_column_type_name(col['type'])
 
             retlist.append(
                 ColumnModel(
@@ -1295,6 +1288,19 @@ def _raise_from_no_such_table(schema: str, relation_name: str):
     else:
         msg = f'Relation {relation_name} does not exist'
     raise MetaCommandException(msg)
+
+
+def determine_column_type_name(sqla_column_type_object: TypeEngine) -> str:
+    """Convert the possibly db-centric TypeEngine instance to a sqla-generic type string"""
+    try:
+        type_name = str(sqla_column_type_object.as_generic()).lower()
+    except (NotImplementedError, AssertionError):
+        # ENG-5268: More esoteric types like UUID do not implement .as_generic()
+        # ENG-5808: Some Databricks types are not fully implemented and fail
+        # assertions within .as_generic()
+        type_name = str(sqla_column_type_object).replace('()', '').lower()
+
+    return type_name
 
 
 def make_introspection_error_human_presentable(exception: Exception) -> str:
