@@ -426,8 +426,10 @@ class SingleRelationCommand(MetaCommand):
             # Convert the possibly db-centric TypeEngine instance to a sqla-generic type string
             try:
                 type_name = str(col['type'].as_generic()).lower()
-            except NotImplementedError:
+            except (NotImplementedError, AssertionError):
                 # ENG-5268: More esoteric types like UUID do not implement .as_generic()
+                # ENG-5808: Some Databricks types are not fully implemented and fail
+                # assertions within .as_generic()
                 type_name = str(col['type']).replace('()', '').lower()
 
             types.append(type_name)
