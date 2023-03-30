@@ -321,9 +321,42 @@ class SampleData:
                 'database': 'default_database',
             },
         ),
-        # But now we prefer the mysqlclient implementation of the 'mysql+mysqldb' driver + dialect
-        # pair.
-        'singlestore-with-mysqlclient': DatasourceJSONs(
+        # But now we prefer the explicit singlestore dialect.
+        'singlestore-with-singlestore-dialect': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["sqlalchemy-singlestoredb"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'singlestoredb',
+                'sqlmagic_autocommit': False,
+                'name': 'New Singlestore',
+            },
+            dsn_dict={
+                'host': 'us-west-1',
+                'port': 3306,
+                'username': 'myuser',
+                'password': 'MyKeyValueHoHoHo',
+                'database': 'default_database',
+            },
+        ),
+        # Similarly from pymysql over to mysqlclient driver for mysql/mariadb
+        'mariadb-with-pymysql': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["pymysql"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'mysql+pymysql',
+                'sqlmagic_autocommit': False,
+                'name': 'Old mariadb',
+            },
+            dsn_dict={
+                'host': 'us-west-1',
+                'port': 3306,
+                'username': 'myuser',
+                'password': 'MyKeyValueHoHoHo',
+                'database': 'default_database',
+            },
+        ),
+        # But now we prefer the C-based driver
+        'singlestore-with-singlestore-dialect': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ["mysqlclient"],
                 'allow_datasource_dialect_autoinstall': False,
