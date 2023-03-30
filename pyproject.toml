@@ -44,8 +44,9 @@ sqlalchemy-cockroachdb = "^1.4.4"
 pyathena = {extras = ["sqlalchemy"], version = "^2.18.1"}
 # original mysql / maraiadb / singlesource datasources use this (slower, inferior) pure python driver ...
 pymysql = {version = "1.0.2"}
-# but newer created ones (post Ghana 2023 release) will use this C-based driver.
+# But newer created  mysql / maraiadb ones (post Ghana 2023 release) will use this C-based driver.
 mysqlclient = {version = "2.1.1"}
+# And singlesource will be using this explicit dialect.
 sqlalchemy-singlestoredb = {version = "0.2.0"}
 
 [tool.poetry.group.dev.dependencies]
