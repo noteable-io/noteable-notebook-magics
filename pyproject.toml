@@ -46,6 +46,7 @@ pyathena = {extras = ["sqlalchemy"], version = "^2.18.1"}
 pymysql = {version = "1.0.2"}
 # but newer created ones (post Ghana 2023 release) will use this C-based driver.
 mysqlclient = {version = "2.1.1"}
+sqlalchemy-singlestoredb = {version = "0.2.0"}
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.1.0"

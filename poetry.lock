@@ -202,6 +202,30 @@ urllib3 = ">=1.25.4,<1.27"
 crt = ["awscrt (==0.15.3)"]
 
 [[package]]
+name = "build"
+version = "0.10.0"
+description = "A simple, correct Python build frontend"
+category = "main"
+optional = false
+python-versions = ">= 3.7"
+files = [
+    {file = "build-0.10.0-py3-none-any.whl", hash = "sha256:af266720050a66c893a6096a2f410989eeac74ff9a68ba194b3f6473e8e26171"},
+    {file = "build-0.10.0.tar.gz", hash = "sha256:d5b71264afdb5951d6704482aac78de887c80691c52b88a9ad195983ca2c9269"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "os_name == \"nt\""}
+packaging = ">=19.0"
+pyproject_hooks = "*"
+tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
+
+[package.extras]
+docs = ["furo (>=2021.08.31)", "sphinx (>=4.0,<5.0)", "sphinx-argparse-cli (>=1.5)", "sphinx-autodoc-typehints (>=1.10)"]
+test = ["filelock (>=3)", "pytest (>=6.2.4)", "pytest-cov (>=2.12)", "pytest-mock (>=2)", "pytest-rerunfailures (>=9.1)", "pytest-xdist (>=1.34)", "setuptools (>=42.0.0)", "setuptools (>=56.0.0)", "toml (>=0.10.0)", "wheel (>=0.36.0)"]
+typing = ["importlib-metadata (>=5.1)", "mypy (==0.991)", "tomli", "typing-extensions (>=3.7.4.3)"]
+virtualenv = ["virtualenv (>=20.0.35)"]
+
+[[package]]
 name = "cachetools"
 version = "5.3.0"
 description = "Extensible memoizing collections and decorators"
@@ -2604,6 +2628,21 @@ files = [
 diagrams = ["jinja2", "railroad-diagrams"]
 
 [[package]]
+name = "pyproject-hooks"
+version = "1.0.0"
+description = "Wrappers to call pyproject.toml-based build backend hooks."
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pyproject_hooks-1.0.0-py3-none-any.whl", hash = "sha256:283c11acd6b928d2f6a7c73fa0d01cb2bdc5f07c57a2eeb6e83d5e56b97976f8"},
+    {file = "pyproject_hooks-1.0.0.tar.gz", hash = "sha256:f271b298b97f5955d53fb12b72c1fb1948c22c1a6b70b315c54cedaca0264ef5"},
+]
+
+[package.dependencies]
+tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
+
+[[package]]
 name = "pytest"
 version = "7.2.1"
 description = "pytest: simple powerful testing with Python"
@@ -3187,6 +3226,37 @@ testing = ["build[virtualenv]", "filelock (>=3.4.0)", "flake8 (<5)", "flake8-202
 testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "pytest", "pytest-enabler", "pytest-xdist", "tomli", "virtualenv (>=13.0.0)", "wheel"]
 
 [[package]]
+name = "singlestoredb"
+version = "0.5.4"
+description = "Interface to the SingleStore database and cluster management APIs"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "singlestoredb-0.5.4-cp36-abi3-macosx_10_9_universal2.whl", hash = "sha256:9581ecbd6d676c4e4d513c9baf5980d6c85729169ceb172acf8c6ec4119c46a0"},
+    {file = "singlestoredb-0.5.4-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f6c9edecf1b022b036357282f169cc02d5b88878c411d1fa920d0969609cec8d"},
+    {file = "singlestoredb-0.5.4-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a42ad0df6d8960c832314b0fdb5fa1d00f7e5e8cbbe5b8a5c9048b6acab11038"},
+    {file = "singlestoredb-0.5.4-cp36-abi3-win32.whl", hash = "sha256:51961b879a58eaf87521100507b007240beae4da8ac4e3d21f2fa44078e48878"},
+    {file = "singlestoredb-0.5.4-cp36-abi3-win_amd64.whl", hash = "sha256:40a38ad1289b9dcc09c262a3f96e3da632beca519808d441fb8c71f09d7f8aaa"},
+    {file = "singlestoredb-0.5.4.tar.gz", hash = "sha256:afe7f099a43f6fe088b98f4c8b1fd3841b81cde0c566ebd6785139ec08cc17d5"},
+]
+
+[package.dependencies]
+build = "*"
+PyJWT = "*"
+requests = "*"
+sqlparams = "*"
+wheel = "*"
+
+[package.extras]
+dataframe = ["ibis-singlestoredb"]
+dbt = ["dbt-singlestore"]
+ed22519 = ["PyNaCl (>=1.4.0)"]
+ibis = ["ibis-singlestoredb"]
+rsa = ["cryptography"]
+sqlalchemy = ["sqlalchemy-singlestoredb"]
+
+[[package]]
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -3464,6 +3534,34 @@ packaging = "*"
 SQLAlchemy = ">=0.9.2,<2.0.0"
 
 [[package]]
+name = "sqlalchemy-singlestoredb"
+version = "0.2.0"
+description = "SQLAlchemy dialect for the SingleStore database"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "sqlalchemy_singlestoredb-0.2.0-py3-none-any.whl", hash = "sha256:e03ffb198b8c299deb28403474454bc99a2732bb826dfbc73d0917d7040a06ef"},
+    {file = "sqlalchemy_singlestoredb-0.2.0.tar.gz", hash = "sha256:726962b9267509f06a059288266a9ee7060aa236e01547ea6a4d7856d3a3c91e"},
+]
+
+[package.dependencies]
+singlestoredb = ">=0.5.0"
+sqlalchemy = ">=1.4.0,<2.0.0dev"
+
+[[package]]
+name = "sqlparams"
+version = "5.1.0"
+description = "Convert between various DB API 2.0 parameter styles."
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "sqlparams-5.1.0-py3-none-any.whl", hash = "sha256:ee4ef620a5197535e5ebb9217e2f453f08b044634b3d890f3d6701e4f838c85c"},
+    {file = "sqlparams-5.1.0.tar.gz", hash = "sha256:1abe87a0684567265b2b86f5a482d5c37db237c0268d4c81774ffedce4300199"},
+]
+
+[[package]]
 name = "sqlparse"
 version = "0.4.3"
 description = "A non-validating SQL parser."
@@ -3563,7 +3661,7 @@ files = [
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -3749,6 +3847,21 @@ files = [
 ]
 
 [[package]]
+name = "wheel"
+version = "0.40.0"
+description = "A built-package format for Python"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "wheel-0.40.0-py3-none-any.whl", hash = "sha256:d236b20e7cb522daf2390fa84c55eea81c5c30190f90f29ae2ca1ad8355bf247"},
+    {file = "wheel-0.40.0.tar.gz", hash = "sha256:cd1196f3faee2b31968d626e1731c94f99cbdb67cf5a46e4f5656cbee7738873"},
+]
+
+[package.extras]
+test = ["pytest (>=6.0.0)"]
+
+[[package]]
 name = "xlrd"
 version = "2.0.1"
 description = "Library for developers to extract data from Microsoft Excel (tm) .xls spreadsheet files"
@@ -3784,4 +3897,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "b41648c3a4698e9f93f8f01302abfd2b631fa2d9244bcbd0fc9c683836c0ba06"
+content-hash = "20c34c1686d469e824c1e72ddb5fe41500d1385c515084b5c43b109d9d780ed1"
