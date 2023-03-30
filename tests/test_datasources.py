@@ -356,7 +356,7 @@ class SampleData:
             },
         ),
         # But now we prefer the C-based driver
-        'singlestore-with-singlestore-dialect': DatasourceJSONs(
+        'mariadb-with-singlestore-dialect': DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ["mysqlclient"],
                 'allow_datasource_dialect_autoinstall': False,
