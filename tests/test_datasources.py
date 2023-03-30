@@ -72,7 +72,7 @@ class SampleData:
     samples = {
         'simple-cockroachdb': DatasourceJSONs(
             meta_dict={
-                'required_python_modules': ['sqlalchemy-cockroachdb', 'psycopg2-binary'],
+                'required_python_modules': ['sqlalchemy-cockroachdb', 'psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'cockroachdb',
                 'sqlmagic_autocommit': False,
@@ -88,7 +88,7 @@ class SampleData:
         ),
         'simple-postgres': DatasourceJSONs(
             meta_dict={
-                'required_python_modules': ['psycopg2-binary'],
+                'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
@@ -104,7 +104,7 @@ class SampleData:
         ),
         'postgres-require-ssl': DatasourceJSONs(
             meta_dict={
-                'required_python_modules': ['psycopg2-binary'],
+                'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
@@ -302,6 +302,43 @@ class SampleData:
             },
             connect_args_dict={'s3_staging_dir': 's3://myamazonawsbucket/results/'},
         ),
+        # Originally, we used pymysql for SingleStore, mysql, mariadb.
+        # Older generation datasource data in Vault will still request to use this driver
+        # and python module.
+        'singlestore-with-pymysql': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["pymysql"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'mysql+pymysql',
+                'sqlmagic_autocommit': False,
+                'name': 'Old Singlestore',
+            },
+            dsn_dict={
+                'host': 'us-west-1',
+                'port': 3306,
+                'username': 'myuser',
+                'password': 'MyKeyValueHoHoHo',
+                'database': 'default_database',
+            },
+        ),
+        # But now we prefer the mysqlclient implementation of the 'mysql+mysqldb' driver + dialect
+        # pair.
+        'singlestore-with-mysqlclient': DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ["mysqlclient"],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'mysql+mysqldb',
+                'sqlmagic_autocommit': False,
+                'name': 'New Singlestore',
+            },
+            dsn_dict={
+                'host': 'us-west-1',
+                'port': 3306,
+                'username': 'myuser',
+                'password': 'MyKeyValueHoHoHo',
+                'database': 'default_database',
+            },
+        ),
     }
 
     @classmethod
@@ -393,7 +430,7 @@ class TestBootstrapDatasource:
     def test_broken_postgres_is_silent_noop(self, datasource_id, log_output):
         case_data = DatasourceJSONs(
             meta_dict={
-                'required_python_modules': ['psycopg2-binary'],
+                'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
                 'sqlmagic_autocommit': True,
@@ -427,6 +464,39 @@ class TestBootstrapDatasource:
         e2 = log_output.entries[1]
         assert e2['event'] == 'Unable to bootstrap datasource'
         assert e2['datasource_id'] == datasource_id
+
+    def test_postgres_via_psycopg2_binary_is_ok(self, datasource_id):
+        """Nowadays we have "psycopg2" source package installed, and newer-generation
+        datasources from Gate will be spelled asking for 'psycopg2', but older generation
+        datasources from Gate will say 'psycopg2-binary'.
+
+        A mapping down deep in ensuring our packages are installed should treat these
+        two equally.
+        """
+        case_data = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': ['psycopg2-binary'],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'postgresql',
+                'sqlmagic_autocommit': True,
+                'name': 'My PostgreSQL',
+            },
+            dsn_dict={
+                'username': 'scott',
+                'password': 'tiger',
+                'host': 'localhost',
+                'port': 5432,
+                'database': 'postgres',
+            },
+        )
+
+        initial_len = len(Connection.connections)
+
+        datasources.bootstrap_datasource(
+            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_len + 1
 
     def test_bigquery_particulars(self, datasource_id, log_output):
         """Ensure that we convert connect_args['credential_file_contents'] to
