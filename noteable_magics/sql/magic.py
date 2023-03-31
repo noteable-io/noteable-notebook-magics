@@ -35,7 +35,7 @@ class SqlMagic(Magics, Configurable):
     Provides the %%sql magic."""
 
     short_errors = Bool(
-        True,
+        False,
         config=True,
         help="Don't display the full traceback on SQL Programming Error",
     )
