@@ -15,6 +15,7 @@ from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
 from sqlalchemy import inspect
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy.types import TypeEngine
@@ -577,7 +578,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
             # Introspect each relation concurrently.
             # TODO: Take minimum concurrency as a param?
-            with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
+            with ThreadPoolExecutor(
+                max_workers=self.get_max_threadpool_workers(inspector)
+            ) as executor:
                 future_to_relation = {
                     executor.submit(
                         self.fully_introspect, inspector, schema_name, relation_name, kind
@@ -601,6 +604,18 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     ###
     # All of the rest of the methods end up assisting run(), directly or indirectly
     ###
+
+    @classmethod
+    def get_max_threadpool_workers(cls, inspector: SchemaStrippingInspector) -> int:
+        """Determine max concurrency for introspecting this sort of database.
+
+        BigQuery, in particular, seems to be not totally threadsafe, ENG-5808
+        """
+
+        if inspector.engine.driver == 'bigquery':
+            return 1
+        else:
+            return cls.MAX_INTROSPECTION_THREADS
 
     @classmethod
     def all_table_and_views(cls, inspector) -> List[Tuple[str, str, str]]:
@@ -1242,6 +1257,10 @@ class SchemaStrippingInspector:
     def default_schema_name(self) -> Optional[str]:
         # BigQuery, Trino dialects may end up returning None.
         return self.underlying_inspector.default_schema_name
+
+    @property
+    def engine(self) -> Engine:
+        return self.underlying_inspector.engine
 
     def get_schema_names(self) -> List[str]:
         return self.underlying_inspector.get_schema_names()
