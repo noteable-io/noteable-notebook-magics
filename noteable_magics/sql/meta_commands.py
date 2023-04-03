@@ -15,6 +15,7 @@ from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
 from sqlalchemy import inspect
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy.types import TypeEngine
@@ -412,7 +413,7 @@ class SingleRelationCommand(MetaCommand):
             # down below will then raise NoSuchTableError.
             column_dicts = inspector.get_columns(relation_name, schema=schema)
         except NoSuchTableError:
-            self._raise_from_no_such_table(schema, relation_name)
+            _raise_from_no_such_table(schema, relation_name)
 
         # 'Pivot' the dicts from get_columns()
         names = []
@@ -553,31 +554,34 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         #   * Uploading batches of successfully discovered relations
         #   * Catching any exception and reporting it back to gate. Will suppress the exception.
         #
+
+        # This and delta() just for development timing figures. Could become yet another
+        # timer context manager implementation.
+        start = time.monotonic()
+
+        def delta() -> float:
+            """Record new timing section, kindof like a stopwatch lap timer.
+            Returns the prior 'lap' time.
+            """
+            nonlocal start
+
+            now = time.monotonic()
+            ret = now - start
+            start = now
+
+            return ret
+
         with RelationStructureMessager(ds_id) as messenger:
             inspector = self.get_inspector()
-
-            # This and delta() just for development timing figures. Could become yet another
-            # timer context manager implementation.
-            start = time.monotonic()
-
-            def delta() -> float:
-                """Record new timing section, kindof like a stopwatch lap timer.
-                Returns the prior 'lap' time.
-                """
-                nonlocal start
-
-                now = time.monotonic()
-                ret = now - start
-                start = now
-
-                return ret
 
             relations_and_kinds = self.all_table_and_views(inspector)
             print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
 
             # Introspect each relation concurrently.
             # TODO: Take minimum concurrency as a param?
-            with ThreadPoolExecutor(max_workers=self.MAX_INTROSPECTION_THREADS) as executor:
+            with ThreadPoolExecutor(
+                max_workers=self.get_max_threadpool_workers(inspector)
+            ) as executor:
                 future_to_relation = {
                     executor.submit(
                         self.fully_introspect, inspector, schema_name, relation_name, kind
@@ -589,10 +593,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
                     schema_name, relation_name, kind = future_to_relation[future]
                     messenger.queue_for_delivery(future.result())
 
-            table_introspection_delta = delta()
-            print(
-                f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
-            )
+        table_introspection_delta = delta()
+        print(f'Done introspecting and messaging gate in {table_introspection_delta}')
 
         # run() contract: return what to bind to the SQL cell variable name, and if display() needs
         # to be called on it. Nothing and nope!
@@ -602,14 +604,27 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     # All of the rest of the methods end up assisting run(), directly or indirectly
     ###
 
-    def all_table_and_views(self, inspector) -> List[Tuple[str, str, str]]:
+    @classmethod
+    def get_max_threadpool_workers(cls, inspector: SchemaStrippingInspector) -> int:
+        """Determine max concurrency for introspecting this sort of database.
+
+        BigQuery, in particular, seems to be not totally threadsafe, ENG-5808
+        """
+
+        if inspector.engine.driver == 'bigquery':
+            return 1
+        else:
+            return cls.MAX_INTROSPECTION_THREADS
+
+    @classmethod
+    def all_table_and_views(cls, inspector) -> List[Tuple[str, str, str]]:
         """Returns list of (schema name, relation name, table-or-view) tuples"""
 
         results = []
 
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
-        all_schemas.difference_update(self.AVOID_SCHEMAS)
+        all_schemas.difference_update(cls.AVOID_SCHEMAS)
         if default_schema and default_schema not in all_schemas:
             all_schemas.add(default_schema)
 
@@ -632,8 +647,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return results
 
+    @classmethod
     def fully_introspect(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
         """Drive introspecting into this single relation, making all the necessary Introspector API
         calls to learn all of the relation's sub-structures.
@@ -641,14 +657,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         Returns a RelationStructureDescription pydantic model, suitable to POST back to Gate with.
         """
 
-        columns = self.introspect_columns(inspector, schema_name, relation_name)
+        columns = cls.introspect_columns(inspector, schema_name, relation_name)
 
         # Always introspect indexes, even if a view, because materialized views
         # can have indexes.
-        indexes = self.introspect_indexes(inspector, schema_name, relation_name)
+        indexes = cls.introspect_indexes(inspector, schema_name, relation_name)
 
         # Likewise unique constraints? Those _might_ be definable on materialized views?
-        unique_constraints = self.introspect_unique_constraints(
+        unique_constraints = cls.introspect_unique_constraints(
             inspector, schema_name, relation_name
         )
 
@@ -660,14 +676,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             foreign_keys = []
         else:
             view_definition = None
-            primary_key_name, primary_key_columns = self.introspect_primary_key(
+            primary_key_name, primary_key_columns = cls.introspect_primary_key(
                 inspector, relation_name, schema_name
             )
-            check_constraints = self.introspect_check_constraints(
+            check_constraints = cls.introspect_check_constraints(
                 inspector, schema_name, relation_name
             )
 
-            foreign_keys = self.introspect_foreign_keys(inspector, schema_name, relation_name)
+            foreign_keys = cls.introspect_foreign_keys(inspector, schema_name, relation_name)
 
         print(f'Introspected {kind} {schema_name}.{relation_name}')
 
@@ -685,8 +701,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             foreign_keys=foreign_keys,
         )
 
+    @classmethod
     def introspect_foreign_keys(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ForeignKeysModel]:
         """Introspect all foreign keys for a table, describing the results as a List[ForeignKeysModel]"""
 
@@ -716,8 +733,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return fkeys
 
+    @classmethod
     def introspect_check_constraints(
-        self, inspector, schema_name, relation_name
+        cls, inspector, schema_name, relation_name
     ) -> List[CheckConstraintModel]:
         """Introspect all check constraints for a table, describing the results as a List[CheckConstraintModel]"""
 
@@ -734,8 +752,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return constraints
 
+    @classmethod
     def introspect_unique_constraints(
-        self, inspector, schema_name, relation_name
+        cls, inspector, schema_name, relation_name
     ) -> List[UniqueConstraintModel]:
         """Introspect all unique constraints for a table, describing the results as a List[UniqueConstraintModel]"""
 
@@ -752,7 +771,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return constraints
 
-    def introspect_indexes(self, inspector, schema_name, relation_name) -> List[IndexModel]:
+    @classmethod
+    def introspect_indexes(cls, inspector, schema_name, relation_name) -> List[IndexModel]:
         """Introspect all indexes for a table or materialized view, describing the results as a List[IndexModel]"""
         indexes = []
 
@@ -769,8 +789,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return indexes
 
+    @classmethod
     def introspect_primary_key(
-        self, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
+        cls, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
     ) -> Tuple[Optional[str], List[str]]:
         """Introspect the primary key of a table, returning the pkey name and list of columns in the primary key (if any).
 
@@ -792,8 +813,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         # No primary key to be returned.
         return None, []
 
+    @classmethod
     def introspect_columns(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ColumnModel]:
         column_dicts = inspector.get_columns(relation_name, schema=schema_name)
 
@@ -1235,6 +1257,15 @@ class SchemaStrippingInspector:
         # BigQuery, Trino dialects may end up returning None.
         return self.underlying_inspector.default_schema_name
 
+    @property
+    def engine(self) -> Engine:
+        return self.underlying_inspector.engine
+
+    # Value-added properties
+    @property
+    def is_bigquery(self) -> bool:
+        return self.engine.driver == 'bigquery'
+
     def get_schema_names(self) -> List[str]:
         return self.underlying_inspector.get_schema_names()
 
@@ -1243,6 +1274,11 @@ class SchemaStrippingInspector:
 
     @handle_not_implemented('(unobtainable)')
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
+        if self.is_bigquery:
+            # Sigh. Have to explicitly interpolate schema into view name, else
+            # underlying driver code complains. Not even joking.
+            view_name = f'{schema}.{view_name}'
+
         return self.underlying_inspector.get_view_definition(view_name, schema=schema)
 
     def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
