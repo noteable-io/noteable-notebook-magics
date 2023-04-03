@@ -164,11 +164,21 @@ def bootstrap_datasource(
 ##
 
 
+_old_to_new_package_name = {
+    # Older-generation PostgreSQL and CRDB gate-side datasources will claim to require psycopg2-binary,
+    # but nowadays we install / use psycopg2 source package. They both provide the same underlying
+    # importable package, 'psycopg2'.
+    'psycopg2-binary': 'psycopg2'
+}
+
+
 def ensure_requirements(datasource_id: str, requirements: List[str], allowed_to_install: bool):
     """Ensure he required driver packages are installed already, or, if allowed,
     install them on the fly.
     """
     for pkg in requirements:
+        # Perhaps swap out package name?
+        pkg = _old_to_new_package_name.get(pkg, pkg)
         if not is_package_installed(pkg):
             if not allowed_to_install:
                 raise Exception(

@@ -602,14 +602,15 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     # All of the rest of the methods end up assisting run(), directly or indirectly
     ###
 
-    def all_table_and_views(self, inspector) -> List[Tuple[str, str, str]]:
+    @classmethod
+    def all_table_and_views(cls, inspector) -> List[Tuple[str, str, str]]:
         """Returns list of (schema name, relation name, table-or-view) tuples"""
 
         results = []
 
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
-        all_schemas.difference_update(self.AVOID_SCHEMAS)
+        all_schemas.difference_update(cls.AVOID_SCHEMAS)
         if default_schema and default_schema not in all_schemas:
             all_schemas.add(default_schema)
 
@@ -632,8 +633,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return results
 
+    @classmethod
     def fully_introspect(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
         """Drive introspecting into this single relation, making all the necessary Introspector API
         calls to learn all of the relation's sub-structures.
@@ -641,14 +643,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         Returns a RelationStructureDescription pydantic model, suitable to POST back to Gate with.
         """
 
-        columns = self.introspect_columns(inspector, schema_name, relation_name)
+        columns = cls.introspect_columns(inspector, schema_name, relation_name)
 
         # Always introspect indexes, even if a view, because materialized views
         # can have indexes.
-        indexes = self.introspect_indexes(inspector, schema_name, relation_name)
+        indexes = cls.introspect_indexes(inspector, schema_name, relation_name)
 
         # Likewise unique constraints? Those _might_ be definable on materialized views?
-        unique_constraints = self.introspect_unique_constraints(
+        unique_constraints = cls.introspect_unique_constraints(
             inspector, schema_name, relation_name
         )
 
@@ -660,14 +662,14 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             foreign_keys = []
         else:
             view_definition = None
-            primary_key_name, primary_key_columns = self.introspect_primary_key(
+            primary_key_name, primary_key_columns = cls.introspect_primary_key(
                 inspector, relation_name, schema_name
             )
-            check_constraints = self.introspect_check_constraints(
+            check_constraints = cls.introspect_check_constraints(
                 inspector, schema_name, relation_name
             )
 
-            foreign_keys = self.introspect_foreign_keys(inspector, schema_name, relation_name)
+            foreign_keys = cls.introspect_foreign_keys(inspector, schema_name, relation_name)
 
         print(f'Introspected {kind} {schema_name}.{relation_name}')
 
@@ -685,8 +687,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
             foreign_keys=foreign_keys,
         )
 
+    @classmethod
     def introspect_foreign_keys(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ForeignKeysModel]:
         """Introspect all foreign keys for a table, describing the results as a List[ForeignKeysModel]"""
 
@@ -716,8 +719,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return fkeys
 
+    @classmethod
     def introspect_check_constraints(
-        self, inspector, schema_name, relation_name
+        cls, inspector, schema_name, relation_name
     ) -> List[CheckConstraintModel]:
         """Introspect all check constraints for a table, describing the results as a List[CheckConstraintModel]"""
 
@@ -734,8 +738,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return constraints
 
+    @classmethod
     def introspect_unique_constraints(
-        self, inspector, schema_name, relation_name
+        cls, inspector, schema_name, relation_name
     ) -> List[UniqueConstraintModel]:
         """Introspect all unique constraints for a table, describing the results as a List[UniqueConstraintModel]"""
 
@@ -752,7 +757,8 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return constraints
 
-    def introspect_indexes(self, inspector, schema_name, relation_name) -> List[IndexModel]:
+    @classmethod
+    def introspect_indexes(cls, inspector, schema_name, relation_name) -> List[IndexModel]:
         """Introspect all indexes for a table or materialized view, describing the results as a List[IndexModel]"""
         indexes = []
 
@@ -769,8 +775,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         return indexes
 
+    @classmethod
     def introspect_primary_key(
-        self, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
+        cls, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
     ) -> Tuple[Optional[str], List[str]]:
         """Introspect the primary key of a table, returning the pkey name and list of columns in the primary key (if any).
 
@@ -792,8 +799,9 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         # No primary key to be returned.
         return None, []
 
+    @classmethod
     def introspect_columns(
-        self, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
     ) -> List[ColumnModel]:
         column_dicts = inspector.get_columns(relation_name, schema=schema_name)
 
