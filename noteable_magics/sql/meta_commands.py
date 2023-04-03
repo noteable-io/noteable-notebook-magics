@@ -554,24 +554,25 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         #   * Uploading batches of successfully discovered relations
         #   * Catching any exception and reporting it back to gate. Will suppress the exception.
         #
+
+        # This and delta() just for development timing figures. Could become yet another
+        # timer context manager implementation.
+        start = time.monotonic()
+
+        def delta() -> float:
+            """Record new timing section, kindof like a stopwatch lap timer.
+            Returns the prior 'lap' time.
+            """
+            nonlocal start
+
+            now = time.monotonic()
+            ret = now - start
+            start = now
+
+            return ret
+
         with RelationStructureMessager(ds_id) as messenger:
             inspector = self.get_inspector()
-
-            # This and delta() just for development timing figures. Could become yet another
-            # timer context manager implementation.
-            start = time.monotonic()
-
-            def delta() -> float:
-                """Record new timing section, kindof like a stopwatch lap timer.
-                Returns the prior 'lap' time.
-                """
-                nonlocal start
-
-                now = time.monotonic()
-                ret = now - start
-                start = now
-
-                return ret
 
             relations_and_kinds = self.all_table_and_views(inspector)
             print(f'Discovered {len(relations_and_kinds)} relations in {delta()}')
@@ -593,9 +594,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
                     messenger.queue_for_delivery(future.result())
 
         table_introspection_delta = delta()
-        print(
-            f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
-        )
+        print(f'Done introspecting and messaging gate in {table_introspection_delta}')
 
         # run() contract: return what to bind to the SQL cell variable name, and if display() needs
         # to be called on it. Nothing and nope!
