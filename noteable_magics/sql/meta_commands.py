@@ -413,7 +413,7 @@ class SingleRelationCommand(MetaCommand):
             # down below will then raise NoSuchTableError.
             column_dicts = inspector.get_columns(relation_name, schema=schema)
         except NoSuchTableError:
-            self._raise_from_no_such_table(schema, relation_name)
+            _raise_from_no_such_table(schema, relation_name)
 
         # 'Pivot' the dicts from get_columns()
         names = []
@@ -592,10 +592,10 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
                     schema_name, relation_name, kind = future_to_relation[future]
                     messenger.queue_for_delivery(future.result())
 
-            table_introspection_delta = delta()
-            print(
-                f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
-            )
+        table_introspection_delta = delta()
+        print(
+            f'Done introspecting and messaging gate in {table_introspection_delta}, amortized {table_introspection_delta / len(relations_and_kinds)}s per relation'
+        )
 
         # run() contract: return what to bind to the SQL cell variable name, and if display() needs
         # to be called on it. Nothing and nope!
@@ -1262,6 +1262,11 @@ class SchemaStrippingInspector:
     def engine(self) -> Engine:
         return self.underlying_inspector.engine
 
+    # Value-added properties
+    @property
+    def is_bigquery(self) -> bool:
+        return self.engine.driver == 'bigquery'
+
     def get_schema_names(self) -> List[str]:
         return self.underlying_inspector.get_schema_names()
 
@@ -1270,6 +1275,11 @@ class SchemaStrippingInspector:
 
     @handle_not_implemented('(unobtainable)')
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
+        if self.is_bigquery:
+            # Sigh. Have to explicitly interpolate schema into view name, else
+            # underlying driver code complains. Not even joking.
+            view_name = f'{schema}.{view_name}'
+
         return self.underlying_inspector.get_view_definition(view_name, schema=schema)
 
     def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
