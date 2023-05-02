@@ -138,7 +138,7 @@ def ipython_namespace(ipython_shell):
 
 @pytest.fixture
 def mock_display(mocker):
-    return mocker.patch("noteable_magics.sql.meta_commands.display")
+    return mocker.patch("noteable.sql.meta_commands.display")
 
 
 KNOWN_TABLES_AND_KINDS = [

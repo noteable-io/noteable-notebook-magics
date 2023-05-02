@@ -491,7 +491,7 @@ class TestBootstrapDatasource:
         assert len(log_output.entries) == 2
 
         e1 = log_output.entries[0]
-        assert e1['event'] == 'Error creating new noteable_magics.sql.Connection'
+        assert e1['event'] == 'Error creating new noteable.sql.Connection'
         assert e1['connect_str'] == 'postgresql://scott:tiger@[https://bogus.org]:5432/postgres'
 
         e2 = log_output.entries[1]
@@ -574,7 +574,7 @@ class TestBootstrapDatasource:
         assert len(log_output.entries) == 2
 
         e1 = log_output.entries[0]
-        assert e1['event'] == 'Error creating new noteable_magics.sql.Connection'
+        assert e1['event'] == 'Error creating new noteable.sql.Connection'
         assert e1['connect_str'] == 'bigquery://'
 
         e2 = log_output.entries[1]
