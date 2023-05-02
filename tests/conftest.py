@@ -11,16 +11,16 @@ from managed_service_fixtures import CockroachDetails
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from noteable_magics.logging import RawLogCapture, configure_logging
-from noteable_magics.planar_ally_client.api import PlanarAllyAPI
-from noteable_magics.planar_ally_client.types import (
+from noteable.logging import RawLogCapture, configure_logging
+from noteable.planar_ally_client.api import PlanarAllyAPI
+from noteable.planar_ally_client.types import (
     FileKind,
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )
-from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.magic import SqlMagic
-from noteable_magics.sql.run import add_commit_blacklist_dialect
+from noteable.sql.connection import Connection
+from noteable.sql.magic import SqlMagic
+from noteable.sql.run import add_commit_blacklist_dialect
 
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
@@ -274,7 +274,7 @@ COCKROACH_HANDLE = f"@{COCKROACH_UUID.hex}"
 def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[str, str]:
     # CRDB uses psycopg2 driver. Install the extension that makes control-c work
     # and be able to interrupt statements.
-    from noteable_magics.datasource_postprocessing import _install_psycopg2_interrupt_fix
+    from noteable.datasource_postprocessing import _install_psycopg2_interrupt_fix
 
     _install_psycopg2_interrupt_fix()
 

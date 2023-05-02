@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from noteable_magics import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
-from noteable_magics.sql.connection import Connection
+from noteable import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
+from noteable.sql.connection import Connection
 
 
 @pytest.fixture

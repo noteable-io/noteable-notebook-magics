@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import requests
 
-from noteable_magics import datasources
+from noteable import datasources
 from tests.conftest import COCKROACH_HANDLE, DatasourceJSONs
 
 
@@ -127,7 +127,7 @@ class TestSqlMagic:
         assert 'my_df' not in ipython_shell.user_ns
 
     def test_unknown_datasource_handle_produces_expected_exception(self, sql_magic, capsys):
-        from noteable_magics.sql.connection import Connection, UnknownConnectionError
+        from noteable.sql.connection import Connection, UnknownConnectionError
 
         initial_connection_count = len(Connection.connections)
         # sql magic invocation of an unknown connection will end up calling .set() with

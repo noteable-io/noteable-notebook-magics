@@ -4,9 +4,9 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 
-from noteable_magics.ntbl import NTBLMagic, change_log_level, datasets_pull, datasets_push
-from noteable_magics.planar_ally_client.api import DatasetOperationStream
-from noteable_magics.planar_ally_client.types import (
+from noteable.ntbl import NTBLMagic, change_log_level, datasets_pull, datasets_push
+from noteable.planar_ally_client.api import DatasetOperationStream
+from noteable.planar_ally_client.types import (
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )

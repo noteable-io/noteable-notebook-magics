@@ -1,7 +1,7 @@
 [tool.poetry]
 authors = ["Eli Wilson <eli@noteable.io>"]
 description = "IPython Magics for Noteable"
-name = "noteable_magics"
+name = "noteable"
 version = "2.0.0"
 
 [tool.poetry.dependencies]

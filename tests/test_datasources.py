@@ -11,10 +11,10 @@ import pytest
 import structlog
 from structlog.testing import LogCapture
 
-from noteable_magics import datasource_postprocessing, datasources
-from noteable_magics.logging import configure_logging
-from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.run import _COMMIT_BLACKLIST_DIALECTS
+from noteable import datasource_postprocessing, datasources
+from noteable.logging import configure_logging
+from noteable.sql.connection import Connection
+from noteable.sql.run import _COMMIT_BLACKLIST_DIALECTS
 from tests.conftest import DatasourceJSONs
 
 

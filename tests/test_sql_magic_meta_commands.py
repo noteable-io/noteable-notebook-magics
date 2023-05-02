@@ -10,9 +10,9 @@ import pytest
 from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
-from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.gate_messaging_types import RelationStructureDescription
-from noteable_magics.sql.meta_commands import (
+from noteable.sql.connection import Connection
+from noteable.sql.gate_messaging_types import RelationStructureDescription
+from noteable.sql.meta_commands import (
     RelationStructureMessager,
     SchemaStrippingInspector,
     _all_command_classes,

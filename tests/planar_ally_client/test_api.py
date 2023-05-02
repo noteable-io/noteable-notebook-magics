@@ -3,8 +3,8 @@ from unittest import mock
 import pytest
 from httpx import Timeout
 
-from noteable_magics.planar_ally_client.api import DatasetFileSystemAPI, FileSystemAPI
-from noteable_magics.planar_ally_client.types import (
+from noteable.planar_ally_client.api import DatasetFileSystemAPI, FileSystemAPI
+from noteable.planar_ally_client.types import (
     FileKind,
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
