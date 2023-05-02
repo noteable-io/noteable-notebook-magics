@@ -6,10 +6,7 @@ from click.testing import CliRunner
 
 from noteable.ntbl import NTBLMagic, change_log_level, datasets_pull, datasets_push
 from noteable.planar_ally_client.api import DatasetOperationStream
-from noteable.planar_ally_client.types import (
-    FileProgressUpdateContent,
-    FileProgressUpdateMessage,
-)
+from noteable.planar_ally_client.types import FileProgressUpdateContent, FileProgressUpdateMessage
 from tests.conftest import MockResponse
 
 
