@@ -10,10 +10,10 @@ from sqlalchemy.exc import (
     ProgrammingError,
 )
 
-import noteable_magics.sql.connection
-import noteable_magics.sql.parse
-import noteable_magics.sql.run
-from noteable_magics.sql.meta_commands import MetaCommandException, run_meta_command
+import noteable.sql.connection
+import noteable.sql.parse
+import noteable.sql.run
+from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:
     from traitlets import Bool
@@ -92,7 +92,7 @@ class SqlMagic(Magics, Configurable):
 
         command_text = line + "\n" + cell
 
-        parsed = noteable_magics.sql.parse.parse(command_text, self)
+        parsed = noteable.sql.parse.parse(command_text, self)
 
         connect_str = parsed["connection"]
 
@@ -105,10 +105,10 @@ class SqlMagic(Magics, Configurable):
         # expect to use the get portion. If an unknown datasource handle (say, handle of a datasource created _after_
         # kernel launch / our bootstrapping) gets passed into here, an exception will be raised.
         try:
-            conn = noteable_magics.sql.connection.Connection.set(
+            conn = noteable.sql.connection.Connection.set(
                 connect_str,
             )
-        except noteable_magics.sql.connection.UnknownConnectionError as e:
+        except noteable.sql.connection.UnknownConnectionError as e:
             # Cell referenced a datasource we don't know about. Exception will have a short + sweet message.
             eprint(str(e))
             return None
@@ -126,7 +126,7 @@ class SqlMagic(Magics, Configurable):
                 return
 
             # Is a vanilla SQL statement. Run it.
-            result = noteable_magics.sql.run.run(
+            result = noteable.sql.run.run(
                 conn,
                 parsed["sql"],
                 self,

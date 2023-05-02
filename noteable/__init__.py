@@ -1,6 +1,6 @@
 import pkg_resources
 
-__version__ = pkg_resources.get_distribution("noteable_magics").version
+__version__ = pkg_resources.get_distribution("noteable").version
 
 from .data_loader import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
 from .datasources import bootstrap_datasources
@@ -11,7 +11,6 @@ from .sql.run import add_commit_blacklist_dialect
 
 
 def load_ipython_extension(ipython):
-
     # Initialize any remote datasource connections
     bootstrap_datasources()
 

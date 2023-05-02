@@ -20,8 +20,8 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy.types import TypeEngine
 
-from noteable_magics.sql.connection import Connection
-from noteable_magics.sql.gate_messaging_types import (
+from noteable.sql.connection import Connection
+from noteable.sql.gate_messaging_types import (
     CheckConstraintModel,
     ColumnModel,
     ForeignKeysModel,

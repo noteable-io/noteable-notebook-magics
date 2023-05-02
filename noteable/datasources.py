@@ -10,12 +10,12 @@ import structlog
 from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-import noteable_magics.sql.connection
-from noteable_magics.sql.run import add_commit_blacklist_dialect
+import noteable.sql.connection
+from noteable.sql.run import add_commit_blacklist_dialect
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
-from noteable_magics.datasource_postprocessing import post_processor_by_drivername
+from noteable.datasource_postprocessing import post_processor_by_drivername
 
 logger = structlog.get_logger(__name__)
 
@@ -103,7 +103,7 @@ def bootstrap_datasource(
             )
 
             # Remember the failure so can be shown if / when human tries to use the connection.
-            noteable_magics.sql.connection.Connection.add_bootstrapping_failure(
+            noteable.sql.connection.Connection.add_bootstrapping_failure(
                 datasource_id, human_name, str(e)
             )
 
@@ -133,7 +133,7 @@ def bootstrap_datasource(
 
     # Teach ipython-sql about the connection!
     try:
-        noteable_magics.sql.connection.Connection.set(
+        noteable.sql.connection.Connection.set(
             connection_url,
             name=f'@{datasource_id}',
             human_name=human_name,
@@ -154,7 +154,7 @@ def bootstrap_datasource(
         )
 
         # Remember the failure so can be shown if / when human tries to use the connection.
-        noteable_magics.sql.connection.Connection.add_bootstrapping_failure(
+        noteable.sql.connection.Connection.add_bootstrapping_failure(
             datasource_id, human_name, str(e)
         )
 

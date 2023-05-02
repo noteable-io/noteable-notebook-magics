@@ -4,12 +4,9 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 
-from noteable_magics.ntbl import NTBLMagic, change_log_level, datasets_pull, datasets_push
-from noteable_magics.planar_ally_client.api import DatasetOperationStream
-from noteable_magics.planar_ally_client.types import (
-    FileProgressUpdateContent,
-    FileProgressUpdateMessage,
-)
+from noteable.ntbl import NTBLMagic, change_log_level, datasets_pull, datasets_push
+from noteable.planar_ally_client.api import DatasetOperationStream
+from noteable.planar_ally_client.types import FileProgressUpdateContent, FileProgressUpdateMessage
 from tests.conftest import MockResponse
 
 
@@ -43,7 +40,7 @@ def test_datasets_push(input_path, expected_path, runner, context):
     )
 
     with mock.patch(
-        "noteable_magics.planar_ally_client.api.DatasetFileSystemAPI.push",
+        "noteable.planar_ally_client.api.DatasetFileSystemAPI.push",
         return_value=DatasetOperationStream(response.stream(), "push files"),
     ) as push_mock:
         result = runner.invoke(datasets_push, input_path.split(' '), obj=context)
@@ -71,7 +68,7 @@ def test_datasets_pull(input_path, expected_path, runner, context):
     )
 
     with mock.patch(
-        "noteable_magics.planar_ally_client.api.DatasetFileSystemAPI.pull",
+        "noteable.planar_ally_client.api.DatasetFileSystemAPI.pull",
         return_value=DatasetOperationStream(response.stream(), "pull files"),
     ) as pull_mock:
         result = runner.invoke(datasets_pull, input_path.split(' '), obj=context)
@@ -81,7 +78,7 @@ def test_datasets_pull(input_path, expected_path, runner, context):
 
 def test_change_log_level(runner, context):
     with mock.patch(
-        "noteable_magics.planar_ally_client.api.PlanarAllyAPI.change_log_level", return_value=None
+        "noteable.planar_ally_client.api.PlanarAllyAPI.change_log_level", return_value=None
     ) as change_mock:
         result = runner.invoke(change_log_level, ["--app-level", "DEBUG"], obj=context)
         assert result.exit_code == 0, ''.join(traceback.format_exception(*result.exc_info))

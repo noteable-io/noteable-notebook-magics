@@ -8,7 +8,7 @@ from IPython.utils.process import arg_split
 from traitlets import Bool, Int
 from traitlets.config import Configurable
 
-from noteable_magics.sql.connection import Connection
+from noteable.sql.connection import Connection
 
 EXCEL_MIMETYPES = {
     "application/vnd.ms-excel",  # .xls

@@ -21,7 +21,7 @@ def rough_dict_get(dct, sought, default=None):
     """
 
     sought = sought.split("@")
-    for (key, val) in dct.items():
+    for key, val in dct.items():
         if not any(s.lower() not in key.lower() for s in sought):
             return val
     return default
@@ -74,16 +74,13 @@ class Connection(object):
         try:
             self._engine = sqlalchemy.create_engine(connect_str, **create_engine_kwargs)
         except Exception:
-
             # Most likely reason to end up here: cell being asked to use a datasource that wasn't bootstrapped
             # as one of these Connections at kernel startup, and sql-magic ends up here, trying
             # to create a new Connection on the fly. But if given only something like
             # "@3453454567546" for the connect_str as from a SQL cell invocation, this obviously
             # isn't enough to create a new SQLA engine.
 
-            logger.exception(
-                'Error creating new noteable_magics.sql.Connection', connect_str=connect_str
-            )
+            logger.exception('Error creating new noteable.sql.Connection', connect_str=connect_str)
 
             if connect_str.startswith('@'):
                 # Is indeed the above most likely reason. Cell ran something like "%sql @3244356456 select true",
