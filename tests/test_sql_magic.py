@@ -425,7 +425,6 @@ class TestSQLite:
     def test_failing_download(
         self, sql_magic, datasource_id, capsys, requests_mock, exc, expected_substring
     ):
-
         failing_url = 'mock://failed.download/'
 
         # Set up to simulate exception coming up while making requests.get() call to try to

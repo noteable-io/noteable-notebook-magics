@@ -8,26 +8,16 @@ from sqlalchemy.engine import Engine
 logger = structlog.get_logger(__name__)
 
 
+LOCAL_DB_CONN_HANDLE = "@noteable"
+LOCAL_DB_CONN_NAME = "Local Database"
+DUCKDB_LOCATION = "duckdb:///:memory:"
+
+
 class UnknownConnectionError(Exception):
     pass
 
 
-def rough_dict_get(dct, sought, default=None):
-    """
-    Like dct.get(sought), but any key containing sought will do.
-
-    If there is a `@` in sought, seek each piece separately.
-    This lets `me@server` match `me:***@myserver/db`
-    """
-
-    sought = sought.split("@")
-    for key, val in dct.items():
-        if not any(s.lower() not in key.lower() for s in sought):
-            return val
-    return default
-
-
-class Connection(object):
+class Connection:
     current = None
     connections: Dict[str, 'Connection'] = {}
     bootstrapping_failures: Dict[str, str] = {}
@@ -107,23 +97,30 @@ class Connection(object):
         self.metadata = sqlalchemy.MetaData(bind=self._engine)
         self.name = name or self.assign_name(self._engine)
         self.human_name = human_name
-        self._session = None
+        self._sqla_connection = None
         self.connections[name or repr(self.metadata.bind.url)] = self
 
         Connection.current = self
 
     @property
-    def session(self) -> sqlalchemy.engine.base.Connection:
-        """Lazily connect to the database.
+    def engine(self) -> sqlalchemy.engine.base.Engine:
+        return self._engine
 
-        Despite the name, this is a SQLA Connection, not a Session. And 'Connection'
-        is highly overused term around here.
+    @property
+    def sqla_connection(self) -> sqlalchemy.engine.base.Connection:
+        """Lazily connect to the database. Return a SQLA Connection object, or die trying."""
+
+        if not self._sqla_connection:
+            self._sqla_connection = self._engine.connect()
+
+        return self._sqla_connection
+
+    def reset_connection_pool(self):
+        """Reset the SQLA connection pool, such as after an exception suspected to indicate
+        a broken connection has been raised.
         """
-
-        if not self._session:
-            self._session = self._engine.connect()
-
-        return self._session
+        self._engine.dispose()
+        self._sqla_connection = None
 
     @classmethod
     def set(
@@ -165,13 +162,22 @@ class Connection(object):
         return "\n".join(result)
 
     @classmethod
+    def find(cls, name: str) -> Optional['Connection']:
+        """Find a connection by SQL cell handle or by human assigned name"""
+        # TODO: Capt. Obvious says to double-register the instance by both of these keys
+        # to then be able to do lookups properly in this dict?
+        for c in cls.connections.values():
+            if c.name == name or c.human_name == name:
+                return c
+
+    @classmethod
     def get_engine(cls, name: str) -> Optional[Engine]:
         """Return the SQLAlchemy Engine given either the sql_cell_handle or
         end-user assigned name for the connection.
         """
-        for c in cls.connections.values():
-            if c.name == name or c.human_name == name:
-                return c._engine
+        maybe_conn = cls.find(name)
+        if maybe_conn:
+            return maybe_conn.engine
 
     @classmethod
     def add_bootstrapping_failure(cls, name: str, human_name: Optional[str], error_message: str):
@@ -204,7 +210,56 @@ class Connection(object):
             )
         cls.connections.pop(conn.name, None)
         cls.connections.pop(str(conn.metadata.bind.url), None)
-        conn.session.close()
+        conn.sqla_connection.close()
 
     def close(self):
         self.__class__._close(self)
+
+
+def rough_dict_get(dct, sought, default=None):
+    """
+    Like dct.get(sought), but any key containing sought will do.
+
+    If there is a `@` in sought, seek each piece separately.
+    This lets `me@server` match `me:***@myserver/db`
+    """
+
+    sought = sought.split("@")
+    for key, val in dct.items():
+        if not any(s.lower() not in key.lower() for s in sought):
+            return val
+    return default
+
+
+def get_db_connection(name_or_handle: str) -> Optional[Connection]:
+    """Return the noteable.sql.connection.Connection corresponding to the requested
+        datasource a name or handle.
+
+    Will return None if the given handle isn't present in
+    the connections dict already (created after this kernel was launched?)
+    """
+    return Connection.find(name_or_handle)
+
+
+def get_sqla_connection(name_or_handle: str) -> Optional[sqlalchemy.engine.base.Connection]:
+    """Return a SQLAlchemy connection given a name or handle
+    Returns None if cannot find by this string.
+    """
+    nconn = get_db_connection(name_or_handle)
+    if nconn:
+        return nconn.sqla_connection
+
+
+def get_sqla_engine(name_or_handle: str) -> Optional[Engine]:
+    """Return a SQLAlchemy Engine given a name or handle.
+    Returns None if cannot find by this string.
+    """
+    return Connection.get_engine(name_or_handle)
+
+
+def bootstrap_duckdb():
+    Connection.set(
+        DUCKDB_LOCATION,
+        human_name=LOCAL_DB_CONN_NAME,
+        name=LOCAL_DB_CONN_HANDLE,
+    )

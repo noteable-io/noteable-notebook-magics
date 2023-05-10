@@ -18,7 +18,7 @@ from noteable.planar_ally_client.types import (
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )
-from noteable.sql.connection import Connection
+from noteable.sql.connection import Connection, bootstrap_duckdb
 from noteable.sql.magic import SqlMagic
 from noteable.sql.run import add_commit_blacklist_dialect
 
@@ -115,6 +115,14 @@ def with_empty_connections() -> None:
     yield
 
     Connection.connections = preexisting_connections
+
+
+@pytest.fixture
+def with_duckdb_bootstrapped(with_empty_connections) -> None:
+    # Normal magics bootstrapping will leave us with DuckDB connection populated.
+    bootstrap_duckdb()
+
+    yield
 
 
 @pytest.fixture

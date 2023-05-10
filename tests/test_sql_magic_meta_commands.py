@@ -86,7 +86,7 @@ class TestListSchemas:
 
         # Drop the view.
         connection = Connection.connections['@sqlite']
-        db = connection.session  # sic, a sqlalchemy.engine.base.Connection, not a Session. Sigh.
+        db = connection.sqla_connection
         db.execute('drop view str_int_view')
 
         sql_magic.execute(r'@sqlite \schemas+')
