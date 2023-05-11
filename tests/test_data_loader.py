@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from noteable import LOCAL_DB_CONN_HANDLE, NoteableDataLoaderMagic, get_db_connection
+from noteable.data_loader import NoteableDataLoaderMagic
 from noteable.sql.connection import Connection
 
 
@@ -20,35 +20,13 @@ def csv_file(tmp_path: Path) -> Path:
     return the_file
 
 
-@pytest.mark.usefixtures("with_empty_connections")
-class TestGetDbConnection:
-    def test_populate_duckdb_conn_if_needed(self):
-        assert len(Connection.connections) == 0
-
-        conn = get_db_connection(LOCAL_DB_CONN_HANDLE)
-
-        assert conn.name == LOCAL_DB_CONN_HANDLE
-        assert str(conn._engine.url) == "duckdb:///:memory:"
-
-        assert len(Connection.connections) == 1
-
-        # Call it again, should return same thing.
-        conn2 = get_db_connection(LOCAL_DB_CONN_HANDLE)
-
-        assert conn2 is conn
-        assert len(Connection.connections) == 1
-
-    def test_returns_none_on_non_local_db_handle_miss(self):
-        assert get_db_connection("@456567567343456567") is None
-
-
 @pytest.fixture
 def data_loader() -> NoteableDataLoaderMagic:
     return NoteableDataLoaderMagic()
 
 
 class TestDataLoaderMagic:
-    @pytest.mark.usefixtures("with_empty_connections")
+    @pytest.mark.usefixtures("with_duckdb_bootstrapped")
     def test_can_load_into_local_connection(self, csv_file: Path, data_loader):
         """Load CSV file into a table named 'my_table' within implied @noteable connection."""
         df = data_loader.execute(f"{csv_file} my_table")
@@ -60,12 +38,12 @@ class TestDataLoaderMagic:
         # Shoulda populated into @notable duckdb
         assert len(Connection.connections) == 1
         conn = Connection.connections['@noteable']
-        session = conn.session
-        with session.begin():
-            count = session.execute(text('select count(*) from my_table')).scalar_one()
+        sqla_connection = conn.sqla_connection
+        with sqla_connection.begin():
+            count = sqla_connection.execute(text('select count(*) from my_table')).scalar_one()
             assert count == 2  # CSV fixture populated 2 rows.
 
-    @pytest.mark.usefixtures("with_empty_connections")
+    @pytest.mark.usefixtures("with_duckdb_bootstrapped")
     def test_can_load_multiple_times_into_local_connection(self, csv_file: Path, data_loader):
         data_loader.execute(f"{csv_file} my_table")
         data_loader.execute(f"{csv_file} my_table2")
@@ -73,10 +51,10 @@ class TestDataLoaderMagic:
         # Shoulda populated into @notable duckdb
         assert len(Connection.connections) == 1
         conn = Connection.connections['@noteable']
-        session = conn.session
-        with session.begin():
+        sqla_connection = conn.sqla_connection
+        with sqla_connection.begin():
             # rowcounts better be equal between the two tables!
-            assert session.execute(
+            assert sqla_connection.execute(
                 text('select (select count(*) from my_table) = (select count(*) from my_table2)')
             ).scalar_one()
 
@@ -92,11 +70,11 @@ class TestDataLoaderMagic:
 
         assert len(Connection.connections) == 1
         conn = Connection.connections[alternate_datasource_handle]
-        session = conn.session
-        with session.begin():
+        sqla_connection = conn.sqla_connection
+        with sqla_connection.begin():
             assert (
                 21
-                == session.execute(
+                == sqla_connection.execute(
                     text('select sum(a) + sum(b) + sum(c) from the_table')
                 ).scalar_one()
             )
@@ -114,18 +92,17 @@ class TestDataLoaderMagic:
 
         assert len(Connection.connections) == 1
         engine = Connection.get_engine(human_name)
-        session = engine.connect()
-        with session.begin():
+        sqla_connection = engine.connect()
+        with sqla_connection.begin():
             assert (
                 21
-                == session.execute(
+                == sqla_connection.execute(
                     text('select sum(a) + sum(b) + sum(c) from the_table')
                 ).scalar_one()
             )
 
     @pytest.mark.usefixtures("with_empty_connections")
     def test_cannot_load_into_unknown_handle(self, csv_file, data_loader):
-
         with pytest.raises(
             ValueError, match="Could not find datasource identified by '@nonexistenthandle'"
         ):

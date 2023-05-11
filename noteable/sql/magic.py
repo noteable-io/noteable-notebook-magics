@@ -149,7 +149,6 @@ class SqlMagic(Magics, Configurable):
             OperationalError,
             MetaCommandException,
         ) as e:
-
             # Normal syntax errors, missing table, etc. should come back as
             # ProgrammingError. And the rest indicate something fundamentally
             # broken at the DBAPI layer.
@@ -185,8 +184,8 @@ class SqlMagic(Magics, Configurable):
                 #
                 # "Restart Kernel" is too big of a hammer here.
                 #
-                conn._engine.dispose()
-                conn._session = None
+                conn.reset_connection_pool()
+
                 eprint(
                     "Encoutered the following unexpected exception while trying to run the statement."
                     " Closed the connection just to be safe. Re-run the cell to try again!\n\n"

@@ -107,7 +107,7 @@ def _commit(conn, config):
 
     if _should_commit:
         try:
-            conn.session.execute("commit")
+            conn.sqla_connection.execute("commit")
         except sqlalchemy.exc.OperationalError:
             pass  # not all engines can commit
 
@@ -140,7 +140,6 @@ jinja_sql = JinjaSql(param_style='numeric')
 
 
 def run(conn, sql, config, user_namespace, skip_boxing_scalar_result: bool):
-
     if sql.strip():
         for statement in sqlparse.split(sql):
             first_word = sql.strip().split()[0].lower()
@@ -154,7 +153,7 @@ def run(conn, sql, config, user_namespace, skip_boxing_scalar_result: bool):
             bind_dict = {str(idx + 1): elem for (idx, elem) in enumerate(bind_list)}
 
             txt = sqlalchemy.sql.text(query)
-            result = conn.session.execute(txt, bind_dict)
+            result = conn.sqla_connection.execute(txt, bind_dict)
 
             _commit(conn=conn, config=config)
 

@@ -1,5 +1,4 @@
 import mimetypes
-from typing import Optional
 
 import pandas as pd
 from IPython.core.magic import Magics, line_cell_magic, magics_class
@@ -8,46 +7,12 @@ from IPython.utils.process import arg_split
 from traitlets import Bool, Int
 from traitlets.config import Configurable
 
-from noteable.sql.connection import Connection
+from noteable.sql.connection import LOCAL_DB_CONN_HANDLE, get_db_connection
 
 EXCEL_MIMETYPES = {
     "application/vnd.ms-excel",  # .xls
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
 }
-LOCAL_DB_CONN_HANDLE = "@noteable"
-duckdb_location = "duckdb:///:memory:"
-
-
-def get_db_connection(sql_cell_handle_or_human_name: str) -> Optional['Connection']:
-    """Return the sql.connection.Connection corresponding to the requested
-        datasource sql_cell_handle or human name.
-
-    If the cell handle happens to correspond to the 'local database' DuckDB database,
-    then we will bootstrap it upon demand. Otherwise, try to find and return
-    the connection.
-
-    Will return None if the given handle isn't @noteable and isn't present in
-    the connections dict already (created after this kernel was launched?)
-    """
-    if (
-        sql_cell_handle_or_human_name == LOCAL_DB_CONN_HANDLE
-        and sql_cell_handle_or_human_name not in Connection.connections
-    ):
-        # Bootstrap the DuckDB database if asked and needed.
-        return Connection.set(
-            duckdb_location,
-            human_name="Local Database",
-            name=LOCAL_DB_CONN_HANDLE,
-        )
-    else:
-        # If, say, they created the datasource *after* this kernel was launched, then
-        # this will come up empty and the caller should handle gracefully.
-        for conn in Connection.connections.values():
-            if (
-                conn.name == sql_cell_handle_or_human_name
-                or conn.human_name == sql_cell_handle_or_human_name
-            ):
-                return conn
 
 
 @magics_class
@@ -56,7 +21,6 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         True, config=True, help="Return the first N rows from the loaded pandas dataframe"
     )
     display_example = Bool(True, config=True, help="Show example SQL query")
-    display_connection_str = Bool(False, config=True, help="Show connection string after execute")
     pandas_limit = Int(10, config=True, help="The limit of rows to returns in the pandas dataframe")
 
     @line_cell_magic("create_or_replace_data_view")
@@ -116,19 +80,13 @@ class NoteableDataLoaderMagic(Magics, Configurable):
                 f"Could not find datasource identified by {args.connection!r}. Perhaps restart the kernel?"
             )
 
-        tmp_df.to_sql(tablename, conn.session, if_exists="replace", index=args.include_index)
-
-        if self.display_connection_str:
-            print(f"Connect with: %sql {conn.name}")
+        tmp_df.to_sql(
+            tablename, conn.sqla_connection, if_exists="replace", index=args.include_index
+        )
 
         if self.display_example:
-            if conn.human_name:
-                noun = f'{conn.human_name!r}'
-            else:
-                # Hmm. "Legacy" created datasource. Err on the engine's dialect name?
-                noun = conn._engine.dialect.name
             print(
-                f"""Create a {noun} SQL cell and then input query. """
+                f"""Create a {conn.human_name!r} SQL cell and then input query. """
                 f"Example: 'SELECT * FROM \"{tablename}\" LIMIT 10'"
             )
 
