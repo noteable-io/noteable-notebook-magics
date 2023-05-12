@@ -15,11 +15,6 @@ def runner():
     yield CliRunner()
 
 
-@pytest.fixture()
-def context():
-    yield NTBLMagic()._build_ctx()
-
-
 @pytest.mark.parametrize(
     'input_path,expected_path',
     [
@@ -31,7 +26,7 @@ def context():
         ('', '/'),
     ],
 )
-def test_datasets_push(input_path, expected_path, runner, context):
+def test_datasets_push(input_path, expected_path, runner):
     response = MockResponse(
         FileProgressUpdateMessage(
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
@@ -43,7 +38,7 @@ def test_datasets_push(input_path, expected_path, runner, context):
         "noteable.planar_ally_client.api.DatasetFileSystemAPI.push",
         return_value=DatasetOperationStream(response.stream(), "push files"),
     ) as push_mock:
-        result = runner.invoke(datasets_push, input_path.split(' '), obj=context)
+        result = runner.invoke(datasets_push, input_path.split(' '))
         assert result.exit_code == 0, ''.join(traceback.format_exception(*result.exc_info))
         push_mock.assert_called_with(expected_path)
 
@@ -59,7 +54,7 @@ def test_datasets_push(input_path, expected_path, runner, context):
         ('', '/'),
     ],
 )
-def test_datasets_pull(input_path, expected_path, runner, context):
+def test_datasets_pull(input_path, expected_path, runner):
     response = MockResponse(
         FileProgressUpdateMessage(
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
@@ -71,16 +66,16 @@ def test_datasets_pull(input_path, expected_path, runner, context):
         "noteable.planar_ally_client.api.DatasetFileSystemAPI.pull",
         return_value=DatasetOperationStream(response.stream(), "pull files"),
     ) as pull_mock:
-        result = runner.invoke(datasets_pull, input_path.split(' '), obj=context)
+        result = runner.invoke(datasets_pull, input_path.split(' '))
         assert result.exit_code == 0, ''.join(traceback.format_exception(*result.exc_info))
         pull_mock.assert_called_with(expected_path)
 
 
-def test_change_log_level(runner, context):
+def test_change_log_level(runner):
     with mock.patch(
         "noteable.planar_ally_client.api.PlanarAllyAPI.change_log_level", return_value=None
     ) as change_mock:
-        result = runner.invoke(change_log_level, ["--app-level", "DEBUG"], obj=context)
+        result = runner.invoke(change_log_level, ["--app-level", "DEBUG"])
         assert result.exit_code == 0, ''.join(traceback.format_exception(*result.exc_info))
         change_mock.assert_called_with(
             app_log_level="DEBUG", ext_log_level=None, rtu_log_level=None
