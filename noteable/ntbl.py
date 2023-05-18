@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Iterable, List
 
 import click
 import structlog
@@ -10,7 +10,7 @@ from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments
 from IPython.utils.process import arg_split
 from rich import print as rprint
-from rich.progress import Progress, TaskID
+from tqdm.auto import tqdm
 from traitlets import Float, Unicode
 from traitlets.config import Configurable
 
@@ -142,9 +142,9 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
     error_message = None
     complete_message = None
 
-    with Progress() as progress:
-        tasks_by_file_path: Dict[str, TaskID] = {}
+    progress_bars = {}
 
+    try:
         for msg in stream:
             if isinstance(msg, StreamErrorMessage):
                 error_message = msg.content.detail
@@ -152,19 +152,17 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
             elif isinstance(msg, FileProgressUpdateMessage):
                 got_file_update_msg = True
 
-                if msg.content.file_name not in tasks_by_file_path:
-                    tasks_by_file_path[msg.content.file_name] = progress.add_task(
-                        msg.content.file_name, total=100.0
-                    )
+                if msg.content.file_name not in progress_bars:
+                    progress_bars[msg.content.file_name] = tqdm(total=100.0, desc=msg.content.file_name)
 
-                progress.update(
-                    tasks_by_file_path[msg.content.file_name],
-                    completed=msg.content.percent_complete * 100.0,
-                )
+                progress_bars[msg.content.file_name].update(msg.content.percent_complete * 100.0)
             elif isinstance(msg, FileProgressStartMessage):
-                progress.console.print(msg.content.message)
+                print(msg.content.message)
             elif isinstance(msg, FileProgressEndMessage) and got_file_update_msg:
                 complete_message = msg.content.message
+    finally:
+        for bar in progress_bars.values():
+            bar.close()
 
     if error_message:
         rprint(f"[red]{error_message}[/red]")

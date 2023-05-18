@@ -48,6 +48,7 @@ pymysql = {version = "1.0.2"}
 mysqlclient = {version = "2.1.1"}
 # And singlesource will be using this explicit dialect.
 sqlalchemy-singlestoredb = {version = "0.2.0"}
+tqdm = "^4.65.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.1.0"
