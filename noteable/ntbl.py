@@ -143,6 +143,7 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
     complete_message = None
 
     progress_bars = {}
+    last_percent = {}  # store the last percent value for each file
 
     try:
         for msg in stream:
@@ -153,9 +154,15 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
                 got_file_update_msg = True
 
                 if msg.content.file_name not in progress_bars:
-                    progress_bars[msg.content.file_name] = tqdm(total=100.0, desc=msg.content.file_name)
+                    progress_bars[msg.content.file_name] = tqdm(
+                        total=100.0, desc=msg.content.file_name
+                    )
+                    last_percent[msg.content.file_name] = 0
 
-                progress_bars[msg.content.file_name].update(msg.content.percent_complete * 100.0)
+                current_percent = msg.content.percent_complete * 100.0
+                progress_to_update = current_percent - last_percent[msg.content.file_name]
+                progress_bars[msg.content.file_name].update(progress_to_update)
+                last_percent[msg.content.file_name] = current_percent
             elif isinstance(msg, FileProgressStartMessage):
                 print(msg.content.message)
             elif isinstance(msg, FileProgressEndMessage) and got_file_update_msg:
