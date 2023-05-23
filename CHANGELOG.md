@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Now use jinjasql for SQL cell template expansion, not simple string.Template.
 - Simpler message printed as the cell's side-effect if an unknown datasource handle is attempted.
 - Repackaged all code to be in 'noteable' toplevel package, not 'noteable_magics.'
+- Better datasets download progress bars
 
 ## [2.0.0] - 2022-03-15
 ### Changed
