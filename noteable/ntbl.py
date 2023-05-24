@@ -155,11 +155,11 @@ def process_file_update_stream(path: str, stream: DatasetOperationStream):
 
                 if msg.content.file_name not in progress_bars:
                     progress_bars[msg.content.file_name] = tqdm(
-                        total=100.0, desc=msg.content.file_name
+                        total=100, desc=msg.content.file_name
                     )
                     last_percent[msg.content.file_name] = 0
 
-                current_percent = msg.content.percent_complete * 100.0
+                current_percent = int(msg.content.percent_complete * 100)
                 progress_to_update = current_percent - last_percent[msg.content.file_name]
                 progress_bars[msg.content.file_name].update(progress_to_update)
                 last_percent[msg.content.file_name] = current_percent

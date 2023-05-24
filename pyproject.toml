@@ -23,7 +23,7 @@ structlog = "^22.1.0"
 SQLAlchemy = "<=2.0.0"
 # snowflake 1.4.4 demands "please install a version that adheres to: 'pyarrow<8.1.0,>=8.0.0; extra == "pandas"'"
 pyarrow = {extras = ["pandas"], version=">=8.0.0,<8.1.0"}
-sqlparse = "^0.4.2"
+sqlparse = "^0.4.4"
 # Alternative build of JinjaSQL that's Jinja3 compatible. Up until
 # https://github.com/sripathikrishnan/jinjasql/pull/53 gets merged, anyway
 # (Note: Check this periodically. Last checked Jan 27, 2023.)
