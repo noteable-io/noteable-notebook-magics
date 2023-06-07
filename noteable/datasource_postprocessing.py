@@ -336,9 +336,9 @@ def postprocess_databricks(
 def postprocess_clickhouse(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
 ) -> None:
+    connect_args = create_engine_kwargs.get('connect_args', {})
 
     dsn_dict["query"] = {
-        # TODO: make these configurable
-        "protocol": "https", # default to https,
-        "verify": "true",
+        "protocol": connect_args["protocol"],
+        "verify": connect_args["verify"],
     }
