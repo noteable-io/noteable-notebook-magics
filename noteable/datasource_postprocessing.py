@@ -330,3 +330,15 @@ def postprocess_databricks(
     # even if not all were present.
     for key in connect_file_opt_keys:
         connect_args.pop(key, '')
+
+
+@register_postprocessor('clickhouse+http')
+def postprocess_clickhouse(
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+
+    dsn_dict["query"] = {
+        # TODO: make these configurable
+        "protocol": "https", # default to https,
+        "verify": "true",
+    }
