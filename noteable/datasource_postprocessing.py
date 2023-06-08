@@ -336,7 +336,7 @@ def postprocess_databricks(
 def postprocess_clickhouse(
     datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
 ) -> None:
-    connect_args = create_engine_kwargs.get('connect_args', {})
+    connect_args = create_engine_kwargs['connect_args']
 
     dsn_dict["query"] = {
         "protocol": connect_args["protocol"],
