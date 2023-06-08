@@ -2,13 +2,16 @@
 
 import os
 from pathlib import Path
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pandas as pd
 import pytest
 import requests
+from pandas.testing import assert_frame_equal
 
 from noteable import datasources
+from noteable.sql.run import ResultSet
 from tests.conftest import COCKROACH_HANDLE, DatasourceJSONs
 
 
@@ -553,3 +556,99 @@ class TestAmazonAthena:
             )
 
             assert results == 4996
+
+
+class TestResultSet:
+    """Unit tests for the noteable.sql.run.ResultSet class."""
+
+    @pytest.mark.parametrize(
+        "sqla_result_mock_attrs,expected_result_set_attrs",
+        [
+            # Weirdness demonstrated by Clickhouse SQLAlchemy dialect
+            # where returns_rows is True, but rowcount is -1.
+            # Handle this case by setting has_results_to_report to False.
+            (
+                {"returns_rows": True, "keys.return_value": [], "rowcount": -1},
+                {
+                    "has_results_to_report": False,
+                    "is_scalar_value": False,
+                    "can_become_dataframe": False,
+                },
+            ),
+            # Case where we have a dataframe with no rows.
+            (
+                {
+                    "returns_rows": True,
+                    "keys.return_value": ['col1', 'col2'],
+                    "fetchall.return_value": [],
+                    "rowcount": 0,
+                },
+                {
+                    "has_results_to_report": True,
+                    "is_scalar_value": False,
+                    "can_become_dataframe": True,
+                    # Not an attr on the ResultSet class, but used in the test
+                    # to assert against the return value of to_dataframe().
+                    # It's a little weird, I know.
+                    "to_dataframe_return_value": pd.DataFrame([], columns=['col1', 'col2']),
+                },
+            ),
+            # Case where we have a dataframe with rows.
+            (
+                {
+                    "returns_rows": True,
+                    "keys.return_value": ['col1', 'col2'],
+                    "fetchall.return_value": [(0, 1), (13, 42)],
+                    "rowcount": 2,
+                },
+                {
+                    "has_results_to_report": True,
+                    "is_scalar_value": False,
+                    "can_become_dataframe": True,
+                    "to_dataframe_return_value": pd.DataFrame(
+                        [(0, 1), (13, 42)], columns=['col1', 'col2']
+                    ),
+                },
+            ),
+            # No rows but we have a rowcount to report.
+            (
+                {
+                    "returns_rows": False,
+                    "rowcount": 0,
+                },
+                {
+                    "has_results_to_report": True,
+                    "is_scalar_value": True,
+                    "scalar_value": 0,
+                    "can_become_dataframe": False,
+                },
+            ),
+            # One row with one column - report a scalar value.
+            (
+                {
+                    "returns_rows": True,
+                    "rowcount": 1,
+                    "keys.return_value": ['col1'],
+                    "fetchall.return_value": [(42,)],
+                },
+                {
+                    "has_results_to_report": True,
+                    "is_scalar_value": True,
+                    "scalar_value": 42,
+                    "can_become_dataframe": True,
+                },
+            ),
+        ],
+    )
+    def test_create_result_set(self, sqla_result_mock_attrs, expected_result_set_attrs):
+        sqla_result_mock = Mock(**sqla_result_mock_attrs)
+
+        result_set = ResultSet(sqla_result_mock, None, None)
+
+        for attr, expected_value in expected_result_set_attrs.items():
+            if attr == 'to_dataframe_return_value':
+                assert_frame_equal(
+                    expected_value, result_set.to_dataframe(), check_frame_type=False
+                )
+            else:
+                assert getattr(result_set, attr) == expected_value

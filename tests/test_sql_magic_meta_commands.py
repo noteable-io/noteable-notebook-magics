@@ -3,6 +3,7 @@ import re
 import urllib.parse
 from datetime import datetime
 from typing import List, Optional, Tuple
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pandas as pd
@@ -13,6 +14,7 @@ from sqlalchemy.engine.reflection import Inspector
 from noteable.sql.connection import Connection
 from noteable.sql.gate_messaging_types import RelationStructureDescription
 from noteable.sql.meta_commands import (
+    IntrospectAndStoreDatabaseCommand,
     RelationStructureMessager,
     SchemaStrippingInspector,
     _all_command_classes,
@@ -1070,3 +1072,27 @@ class TestHandleNotImplemented:
             @handle_not_implemented()
             def func():
                 raise NotImplementedError
+
+
+class TestIntrospectAndStoreDatabaseCommand:
+    def test_all_table_and_views_excludes_avoid_schemas_set(self):
+        mock_inspector = MagicMock()
+        mock_inspector.default_schema_name = 'default'
+        mock_inspector.get_schema_names.return_value = [
+            's1',
+            's2',
+            'information_schema',
+            'pg_catalog',
+            'crdb_internal',
+            # Comes from Clickhouse default system tables
+            'INFORMATION_SCHEMA',
+        ]
+        mock_inspector.get_table_names.return_value = [
+            't1',
+            't2',
+        ]
+        mock_inspector.get_view_names.return_value = ['v1', 'v2']
+
+        results = IntrospectAndStoreDatabaseCommand.all_table_and_views(mock_inspector)
+
+        assert {r[0] for r in results} == {'s1', 's2', 'default'}

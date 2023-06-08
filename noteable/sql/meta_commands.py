@@ -525,7 +525,10 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     # Schemas to never introspect into. Will need to augment / research for each
     # new datasource type supported.
-    AVOID_SCHEMAS = set(('information_schema', 'pg_catalog', 'crdb_internal'))
+    # Clickhouse spells it as 'INFORMATION_SCHEMA' (all caps), rest as 'information_schema' (all lowercase)
+    # Clickhouse also has a 'system' schema, but we don't want to avoid introspecting that
+    # at the risk of excluding user-created 'system' schemas in other datasources.
+    AVOID_SCHEMAS = {'information_schema', 'INFORMATION_SCHEMA', 'pg_catalog', 'crdb_internal'}
 
     def run(self, invoked_as: str, args: List[str]) -> None:
         """Drive introspecting whole database, POSTing results back to Gate for storage.

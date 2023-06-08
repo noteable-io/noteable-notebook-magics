@@ -1075,3 +1075,47 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
     datasource_postprocessing.postprocess_awsathena(None, dsn_dict, create_engine_dict)
     assert dsn_dict == expected_dicts[0]
     assert create_engine_dict == expected_dicts[1]
+
+
+@pytest.mark.parametrize(
+    "input_dicts,expected_dsn_dict",
+    [
+        (
+            (
+                # Input dsn dict
+                {'host': 'us-west-1', 'username': 'scott', 'password': 'tiger'},
+                # Input create engine dict
+                {'connect_args': {'protocol': 'https', 'verify': True}},
+            ),
+            # Expected DSN dict
+            {
+                'host': 'us-west-1',
+                'username': 'scott',
+                'password': 'tiger',
+                'query': {
+                    'protocol': 'https',
+                    'verify': 'true',
+                },
+            },
+        ),
+        (
+            (
+                {'host': 'us-west-1', 'username': 'scott', 'password': 'tiger'},
+                {'connect_args': {'protocol': 'https', 'verify': False}},
+            ),
+            {
+                'host': 'us-west-1',
+                'username': 'scott',
+                'password': 'tiger',
+                'query': {
+                    'protocol': 'https',
+                    'verify': 'false',
+                },
+            },
+        ),
+    ],
+)
+def test_postprocess_clickhouse(input_dicts, expected_dsn_dict):
+    input_dsn_dict, input_create_engine_dict = input_dicts
+    datasource_postprocessing.postprocess_clickhouse(None, input_dsn_dict, input_create_engine_dict)
+    assert input_dsn_dict == expected_dsn_dict

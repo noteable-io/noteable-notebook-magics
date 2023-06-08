@@ -48,6 +48,9 @@ pymysql = {version = "1.0.2"}
 mysqlclient = {version = "2.1.1"}
 # And singlesource will be using this explicit dialect.
 sqlalchemy-singlestoredb = {version = "0.2.0"}
+# Use clickhouse-sqlalchemy==0.2.3 for now since 0.2.4 requires greenlet >= 2.0.1 for async support
+# which conflicts with the greenlet version required above.
+clickhouse-sqlalchemy = {version = "0.2.3"}
 tqdm = "^4.65.0"
 
 [tool.poetry.group.dev.dependencies]
