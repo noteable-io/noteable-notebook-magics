@@ -1061,8 +1061,8 @@ def test_postprocess_snowflake(dsn_dict, expected):
                 # Resulting DSN dict
                 {
                     'host': 'athena.us-west-1.amazonaws.com',
-                        'username': 'ADFGD%3A%2F',
-                        'password': 'MMHq%3A%2F',
+                    'username': 'ADFGD%3A%2F',
+                    'password': 'MMHq%3A%2F',
                 },
                 # resulting connect args dict
                 {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'},
