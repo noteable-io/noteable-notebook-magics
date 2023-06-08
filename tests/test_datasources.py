@@ -1061,8 +1061,8 @@ def test_postprocess_snowflake(dsn_dict, expected):
                 # Resulting DSN dict
                 {
                     'host': 'athena.us-west-1.amazonaws.com',
-                    'username': 'ADFGD%3A%2F',
-                    'password': 'MMHq%3A%2F',
+                        'username': 'ADFGD%3A%2F',
+                        'password': 'MMHq%3A%2F',
                 },
                 # resulting connect args dict
                 {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'},
@@ -1083,15 +1083,15 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
         (
             (
                 # Input dsn dict
-                {'host': 'us-west-1', 'username': 'ADFGD:/', 'password': 'MMHq:/'},
+                {'host': 'us-west-1', 'username': 'scott', 'password': 'tiger'},
                 # Input create engine dict
                 {'connect_args': {'protocol': 'https', 'verify': True}},
             ),
             # Expected DSN dict
             {
                 'host': 'us-west-1',
-                'username': 'ADFGD:/',
-                'password': 'MMHq:/',
+                'username': 'scott',
+                'password': 'tiger',
                 'query': {
                     'protocol': 'https',
                     'verify': 'true',
@@ -1100,13 +1100,13 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
         ),
         (
             (
-                {'host': 'us-west-1', 'username': 'ADFGD:/', 'password': 'MMHq:/'},
+                {'host': 'us-west-1', 'username': 'scott', 'password': 'tiger'},
                 {'connect_args': {'protocol': 'https', 'verify': False}},
             ),
             {
                 'host': 'us-west-1',
-                'username': 'ADFGD:/',
-                'password': 'MMHq:/',
+                'username': 'scott',
+                'password': 'tiger',
                 'query': {
                     'protocol': 'https',
                     'verify': 'false',
