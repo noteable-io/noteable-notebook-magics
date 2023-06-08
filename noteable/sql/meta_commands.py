@@ -627,7 +627,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
-        # all_schemas -= cls.AVOID_SCHEMAS
         all_schemas.difference_update(cls.AVOID_SCHEMAS)
         if default_schema and default_schema not in all_schemas:
             all_schemas.add(default_schema)
