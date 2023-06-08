@@ -21,8 +21,13 @@ class ResultSet:
     has_results_to_report: bool = True
 
     def __init__(self, sqla_result, sql, config):
-        if sqla_result.returns_rows:
-            self.keys = list(sqla_result.keys())
+        # Check for non-empty list of keys in addition to returns_rows flag.
+
+        # NOTE: Clickhouse does funky things with INSERT/UPDATE/DELETE statements
+        #       and sets returns_rows to True even though there are no results or keys.
+        #       We don't want to report results in that case.
+        if sqla_result.returns_rows and len(keys := list(sqla_result.keys())) > 0:
+            self.keys = keys
             self.rows = sqla_result.fetchall()
         elif sqla_result.rowcount != -1:
             # Was either DDL or perhaps DML like an INSERT or UPDATE statement
