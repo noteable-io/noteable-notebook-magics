@@ -528,7 +528,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     # Clickhouse spells it as 'INFORMATION_SCHEMA' (all caps), rest as 'information_schema' (all lowercase)
     # Clickhouse also has a 'system' schema, but we don't want to avoid introspecting that
     # at the risk of excluding user-created 'system' schemas in other datasources.
-    AVOID_SCHEMAS = {'information_schema', 'INFORMATION_SCHEMA' 'pg_catalog', 'crdb_internal'}
+    AVOID_SCHEMAS = {'information_schema', 'INFORMATION_SCHEMA', 'pg_catalog', 'crdb_internal'}
 
     def run(self, invoked_as: str, args: List[str]) -> None:
         """Drive introspecting whole database, POSTing results back to Gate for storage.
@@ -627,6 +627,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
         default_schema = inspector.default_schema_name
         all_schemas = set(inspector.get_schema_names())
+        # all_schemas -= cls.AVOID_SCHEMAS
         all_schemas.difference_update(cls.AVOID_SCHEMAS)
         if default_schema and default_schema not in all_schemas:
             all_schemas.add(default_schema)
