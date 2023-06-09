@@ -1082,16 +1082,16 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
     [
         (
             # Input create engine dict
-            {'connect_args': {'verify': 'Yes, use HTTPS'}},
+            {'connect_args': {'secure_connection': 'Yes, use HTTPS'}},
             # Expected connect_args dict
             {'connect_args': {'protocol': 'https', 'verify': False}},
         ),
         (
-            {'connect_args': {'verify': 'Yes, use HTTPS and verify server certificate'}},
+            {'connect_args': {'secure_connection': 'Yes, use HTTPS and verify server certificate'}},
             {'connect_args': {'protocol': 'https', 'verify': True}},
         ),
         (
-            {'connect_args': {'verify': 'No, use HTTP'}},
+            {'connect_args': {'secure_connection': 'No, use HTTP'}},
             {'connect_args': {'protocol': 'http', 'verify': False}},
         ),
     ],
@@ -1099,3 +1099,10 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
 def test_postprocess_clickhouse(input_create_engine_dict, expected_create_engine_dict):
     datasource_postprocessing.postprocess_clickhouse(None, None, input_create_engine_dict)
     assert input_create_engine_dict == expected_create_engine_dict
+
+
+def test_postprocess_clickhouse_raises_on_bad_secure_connection():
+    with pytest.raises(ValueError):
+        datasource_postprocessing.postprocess_clickhouse(
+            None, None, {'connect_args': {'secure_connection': 'foobar'}}
+        )

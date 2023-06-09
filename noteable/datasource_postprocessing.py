@@ -340,10 +340,18 @@ def postprocess_clickhouse(
 
     # These are the enum options from the JSON schema for the dropdown titled "Secure Connection (HTTPS)"
     # Convert them to the values that the clickhouse driver expects.
-    verify = connect_args["verify"]
-    if verify == "Yes, use HTTPS":
+    secure_connection = connect_args.pop("secure_connection")
+    if secure_connection == "Yes, use HTTPS":
         connect_args.update({"protocol": "https", "verify": False})
-    elif verify == "Yes, use HTTPS and verify server certificate":
+    elif secure_connection == "Yes, use HTTPS and verify server certificate":
         connect_args.update({"protocol": "https", "verify": True})
-    elif verify == "No, use HTTP":
+    elif secure_connection == "No, use HTTP":
         connect_args.update({"protocol": "http", "verify": False})
+    else:
+        raise ValueError(
+            f"Unexpected value for secure_connection: {secure_connection}. "
+            "Expected one of: "
+            '"Yes, use HTTPS", '
+            '"Yes, use HTTPS and verify server certificate", '
+            '"No, use HTTP"'
+        )
