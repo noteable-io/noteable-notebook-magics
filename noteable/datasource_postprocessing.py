@@ -7,7 +7,6 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
-import certifi
 import structlog
 
 logger = structlog.get_logger(__name__)
