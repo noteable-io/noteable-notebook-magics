@@ -339,5 +339,12 @@ def postprocess_clickhouse(
 ) -> None:
     connect_args = create_engine_kwargs["connect_args"]
 
-    if connect_args["verify"] is True:
-        connect_args["verify"] = certifi.where()
+    # These are the enum options from the JSON schema for the dropdown titled "Secure Connection (HTTPS)"
+    # Convert them to the values that the clickhouse driver expects.
+    verify = connect_args["verify"]
+    if verify == "Yes, use HTTPS":
+        connect_args.update({"protocol": "https", "verify": False})
+    elif verify == "Yes, use HTTPS and verify server certificate":
+        connect_args.update({"protocol": "https", "verify": True})
+    elif verify == "No, use HTTP":
+        connect_args.update({"protocol": "http", "verify": False})
