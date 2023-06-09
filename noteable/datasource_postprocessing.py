@@ -338,10 +338,20 @@ def postprocess_clickhouse(
 ) -> None:
     connect_args = create_engine_kwargs["connect_args"]
 
-    # Pop the keys we want to use to build the query parameters in the connection string
-    # so that they don't get doubly passed down into the `noteable.sql.connection.Connection.set` call
-    # in `noteable.datasources.bootstrap_datasource()`.
-    dsn_dict["query"] = {
-        "protocol": connect_args.pop("protocol"),
-        "verify": str(connect_args.pop("verify")).lower(), # converts True/False to true/false
-    }
+    # These are the enum options from the JSON schema for the dropdown titled "Secure Connection (HTTPS)"
+    # Convert them to the values that the clickhouse driver expects.
+    secure_connection = connect_args.pop("secure_connection")
+    if secure_connection == "Yes, use HTTPS":
+        connect_args.update({"protocol": "https", "verify": False})
+    elif secure_connection == "Yes, use HTTPS and verify server certificate":
+        connect_args.update({"protocol": "https", "verify": True})
+    elif secure_connection == "No, use HTTP":
+        connect_args.update({"protocol": "http", "verify": False})
+    else:
+        raise ValueError(
+            f"Unexpected value for secure_connection: {secure_connection}. "
+            "Expected one of: "
+            '"Yes, use HTTPS", '
+            '"Yes, use HTTPS and verify server certificate", '
+            '"No, use HTTP"'
+        )
