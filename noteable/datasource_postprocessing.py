@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
+import certifi
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -338,10 +339,5 @@ def postprocess_clickhouse(
 ) -> None:
     connect_args = create_engine_kwargs["connect_args"]
 
-    # Pop the keys we want to use to build the query parameters in the connection string
-    # so that they don't get doubly passed down into the `noteable.sql.connection.Connection.set` call
-    # in `noteable.datasources.bootstrap_datasource()`.
-    dsn_dict["query"] = {
-        "protocol": connect_args.pop("protocol"),
-        "verify": str(connect_args.pop("verify")).lower(), # converts True/False to true/false
-    }
+    if connect_args["verify"] is True:
+        connect_args["verify"] = certifi.where()
