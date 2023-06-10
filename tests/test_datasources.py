@@ -4,8 +4,10 @@ import json
 import os
 from pathlib import Path
 from typing import Callable, List, Tuple
+from unittest.mock import patch
 from uuid import uuid4
 
+import certifi
 import pkg_resources
 import pytest
 import structlog
@@ -1078,27 +1080,29 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
 
 
 @pytest.mark.parametrize(
-    "input_create_engine_dict,expected_create_engine_dict",
+    "input_create_engine_dict,expected_query_params",
     [
         (
             # Input create engine dict
             {'connect_args': {'secure_connection': 'Yes, use HTTPS'}},
             # Expected connect_args dict
-            {'connect_args': {'protocol': 'https', 'verify': False}},
+            {'protocol': 'https', 'verify': 'False'},
         ),
         (
             {'connect_args': {'secure_connection': 'Yes, use HTTPS and verify server certificate'}},
-            {'connect_args': {'protocol': 'https', 'verify': True}},
+            {'protocol': 'https', 'verify': '/path/to/certifi/cert.pem'},
         ),
         (
             {'connect_args': {'secure_connection': 'No, use HTTP'}},
-            {'connect_args': {'protocol': 'http', 'verify': False}},
+            {'protocol': 'http', 'verify': 'False'},
         ),
     ],
 )
-def test_postprocess_clickhouse(input_create_engine_dict, expected_create_engine_dict):
-    datasource_postprocessing.postprocess_clickhouse(None, None, input_create_engine_dict)
-    assert input_create_engine_dict == expected_create_engine_dict
+def test_postprocess_clickhouse(input_create_engine_dict, expected_query_params):
+    with patch.object(certifi, 'where', return_value='/path/to/certifi/cert.pem'):
+        dsn_dict = {}
+        datasource_postprocessing.postprocess_clickhouse(None, dsn_dict, input_create_engine_dict)
+        assert dsn_dict['query'] == expected_query_params
 
 
 def test_postprocess_clickhouse_raises_on_bad_secure_connection():

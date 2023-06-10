@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
+import certifi
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -342,11 +343,11 @@ def postprocess_clickhouse(
     # Convert them to the values that the clickhouse driver expects.
     secure_connection = connect_args.pop("secure_connection")
     if secure_connection == "Yes, use HTTPS":
-        connect_args.update({"protocol": "https", "verify": False})
+        query = {"protocol": "https", "verify": "False"}
     elif secure_connection == "Yes, use HTTPS and verify server certificate":
-        connect_args.update({"protocol": "https", "verify": True})
+        query = {"protocol": "https", "verify": certifi.where()}
     elif secure_connection == "No, use HTTP":
-        connect_args.update({"protocol": "http", "verify": False})
+        query = {"protocol": "http", "verify": "False"}
     else:
         raise ValueError(
             f"Unexpected value for secure_connection: {secure_connection}. "
@@ -355,3 +356,10 @@ def postprocess_clickhouse(
             '"Yes, use HTTPS and verify server certificate", '
             '"No, use HTTP"'
         )
+
+    # https://clickhouse-sqlalchemy.readthedocs.io/en/latest/connection.html#http
+    # The `protocol` and `verify` options need to be passed as
+    # query parameters to the URL and not as connect_args to create_engine.
+    # It simply doesn't work if they are passed as connect_args.
+    # Why? That is left as an exercise for the reader.
+    dsn_dict["query"] = query
