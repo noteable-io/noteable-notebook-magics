@@ -1,17 +1,7 @@
 import sys
 
-import noteable.sql.connection
-import noteable.sql.parse
-import noteable.sql.run
-from IPython.core.magic import (
-    Magics,
-    cell_magic,
-    line_magic,
-    magics_class,
-    needs_local_scope,
-)
+from IPython.core.magic import Magics, cell_magic, line_magic, magics_class, needs_local_scope
 from IPython.core.magic_arguments import argument, magic_arguments
-from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 from sqlalchemy.exc import (
     DatabaseError,
     InterfaceError,
@@ -19,6 +9,11 @@ from sqlalchemy.exc import (
     OperationalError,
     ProgrammingError,
 )
+
+import noteable.sql.connection
+import noteable.sql.parse
+import noteable.sql.run
+from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:
     from traitlets import Bool
