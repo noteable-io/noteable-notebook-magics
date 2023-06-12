@@ -1,7 +1,17 @@
 import sys
 
-from IPython.core.magic import Magics, cell_magic, line_magic, magics_class, needs_local_scope
+import noteable.sql.connection
+import noteable.sql.parse
+import noteable.sql.run
+from IPython.core.magic import (
+    Magics,
+    cell_magic,
+    line_magic,
+    magics_class,
+    needs_local_scope,
+)
 from IPython.core.magic_arguments import argument, magic_arguments
+from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 from sqlalchemy.exc import (
     DatabaseError,
     InterfaceError,
@@ -9,11 +19,6 @@ from sqlalchemy.exc import (
     OperationalError,
     ProgrammingError,
 )
-
-import noteable.sql.connection
-import noteable.sql.parse
-import noteable.sql.run
-from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:
     from traitlets import Bool
@@ -34,11 +39,6 @@ class SqlMagic(Magics, Configurable):
 
     Provides the %%sql magic."""
 
-    short_errors = Bool(
-        True,
-        config=True,
-        help="Don't display the full traceback on SQL Programming Error",
-    )
     autopandas = Bool(
         False,
         config=True,
@@ -159,19 +159,7 @@ class SqlMagic(Magics, Configurable):
                 isinstance(e, OperationalError) and "sqlite" in str(e)
             )
 
-            if not is_fatal:
-                if self.short_errors:
-                    eprint(str(e))
-
-                    if isinstance(e, MetaCommandException):
-                        if hasattr(e, 'invoked_with'):
-                            eprint(rf'(Use "\help {e.invoked_with}"" for more assistance)')
-                        else:
-                            eprint(r'(Use "\help" for more assistance)')
-
-                else:
-                    raise
-            else:
+            if is_fatal:
                 #
                 # Some sort of DBAPI-level error. Let's be conservative an err on the
                 # side of force-closing all of the engine's connections. This happens
@@ -190,7 +178,7 @@ class SqlMagic(Magics, Configurable):
                     "Encoutered the following unexpected exception while trying to run the statement."
                     " Closed the connection just to be safe. Re-run the cell to try again!\n\n"
                 )
-                raise
+            raise
 
 
 def load_ipython_extension(ip):
