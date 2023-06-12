@@ -292,7 +292,7 @@ class TestViewsCommand:
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
 class TestSingleRelationCommand:
     @pytest.mark.parametrize(
-        'handle,defaults_include_int8,expected_pk_index_name',
+        'handle,defaults_might_include_int8,expected_pk_index_name',
         [(COCKROACH_HANDLE, True, 'int_table_pkey'), ('@sqlite', False, '(unnamed primary key)')],
     )
     def test_table_without_schema(
@@ -300,7 +300,7 @@ class TestSingleRelationCommand:
         sql_magic,
         ipython_namespace,
         handle: str,
-        defaults_include_int8: bool,
+        defaults_might_include_int8: bool,
         expected_pk_index_name: str,
         mock_display,
     ):
@@ -313,13 +313,15 @@ class TestSingleRelationCommand:
         assert results['Type'].tolist() == ['integer'] * 3
         assert results['Nullable'].tolist() == [False] * 3
 
-        if defaults_include_int8:
-            # CRDB default values include type designation hint.
-            expected_defaults = [None, '12:::INT8', '42:::INT8']
-        else:
-            expected_defaults = [None, '12', '42']
+        # A list of lists 'cause CRDB might give us one or the other based on version.
+        expected_defaults = [
+            [None, '12', '42'],
+        ]
+        if defaults_might_include_int8:
+            # CRDB default values might include type designation hint based on which version CRDB we're talking to.
+            expected_defaults.append([None, '12:::INT8', '42:::INT8'])
 
-        assert results['Default'].tolist() == expected_defaults
+        assert results['Default'].tolist() in expected_defaults
 
         # Two things will be display()ed ...
         assert mock_display.call_count == 2
