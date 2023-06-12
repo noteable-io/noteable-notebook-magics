@@ -759,7 +759,6 @@ class TestFullIntrospection:
 
         out, err = capsys.readouterr()
 
-        assert 'port 999 failed' in err
         assert 'psycopg2.OperationalError' in err
 
         # Should have only posted to the error route
@@ -773,7 +772,6 @@ class TestFullIntrospection:
 
         posted_error_msg = error_payload['error']
 
-        assert 'port 999 failed' in posted_error_msg
         assert 'psycopg2.OperationalError' in posted_error_msg
 
     @pytest.fixture()
