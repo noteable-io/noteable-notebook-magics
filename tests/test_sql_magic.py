@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 import requests
 from pandas.testing import assert_frame_equal
+from sqlalchemy.exc import OperationalError
 
 from noteable import datasources
 from noteable.sql.run import ResultSet
@@ -123,8 +124,9 @@ class TestSqlMagic:
         # This will raise a ProgrammingError error from sqlalchemy, which
         # sql magic will catch and convert to a short print output, then not
         # do the assignment (nor re-raise the exception).
-        results = sql_magic.execute('@sqlite my_df <<\nselect a from nonexistent_table')
-        assert results is None
+        with pytest.raises(OperationalError):
+            results = sql_magic.execute('@sqlite my_df <<\nselect a from nonexistent_table')
+            assert results is None
 
         # Should NOT have also assigned the exception to global 'my_df' in the ipython shell.
         assert 'my_df' not in ipython_shell.user_ns

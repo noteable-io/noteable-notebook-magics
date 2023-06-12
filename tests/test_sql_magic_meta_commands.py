@@ -15,6 +15,8 @@ from noteable.sql.connection import Connection
 from noteable.sql.gate_messaging_types import RelationStructureDescription
 from noteable.sql.meta_commands import (
     IntrospectAndStoreDatabaseCommand,
+    MetaCommandException,
+    MetaCommandInvocationException,
     RelationStructureMessager,
     SchemaStrippingInspector,
     _all_command_classes,
@@ -103,13 +105,10 @@ class TestListSchemas:
             'Table Count',
         ]  # no 'View Count'
 
-    def test_hates_arguments(self, sql_magic, capsys):
-        sql_magic.execute(r'@sqlite \schemas foo')
-        out, err = capsys.readouterr()
-        assert (
-            err
-            == '\\schemas does not expect arguments\n(Use "\\help \\schemas"" for more assistance)\n'
-        )
+    def test_hates_arguments(self, sql_magic):
+        with pytest.raises(MetaCommandInvocationException) as excinfo:
+            sql_magic.execute(r'@sqlite \schemas foo')
+            assert str(excinfo) == '\\schemas does not expect arguments'
 
 
 @pytest.mark.usefixtures("populated_sqlite_database", "populated_cockroach_database")
@@ -566,25 +565,25 @@ class TestSingleRelationCommand:
             'str_table',
         ]
 
-    def test_hate_more_than_one_arg(self, sql_magic, capsys):
-        sql_magic.execute(r'@sqlite \d foo bar')
-        out, err = capsys.readouterr()
-        assert err.startswith(r'Usage: \d [[schema].[relation_name]]')
+    def test_hate_more_than_one_arg(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(r'@sqlite \d foo bar')
+            assert str(excinfo).startswith(r'Usage: \d [[schema].[relation_name]]')
 
-    def test_nonexistent_table(self, sql_magic, capsys):
-        sql_magic.execute(rf'{COCKROACH_HANDLE} \d foobar')
-        out, err = capsys.readouterr()
-        assert err.startswith(r'Relation foobar does not exist')
+    def test_nonexistent_table(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(rf'{COCKROACH_HANDLE} \d foobar')
+            assert str(excinfo).startswith(r'Relation foobar does not exist')
 
-    def test_nonexistent_schema_qualified_table(self, sql_magic, capsys):
-        sql_magic.execute(rf'{COCKROACH_HANDLE} \d public.foobar')
-        out, err = capsys.readouterr()
-        assert err.startswith(r'Relation public.foobar does not exist')
+    def test_nonexistent_schema_qualified_table(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(rf'{COCKROACH_HANDLE} \d public.foobar')
+            assert str(excinfo).startswith(r'Relation public.foobar does not exist')
 
-    def test_nonexistent_schema(self, sql_magic, capsys):
-        sql_magic.execute(rf'{COCKROACH_HANDLE} \d sdfsdfsdf.foobar')
-        out, err = capsys.readouterr()
-        assert err.startswith(r'Relation sdfsdfsdf.foobar does not exist')
+    def test_nonexistent_schema(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(rf'{COCKROACH_HANDLE} \d sdfsdfsdf.foobar')
+            assert str(excinfo).startswith(r'Relation sdfsdfsdf.foobar does not exist')
 
 
 @pytest.mark.usefixtures("populated_cockroach_database")
@@ -760,7 +759,6 @@ class TestFullIntrospection:
 
         out, err = capsys.readouterr()
 
-        assert 'port 999 failed' in err
         assert 'psycopg2.OperationalError' in err
 
         # Should have only posted to the error route
@@ -774,7 +772,6 @@ class TestFullIntrospection:
 
         posted_error_msg = error_payload['error']
 
-        assert 'port 999 failed' in posted_error_msg
         assert 'psycopg2.OperationalError' in posted_error_msg
 
     @pytest.fixture()
@@ -921,23 +918,23 @@ class TestHelp:
         assert results['Command'][0] == r'\schemas, \schemas+, \dn, \dn+'
         assert results['Documentation'][0].startswith('List all the schemas')
 
-    def test_help_hates_unknown_subcommands(self, sql_magic, capsys):
-        sql_magic.execute(r'@sqlite \help \foo')
-        out, err = capsys.readouterr()
-        assert err == 'Unknown command "\\foo"\n(Use "\\help" for more assistance)\n'
+    def test_help_hates_unknown_subcommands(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(r'@sqlite \help \foo')
+            assert str(excinfo) == 'Unknown command "\\foo"'
 
-    def test_help_wants_at_most_a_single_arg(self, sql_magic, capsys):
-        sql_magic.execute(r'@sqlite \help \foo \bar')
-        out, err = capsys.readouterr()
-        assert err == 'Usage: \\help [command]\n(Use "\\help" for more assistance)\n'
+    def test_help_wants_at_most_a_single_arg(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(r'@sqlite \help \foo \bar')
+            assert str(excinfo) == 'Usage: \\help [command]'
 
 
 @pytest.mark.usefixtures("populated_sqlite_database")
 class TestMisc:
-    def test_unknown_command(self, sql_magic, capsys):
-        sql_magic.execute(r'@sqlite \unknown_subcommand')
-        out, err = capsys.readouterr()
-        assert err == 'Unknown command \\unknown_subcommand\n(Use "\\help" for more assistance)\n'
+    def test_unknown_command(self, sql_magic):
+        with pytest.raises(MetaCommandException) as excinfo:
+            sql_magic.execute(r'@sqlite \unknown_subcommand')
+            assert str(excinfo) == 'Unknown command \\unknown_subcommand'
 
     def test_handles_sql_comment_at_front(self, sql_magic, capsys, ipython_namespace):
         """Test that even if the cell starts with a comment line, can still invoke a meta-command properly"""

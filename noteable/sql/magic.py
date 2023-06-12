@@ -34,11 +34,6 @@ class SqlMagic(Magics, Configurable):
 
     Provides the %%sql magic."""
 
-    short_errors = Bool(
-        True,
-        config=True,
-        help="Don't display the full traceback on SQL Programming Error",
-    )
     autopandas = Bool(
         False,
         config=True,
@@ -159,19 +154,7 @@ class SqlMagic(Magics, Configurable):
                 isinstance(e, OperationalError) and "sqlite" in str(e)
             )
 
-            if not is_fatal:
-                if self.short_errors:
-                    eprint(str(e))
-
-                    if isinstance(e, MetaCommandException):
-                        if hasattr(e, 'invoked_with'):
-                            eprint(rf'(Use "\help {e.invoked_with}"" for more assistance)')
-                        else:
-                            eprint(r'(Use "\help" for more assistance)')
-
-                else:
-                    raise
-            else:
+            if is_fatal:
                 #
                 # Some sort of DBAPI-level error. Let's be conservative an err on the
                 # side of force-closing all of the engine's connections. This happens
@@ -190,7 +173,7 @@ class SqlMagic(Magics, Configurable):
                     "Encoutered the following unexpected exception while trying to run the statement."
                     " Closed the connection just to be safe. Re-run the cell to try again!\n\n"
                 )
-                raise
+            raise
 
 
 def load_ipython_extension(ip):
