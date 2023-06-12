@@ -51,8 +51,9 @@ sqlalchemy-singlestoredb = {version = "0.2.0"}
 # Use clickhouse-sqlalchemy==0.2.3 for now since 0.2.4 requires greenlet >= 2.0.1 for async support
 # which conflicts with the greenlet version required above.
 clickhouse-sqlalchemy = {version = "0.2.3"}
+# A simple database interface for Python that builds on top of FreeTDS to provide a Python DB-API (PEP-249) interface to Microsoft SQL Server.
+pymssql = "2.2.7"
 tqdm = "^4.65.0"
-pymssql = {version = "2.2.7"}
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.1.0"
