@@ -9,7 +9,6 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 from IPython.display import HTML
-from psycopg2 import OperationalError
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable.sql.connection import Connection
