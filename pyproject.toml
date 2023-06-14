@@ -52,6 +52,7 @@ sqlalchemy-singlestoredb = {version = "0.2.0"}
 # which conflicts with the greenlet version required above.
 clickhouse-sqlalchemy = {version = "0.2.3"}
 tqdm = "^4.65.0"
+pyodbc = "4.0.39"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.1.0"
