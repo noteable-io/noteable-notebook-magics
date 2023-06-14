@@ -1142,6 +1142,5 @@ def test_postprocess_clickhouse_raises_on_bad_secure_connection():
     ],
 )
 def test_postprocess_mssql_pyodbc(input_create_engine_dict, expected_connect_args_dict):
-    with patch.object(certifi, 'where', return_value='/path/to/certifi/cert.pem'):
-        datasource_postprocessing.postprocess_mssql_pyodbc(None, None, input_create_engine_dict)
-        assert input_create_engine_dict['connect_args'] == expected_connect_args_dict
+    datasource_postprocessing.postprocess_mssql_pyodbc(None, None, input_create_engine_dict)
+    assert input_create_engine_dict['connect_args'] == expected_connect_args_dict
