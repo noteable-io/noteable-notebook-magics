@@ -1110,3 +1110,38 @@ def test_postprocess_clickhouse_raises_on_bad_secure_connection():
         datasource_postprocessing.postprocess_clickhouse(
             None, None, {'connect_args': {'secure_connection': 'foobar'}}
         )
+
+
+@pytest.mark.parametrize(
+    "input_create_engine_dict,expected_connect_args_dict",
+    [
+        (
+            # Input create engine dict
+            {'connect_args': {'verify': True}},
+            # Expected connect_args dict
+            {
+                "Driver": "ODBC Driver 18 for SQL Server",
+                "Authentication": "SqlPassword",
+                "Encrypt": "yes",
+                # If asked to verify the server certificate, we should not trust it.
+                "TrustServerCertificate": "no",
+            },
+        ),
+        (
+            # Input create engine dict
+            {'connect_args': {'verify': False}},
+            # Expected connect_args dict
+            {
+                "Driver": "ODBC Driver 18 for SQL Server",
+                "Authentication": "SqlPassword",
+                "Encrypt": "yes",
+                # If asked to not verify the server certificate, we should trust it.
+                "TrustServerCertificate": "yes",
+            },
+        ),
+    ],
+)
+def test_postprocess_mssql_pyodbc(input_create_engine_dict, expected_connect_args_dict):
+    with patch.object(certifi, 'where', return_value='/path/to/certifi/cert.pem'):
+        datasource_postprocessing.postprocess_mssql_pyodbc(None, None, input_create_engine_dict)
+        assert input_create_engine_dict['connect_args'] == expected_connect_args_dict

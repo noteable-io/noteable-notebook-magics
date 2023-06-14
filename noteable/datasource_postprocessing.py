@@ -363,3 +363,30 @@ def postprocess_clickhouse(
     # It simply doesn't work if they are passed as connect_args.
     # Why? That is left as an exercise for the reader.
     dsn_dict["query"] = query
+
+
+@register_postprocessor('mssql+pyodbc')
+def postprocess_mssql_pyodbc(
+        datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+) -> None:
+    connect_args = create_engine_kwargs["connect_args"]
+
+    # If the user has asked to verify the server certificate, then we should not trust it
+    # (i.e. set TrustServerCertificate=no), and vice versa.
+    # It's a bit counterintuitive, but that's how it works.
+    # https://learn.microsoft.com/en-us/sql/relational-databases/native-client-odbc-api/sqlsetconnectattr?view=sql-server-ver16#sql_copt_ss_trust_server_certificate
+    if connect_args.pop("verify"):
+        connect_args["TrustServerCertificate"] = "no"
+    else:
+        connect_args["TrustServerCertificate"] = "yes"
+
+    # Static options that are always set.
+    connect_args.update({
+        # This is the driver package installed in the polymorph base image - msodbcsql18
+        "Driver": "ODBC Driver 18 for SQL Server",
+        # https://learn.microsoft.com/en-us/sql/connect/odbc/dsn-connection-string-attribute?view=sql-server-ver16#authentication---sql_copt_ss_authentication
+        # SQL Server authentication with username and password.
+        "Authentication": "SqlPassword",
+        # Default for ODBC Driver 18+
+        "Encrypt": "yes",
+    })
