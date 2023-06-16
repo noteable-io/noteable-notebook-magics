@@ -180,19 +180,19 @@ def postprocess_sqlite(
     or no such thing implying to run in memory mode.
     """
 
+    # Pop this out of there (and default it) regardless of if the database name implies to download.
+    connect_args = create_engine_kwargs.get('connect_args', {})
+
+    # Hint as to how long to allow downloading database file could come
+    # in the create_engine_args. It is meant for us here, not actually for
+    # passing along through to sqlalchemy.create_engine().
+    max_download_seconds = int(connect_args.pop('max_download_seconds', 10))
+
     if 'database' in dsn_dict:
         cur_path = dsn_dict['database']
         if cur_path == '' or cur_path == ':memory:':
             # Empty path is alias for :memory:, and is fine.
             return
-
-        # Hint as to how long to allow downloading database file could come
-        # in the create_engine_args. It is meant for us here, not actually for
-        # passing along through to sqlalchemy.create_engine().
-
-        # Pop this out of there (and default it) regardless of if the database name implies to download.
-        connect_args = create_engine_kwargs.get('connect_args', {})
-        max_download_seconds = int(connect_args.pop('max_download_seconds', 10))
 
         # If it smells like a URL, we should download, stash it into a tmpfile,
         # and respell dsn_dict['database'] to point to that file. Any exceptions in here
@@ -367,7 +367,7 @@ def postprocess_clickhouse(
 
 @register_postprocessor('mssql+pyodbc')
 def postprocess_mssql_pyodbc(
-        datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
+    datasource_id: str, dsn_dict: Dict[str, str], create_engine_kwargs: Dict[str, Any]
 ) -> None:
     connect_args = create_engine_kwargs["connect_args"]
 
@@ -381,12 +381,14 @@ def postprocess_mssql_pyodbc(
         connect_args["TrustServerCertificate"] = "yes"
 
     # Static options that are always set.
-    connect_args.update({
-        # This is the driver package installed in the polymorph base image - msodbcsql18
-        "Driver": "ODBC Driver 18 for SQL Server",
-        # https://learn.microsoft.com/en-us/sql/connect/odbc/dsn-connection-string-attribute?view=sql-server-ver16#authentication---sql_copt_ss_authentication
-        # SQL Server authentication with username and password.
-        "Authentication": "SqlPassword",
-        # Default for ODBC Driver 18+
-        "Encrypt": "yes",
-    })
+    connect_args.update(
+        {
+            # This is the driver package installed in the polymorph base image - msodbcsql18
+            "Driver": "ODBC Driver 18 for SQL Server",
+            # https://learn.microsoft.com/en-us/sql/connect/odbc/dsn-connection-string-attribute?view=sql-server-ver16#authentication---sql_copt_ss_authentication
+            # SQL Server authentication with username and password.
+            "Authentication": "SqlPassword",
+            # Default for ODBC Driver 18+
+            "Encrypt": "yes",
+        }
+    )

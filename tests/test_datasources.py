@@ -144,7 +144,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'trino',
                 'sqlmagic_autocommit': False,  # This one is special!
-                # And explicitly no name assigned, 'legacy'.
+                'name': 'My Trino',
             },
             dsn_dict={
                 'username': 'ssm-user',
@@ -253,7 +253,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
                 'sqlmagic_autocommit': False,
-                'name': 'Memory SQLite',
+                'name': 'Explicit Memory SQLite',
             },
             dsn_dict={
                 'database': ':memory:',
@@ -265,7 +265,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
                 'sqlmagic_autocommit': False,
-                'name': 'Memory SQLite',
+                'name': 'Implicit Memory SQLite',
             },
             dsn_dict={
                 # Empty database file also ends up with memory-based database.
@@ -278,7 +278,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
                 'sqlmagic_autocommit': False,
-                'name': 'Memory SQLite',
+                'name': 'Memory SQLite with max_download',
             },
             dsn_dict={
                 # Empty database file also ends up with memory-based database.
@@ -347,7 +347,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'mysql+pymysql',
                 'sqlmagic_autocommit': False,
-                'name': 'Old mariadb',
+                'name': 'Old Mariadb',
             },
             dsn_dict={
                 'host': 'us-west-1',
@@ -364,7 +364,7 @@ class SampleData:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'mysql+mysqldb',
                 'sqlmagic_autocommit': False,
-                'name': 'New Singlestore',
+                'name': 'New Mariadb',
             },
             dsn_dict={
                 'host': 'us-west-1',
@@ -387,6 +387,9 @@ class SampleData:
 
     @classmethod
     def all_samples(cls) -> List[DatasourceJSONs]:
+        # Ensure no dupe names, otherwise hilarity.
+        assert len(set(v.meta_dict['name'] for v in cls.samples.values())) == len(cls.samples)
+
         return list(cls.samples.values())
 
 
@@ -406,8 +409,15 @@ class TestBootstrapDatasources:
         datasources.bootstrap_datasources(tmp_path)
 
         # Should now have len(id_and_samples) connections in there!
-        assert len(Connection.connections) == len(id_and_samples)
+        if not len(Connection.connections) == len(id_and_samples):
+            atid_to_sample_name = dict(
+                (f'@{id}', sample.meta_dict['name']) for id, sample in id_and_samples
+            )
+            missing_ids = set(atid_to_sample_name.keys()).symmetric_difference(
+                Connection.connections.keys()
+            )
 
+            assert False, [atid_to_sample_name[missing] for missing in missing_ids]
         # (Let test TestBootstrapDatasource focus on the finer-grained details)
 
 
@@ -609,47 +619,6 @@ class TestBootstrapDatasource:
         import psycopg2.extras
 
         assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
-
-    @pytest.mark.parametrize('bad_pathname', ['/dev/foo.db', './../jailbreak.db'])
-    def test_had_bad_sqlite_database_files(self, datasource_id, bad_pathname: str):
-        """If configured with neither a path within project nor exactly ':memory:', then
-        bootstrapping should fail (currently silently w/o creating the datasource)
-        """
-
-        human_name = 'My Bad SQLite'
-        bad_sqlite = DatasourceJSONs(
-            meta_dict={
-                'required_python_modules': [],
-                'allow_datasource_dialect_autoinstall': False,
-                'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
-                'name': human_name,
-            },
-            dsn_dict={
-                'database': bad_pathname,
-            },
-        )
-
-        initial_count = len(Connection.connections)
-
-        datasources.bootstrap_datasource(
-            datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
-        )
-
-        assert len(Connection.connections) == initial_count
-
-        # And should have had a bootstrapping failure against both the datasource_id
-        # and the human name.
-        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
-            human_name
-        )
-        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
-            datasource_id
-        )
-
-        # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is
-        # attempted to be used, this get_bootstrapping_failure() message will show back up, surfacing
-        # the real problem to the user.
 
 
 class TestDatabricks:
@@ -992,6 +961,105 @@ class TestIsPackageInstalled:
 
     def test_yes(self):
         assert datasources.is_package_installed('pip')
+
+
+class TestSQLite:
+    @pytest.mark.parametrize(
+        'sample',
+        (
+            DatasourceJSONs(
+                meta_dict={
+                    'required_python_modules': [],
+                    'allow_datasource_dialect_autoinstall': False,
+                    'drivername': 'sqlite',
+                    'sqlmagic_autocommit': False,
+                    'name': 'Download file sqlite',
+                },
+                dsn_dict={
+                    'database': 'mock://source.of.my.db.com/foo.sqlite',
+                },
+                connect_args_dict={
+                    'max_download_seconds': '22',
+                },
+            ),
+            'memory-sqlite-also-with-max_download_seconds',
+        ),
+    )
+    def test_postprocess_sqlite_pops_max_download_seconds_correctly(
+        self, sample: str | DatasourceJSONs, datasource_id, requests_mock, tests_fixture_data
+    ):
+        if isinstance(sample, str):
+            jsons = SampleData.get_sample(sample)
+        else:
+            jsons = sample
+
+        create_engine_kwargs = {'connect_args': dict(jsons.connect_args_dict)}
+
+        assert 'max_download_seconds' in create_engine_kwargs['connect_args']
+
+        with open(tests_fixture_data / 'portal_mammals.sqlite', 'rb') as response_file:
+            if jsons.dsn_dict['database'].startswith('mock'):
+                # Set up response for a GET to that URL to return the contents of our canned copy.
+                requests_mock.get(jsons.dsn_dict['database'], body=response_file)
+
+            datasource_postprocessing.postprocess_sqlite(
+                datasource_id, dsn_dict=jsons.dsn_dict, create_engine_kwargs=create_engine_kwargs
+            )
+
+        # Should be popped out from connect_args regardless of if was mem db or real download db.
+        assert 'max_download_seconds' not in create_engine_kwargs['connect_args']
+
+    def test_actually_connecting_to_sqlite_with_download_seconds(self, datasource_id):
+        jsons = SampleData.get_sample('memory-sqlite-also-with-max_download_seconds')
+
+        datasources.bootstrap_datasource(
+            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+        )
+
+        engine = Connection.get_engine(jsons.meta_dict['name'])
+        # Should not barf when trying to connect, https://community.noteable.io/c/issues-and-bugs/cant-connect-to-sqlite-database
+        engine.execute('select 1')
+
+    @pytest.mark.parametrize('bad_pathname', ['/dev/foo.db', './../jailbreak.db'])
+    def test_had_bad_sqlite_database_files(self, datasource_id, bad_pathname: str):
+        """If configured with neither a path within project nor exactly ':memory:', then
+        bootstrapping should fail (currently silently w/o creating the datasource)
+        """
+
+        human_name = 'My Bad SQLite'
+        bad_sqlite = DatasourceJSONs(
+            meta_dict={
+                'required_python_modules': [],
+                'allow_datasource_dialect_autoinstall': False,
+                'drivername': 'sqlite',
+                'sqlmagic_autocommit': False,
+                'name': human_name,
+            },
+            dsn_dict={
+                'database': bad_pathname,
+            },
+        )
+
+        initial_count = len(Connection.connections)
+
+        datasources.bootstrap_datasource(
+            datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
+        )
+
+        assert len(Connection.connections) == initial_count
+
+        # And should have had a bootstrapping failure against both the datasource_id
+        # and the human name.
+        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
+            human_name
+        )
+        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
+            datasource_id
+        )
+
+        # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is
+        # attempted to be used, this get_bootstrapping_failure() message will show back up, surfacing
+        # the real problem to the user.
 
 
 @pytest.mark.parametrize(

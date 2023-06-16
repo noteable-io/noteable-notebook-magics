@@ -330,12 +330,6 @@ class TestJinjaTemplatesWithinSqlMagic:
             assert results['b'].tolist() == expected_values
 
 
-@pytest.fixture
-def tests_fixture_data() -> Path:
-    """Return Path pointing to tests/fixture_data/ dir"""
-    return Path(__file__).parent / 'fixture_data'
-
-
 class TestSQLite:
     """Integration test cases of bootstrapping through to using SQLite datasource type datasource"""
 
