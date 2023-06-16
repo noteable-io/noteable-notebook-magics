@@ -340,6 +340,12 @@ def populated_cockroach_database(
     cleanup_any_extra_tables(connection)
 
 
+@pytest.fixture
+def tests_fixture_data() -> Path:
+    """Return Path pointing to tests/fixture_data/ dir"""
+    return Path(__file__).parent / 'fixture_data'
+
+
 @dataclass
 class DatasourceJSONs:
     meta_dict: Dict[str, Any]
