@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Union
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -986,7 +986,7 @@ class TestSQLite:
         ),
     )
     def test_postprocess_sqlite_pops_max_download_seconds_correctly(
-        self, sample: str | DatasourceJSONs, datasource_id, requests_mock, tests_fixture_data
+        self, sample: Union[str, DatasourceJSONs], datasource_id, requests_mock, tests_fixture_data
     ):
         if isinstance(sample, str):
             jsons = SampleData.get_sample(sample)
