@@ -848,7 +848,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         Will fail with ValueError if attempted against a legacy datasource handle like '@noteable', so
         please don't try to introspect within SQL cells from those.
         """
-        handle = self.conn.name
+        handle = self.conn.sql_cell_handle
         return UUID(handle[1:])
 
 

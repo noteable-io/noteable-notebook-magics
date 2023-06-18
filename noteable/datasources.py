@@ -10,7 +10,7 @@ import structlog
 from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-import noteable.sql.connection
+from noteable.sql import connection
 from noteable.sql.run import add_commit_blacklist_dialect
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
@@ -63,9 +63,17 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
 
 
 def bootstrap_datasource(
-    datasource_id: str, meta_json: str, dsn_json: Optional[str], connect_args_json: Optional[str]
+    datasource_id: str,
+    meta_json: str,
+    dsn_json: Optional[str],
+    connect_args_json: Optional[str],
+    connection_registry=None,
 ):
     """Bootstrap this single datasource from its three json definition JSON sections"""
+
+    if not connection_registry:
+        connection_registry = connection.get_connection_registry()
+
     metadata = json.loads(meta_json)
 
     # Yes, bigquery connections may end up with nothing in dsn_json.
@@ -86,37 +94,41 @@ def bootstrap_datasource(
 
     # human-given name for the datasource is more likely than not present in the metadata
     # ('old' datasources in integration, staging, app.noteable.world may lack)
-    human_name = metadata.get('name')
+    human_name = metadata.get('name', 'Unnamed legacy connection')
 
-    # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
-    # before we make use of any of their contents. Post-processors may end up rejecting this
-    # configuration, so catch and handle just like a failure when calling Connection.set().
-    if drivername in post_processor_by_drivername:
-        post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[drivername]
-        try:
+    sql_cell_handle = f'@{datasource_id}'
+
+    try:
+        # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
+        # before we make use of any of their contents. Post-processors may end up rejecting this
+        # configuration, so catch and handle just like a failure when calling Connection.set().
+        if drivername in post_processor_by_drivername:
+            post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[
+                drivername
+            ]
             post_processor(datasource_id, dsn_dict, create_engine_kwargs)
-        except Exception as e:
-            logger.exception(
-                'Unable to bootstrap datasource',
-                datasource_id=datasource_id,
-                datasource_name=human_name,
-            )
 
-            # Remember the failure so can be shown if / when human tries to use the connection.
-            noteable.sql.connection.Connection.add_bootstrapping_failure(
-                datasource_id, human_name, str(e)
-            )
+        # Ensure the required driver packages are installed already, or, if allowed,
+        # install them on the fly.
+        ensure_requirements(
+            datasource_id,
+            metadata['required_python_modules'],
+            metadata['allow_datasource_dialect_autoinstall'],
+        )
 
-            # And bail early.
-            return
+    except Exception as e:
+        # Exception from either post_processor() or ensure_requirements().
+        logger.exception(
+            'Unable to bootstrap datasource',
+            datasource_id=datasource_id,
+            datasource_name=human_name,
+        )
 
-    # Ensure the required driver packages are installed already, or, if allowed,
-    # install them on the fly.
-    ensure_requirements(
-        datasource_id,
-        metadata['required_python_modules'],
-        metadata['allow_datasource_dialect_autoinstall'],
-    )
+        # Remember the failure so can be shown if / when human tries to use the connection.
+        connection_registry.add_bootstrapping_failure(sql_cell_handle, human_name, str(e))
+
+        # And bail early.
+        return
 
     # Prepare connection URL string.
     url_obj = URL.create(**dsn_dict)
@@ -131,32 +143,8 @@ def bootstrap_datasource(
         dialect = metadata['drivername'].split('+')[0]
         add_commit_blacklist_dialect(dialect)
 
-    # Teach ipython-sql about the connection!
-    try:
-        noteable.sql.connection.Connection.set(
-            connection_url,
-            name=f'@{datasource_id}',
-            human_name=human_name,
-            **create_engine_kwargs,
-        )
-    except Exception as e:
-        # Eat any exceptions coming up from trying to describe the connection down into SQLAlchemy.
-        # Bad data entered about the datasource that SQLA hates?
-        #
-        # If we don't eat this, then it will ultimately break us before we make the call to register
-        # the SQL Magics entirely, and will get errors like '%%sql magic unknown', which is far
-        # worse than attempts to use a broken datasource being met with it being unknown, but other
-        # datasources working fine.
-        logger.exception(
-            'Unable to bootstrap datasource',
-            datasource_id=datasource_id,
-            datasource_name=human_name,
-        )
-
-        # Remember the failure so can be shown if / when human tries to use the connection.
-        noteable.sql.connection.Connection.add_bootstrapping_failure(
-            datasource_id, human_name, str(e)
-        )
+    # Register the connection!
+    connection_registry.factory_and_register(sql_cell_handle, human_name, connection_url)
 
 
 ##
