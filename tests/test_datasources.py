@@ -15,7 +15,7 @@ from structlog.testing import LogCapture
 
 from noteable import datasource_postprocessing, datasources
 from noteable.logging import configure_logging
-from noteable.sql.connection import Connection
+from noteable.sql.connection import get_connection_registry, get_sqla_engine
 from noteable.sql.run import _COMMIT_BLACKLIST_DIALECTS
 from tests.conftest import DatasourceJSONs
 
@@ -394,6 +394,7 @@ class SampleData:
 
 
 class TestBootstrapDatasources:
+    @pytest.mark.usefixtures("with_empty_connections")
     def test_bootstrap_datasources(self, datasource_id_factory, tmp_path: Path):
         """Test that we bootstrap all of our samples from json files properly."""
         id_and_samples = [(datasource_id_factory(), sample) for sample in SampleData.all_samples()]
@@ -402,25 +403,20 @@ class TestBootstrapDatasources:
         for ds_id, sample in id_and_samples:
             sample.json_to_tmpdir(ds_id, tmp_path)
 
-        # Ensure ipython-sql's little mind is clear and will be focused
-        # on just this task.
-        Connection.connections.clear()
-
         datasources.bootstrap_datasources(tmp_path)
 
         # Should now have len(id_and_samples) connections in there!
-        if not len(Connection.connections) == len(id_and_samples):
-            atid_to_sample_name = dict(
-                (f'@{id}', sample.meta_dict['name']) for id, sample in id_and_samples
-            )
-            missing_ids = set(atid_to_sample_name.keys()).symmetric_difference(
-                Connection.connections.keys()
-            )
+        registry = get_connection_registry()
 
-            assert False, [atid_to_sample_name[missing] for missing in missing_ids]
+        # Each id and human name should have been registered.
+        for ds_id, sample in id_and_samples:
+            assert f'@{ds_id}' in registry
+            assert sample.meta_dict['name'] in registry
+
         # (Let test TestBootstrapDatasource focus on the finer-grained details)
 
 
+@pytest.mark.usefixtures("with_empty_connections")
 class TestBootstrapDatasource:
     @pytest.mark.parametrize('sample_name', SampleData.all_sample_names())
     def test_success(self, sample_name, datasource_id):
@@ -428,7 +424,6 @@ class TestBootstrapDatasource:
         # gets confused over human-name conflicts when we've bootstrapped
         # the same sample data repeatedly, namely through having first
         # run TestBootstrapDatasources.test_bootstrap_datasources().
-        Connection.connections = {}
 
         case_data = SampleData.get_sample(sample_name)
 
@@ -438,20 +433,22 @@ class TestBootstrapDatasource:
 
         # Check over the created 'Connection' instance.
 
+        registry = get_connection_registry()
+
         # Alas, in Connection parlance, 'name' == 'sql_cell_handle', and 'human_name'
         # is the human-assigned name for the datasource. Sigh.
         expected_sql_cell_handle_name = f'@{datasource_id}'
-        the_conn = Connection.connections[expected_sql_cell_handle_name]
-        assert the_conn.name == expected_sql_cell_handle_name
+        the_conn = registry.get(expected_sql_cell_handle_name)
+        assert the_conn.sql_cell_handle == expected_sql_cell_handle_name
         # Might be None in the meta_json.
         expected_human_name = case_data.meta_dict.get('name')
         assert the_conn.human_name == expected_human_name
 
-        # Test Connection.get_engine() while here,
-        assert the_conn._engine is Connection.get_engine(expected_sql_cell_handle_name)
+        # Test get_sqla_engine() while here,
+        assert the_conn._engine is get_sqla_engine(expected_sql_cell_handle_name)
         if expected_human_name:
             # Can only work this way also if the datasource name was present in meta-json.
-            assert the_conn._engine is Connection.get_engine(expected_human_name)
+            assert the_conn._engine is get_sqla_engine(expected_human_name)
 
         # Ensure the required packages are installed -- excercies either the 'auto-installation'
         # code useful when trying out new datasource types in integration, or having been
@@ -490,7 +487,8 @@ class TestBootstrapDatasource:
             },
         )
 
-        initial_len = len(Connection.connections)
+        registry = get_connection_registry()
+        initial_len = len(registry)
 
         # Trying to bootstrap this one will fail somewhat silently -- will log exception, but
         # ultimately not having added new entry into Connection.connections.
@@ -498,17 +496,13 @@ class TestBootstrapDatasource:
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_len
+        assert len(registry) == initial_len
 
-        assert len(log_output.entries) == 2
+        assert len(log_output.entries) == 1
 
         e1 = log_output.entries[0]
-        assert e1['event'] == 'Error creating new noteable.sql.Connection'
-        assert e1['connect_str'] == 'postgresql://scott:tiger@[https://bogus.org]:5432/postgres'
-
-        e2 = log_output.entries[1]
-        assert e2['event'] == 'Unable to bootstrap datasource'
-        assert e2['datasource_id'] == datasource_id
+        assert e1['event'] == 'Unable to bootstrap datasource'
+        assert e1['human_name'] == 'My PostgreSQL'
 
     def test_postgres_via_psycopg2_binary_is_ok(self, datasource_id):
         """Nowadays we have "psycopg2" source package installed, and newer-generation
@@ -535,13 +529,13 @@ class TestBootstrapDatasource:
             },
         )
 
-        initial_len = len(Connection.connections)
+        registry = get_connection_registry()
 
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_len + 1
+        assert len(registry) == 1
 
     def test_bigquery_particulars(self, datasource_id, log_output):
         """Ensure that we convert connect_args['credential_file_contents'] to
@@ -574,24 +568,19 @@ class TestBootstrapDatasource:
         # die a very different death, complaining about cannot find any credentials anywhere
         # since not passed in and the google magic env var isn't set.
 
-        initial_len = len(Connection.connections)
-
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
         # No successful side effect.
-        assert len(Connection.connections) == initial_len
+        registry = get_connection_registry()
 
-        assert len(log_output.entries) == 2
+        assert len(registry) == 0
+
+        assert len(log_output.entries) == 1
 
         e1 = log_output.entries[0]
-        assert e1['event'] == 'Error creating new noteable.sql.Connection'
-        assert e1['connect_str'] == 'bigquery://'
-
-        e2 = log_output.entries[1]
-        assert e2['event'] == 'Unable to bootstrap datasource'
-        assert e2['datasource_id'] == datasource_id
+        assert e1['event'] == 'Unable to bootstrap datasource'
 
         # But we do expect the postprocessor to have run, and to have created this
         # file properly....
@@ -621,6 +610,7 @@ class TestBootstrapDatasource:
         assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
 
 
+@pytest.mark.usefixtures("with_empty_connections")
 class TestDatabricks:
     """Test ENG-5517 Very Special Behavior for databricks side-effects if databricks-connect script is
     in PATH and we have the optional 'cluster_id' datapoint in connect args.
@@ -831,13 +821,12 @@ class TestDatabricks:
 
         assert 'cluster_id' in case_data.connect_args_dict
 
-        initial_len = len(Connection.connections)
-
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_len + 1
+        registry = get_connection_registry()
+        assert len(registry) == 1
 
         # Preexisting file should have been unlinked. The real databricks-connect
         # script would have recreated it, but the mock version we create in fixture
@@ -875,14 +864,13 @@ class TestDatabricks:
 
         case_data, case_dict = jsons_for_extra_behavior
 
-        initial_len = len(Connection.connections)
-
         # Should not fail, but won't have done any extra behavior.
         datasources.bootstrap_datasource(
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_len + 1
+        registry = get_connection_registry()
+        assert len(registry) == 1
 
         # Left unchanged
         assert dotconnect.exists()
@@ -904,8 +892,6 @@ class TestDatabricks:
         case_data = SampleData.get_sample('databricks')
         assert 'cluster_id' not in case_data.connect_args_dict
 
-        initial_len = len(Connection.connections)
-
         # Should not have triggered extra behavior -- cluster_id wasn't present (but
         # we do have a databricks-connect script in the PATH).
 
@@ -913,7 +899,8 @@ class TestDatabricks:
             datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_len + 1
+        registry = get_connection_registry()
+        assert len(registry) == 1
 
         # But won't have breathed on dotconnect file.
         # Left unchanged
@@ -1016,10 +1003,11 @@ class TestSQLite:
             datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
         )
 
-        engine = Connection.get_engine(jsons.meta_dict['name'])
+        engine = get_sqla_engine(jsons.meta_dict['name'])
         # Should not barf when trying to connect, https://community.noteable.io/c/issues-and-bugs/cant-connect-to-sqlite-database
         engine.execute('select 1')
 
+    @pytest.mark.usefixtures("with_empty_connections")
     @pytest.mark.parametrize('bad_pathname', ['/dev/foo.db', './../jailbreak.db'])
     def test_had_bad_sqlite_database_files(self, datasource_id, bad_pathname: str):
         """If configured with neither a path within project nor exactly ':memory:', then
@@ -1040,21 +1028,20 @@ class TestSQLite:
             },
         )
 
-        initial_count = len(Connection.connections)
-
         datasources.bootstrap_datasource(
             datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
         )
 
-        assert len(Connection.connections) == initial_count
+        registry = get_connection_registry()
+        assert len(registry) == 0
 
         # And should have had a bootstrapping failure against both the datasource_id
         # and the human name.
-        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
+        assert 'SQLite database files should be located' in registry.get_bootstrapping_failure(
             human_name
         )
-        assert 'SQLite database files should be located' in Connection.get_bootstrapping_failure(
-            datasource_id
+        assert 'SQLite database files should be located' in registry.get_bootstrapping_failure(
+            f'@{datasource_id}'
         )
 
         # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is

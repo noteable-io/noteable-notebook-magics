@@ -11,7 +11,7 @@ import pytest
 from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
-from noteable.sql.connection import Connection
+from noteable.sql.connection import get_sqla_connection
 from noteable.sql.gate_messaging_types import RelationStructureDescription
 from noteable.sql.meta_commands import (
     IntrospectAndStoreDatabaseCommand,
@@ -89,8 +89,7 @@ class TestListSchemas:
         r"""Prove that when no views exist, \schemas+ does not talk at all about a 'View Count' column"""
 
         # Drop the view.
-        connection = Connection.connections['@sqlite']
-        db = connection.sqla_connection
+        db = get_sqla_connection("@sqlite")
         db.execute('drop view str_int_view')
 
         sql_magic.execute(r'@sqlite \schemas+')
