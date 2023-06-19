@@ -1,6 +1,14 @@
 import pytest
+import sqlalchemy.engine.base
 
-from noteable.sql.connection import Connection, get_connection_registry
+from noteable.sql.connection import (
+    Connection,
+    UnknownConnectionError,
+    get_connection_registry,
+    get_noteable_connection,
+    get_sqla_connection,
+    get_sqla_engine,
+)
 
 
 class TestConnection:
@@ -39,3 +47,57 @@ class TestConnectionRegistry:
             registry.add_bootstrapping_failure(
                 handle, human_name, 'Whacktastical late error reporting, Batman!'
             )
+
+    def test_can_find_by_either_sql_cell_handle_or_human_name(self, sqlite_database_connection):
+        registry = get_connection_registry()
+
+        handle, human_name = sqlite_database_connection
+
+        assert registry.get(handle) == registry.get(human_name) and isinstance(
+            registry.get(handle), Connection
+        )
+
+
+class TestGetNoteableConnection:
+    def test_can_get_by_either_sql_cell_handle_or_human_name(self, sqlite_database_connection):
+        handle, human_name = sqlite_database_connection
+
+        assert get_noteable_connection(handle) == get_noteable_connection(
+            human_name
+        ) and isinstance(get_noteable_connection(handle), Connection)
+
+    def test_raises_if_not_found(self):
+        with pytest.raises(UnknownConnectionError):
+            get_noteable_connection('unknown connection')
+
+    # will test raising on non-SLQA supported connection when first one is implemented.
+
+
+class TestGetSqlaConnection:
+    def test_can_get_by_either_sql_cell_handle_or_human_name(self, sqlite_database_connection):
+        handle, human_name = sqlite_database_connection
+
+        assert get_sqla_connection(handle) == get_sqla_connection(human_name) and isinstance(
+            get_sqla_connection(handle), sqlalchemy.engine.base.Connection
+        )
+
+    def test_raises_if_not_found(self):
+        with pytest.raises(UnknownConnectionError):
+            get_sqla_connection('unknown connection')
+
+    # will test raising on non-SLQA supported connection when first one is implemented.
+
+
+class TestGetSqlaEngine:
+    def test_can_get_by_either_sql_cell_handle_or_human_name(self, sqlite_database_connection):
+        handle, human_name = sqlite_database_connection
+
+        assert get_sqla_engine(handle) == get_sqla_engine(human_name) and isinstance(
+            get_sqla_engine(handle), sqlalchemy.engine.Engine
+        )
+
+    def test_raises_if_not_found(self):
+        with pytest.raises(UnknownConnectionError):
+            get_sqla_engine('unknown connection')
+
+    # will test raising on non-SLQA supported connection when first one is implemented.

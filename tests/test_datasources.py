@@ -427,13 +427,17 @@ class TestBootstrapDatasource:
 
         case_data = SampleData.get_sample(sample_name)
 
+        registry = get_connection_registry()
+
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
         # Check over the created 'Connection' instance.
-
-        registry = get_connection_registry()
 
         # Alas, in Connection parlance, 'name' == 'sql_cell_handle', and 'human_name'
         # is the human-assigned name for the datasource. Sigh.
@@ -493,7 +497,11 @@ class TestBootstrapDatasource:
         # Trying to bootstrap this one will fail somewhat silently -- will log exception, but
         # ultimately not having added new entry into Connection.connections.
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
         assert len(registry) == initial_len
@@ -532,7 +540,11 @@ class TestBootstrapDatasource:
         registry = get_connection_registry()
 
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
         assert len(registry) == 1
@@ -568,12 +580,17 @@ class TestBootstrapDatasource:
         # die a very different death, complaining about cannot find any credentials anywhere
         # since not passed in and the google magic env var isn't set.
 
+        registry = get_connection_registry()
+
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
         # No successful side effect.
-        registry = get_connection_registry()
 
         assert len(registry) == 0
 
@@ -596,7 +613,11 @@ class TestBootstrapDatasource:
         pg_details = SampleData.get_sample('simple-postgres')
 
         datasources.bootstrap_datasource(
-            datasource_id, pg_details.meta_json, pg_details.dsn_json, pg_details.connect_args_json
+            get_connection_registry(),
+            datasource_id,
+            pg_details.meta_json,
+            pg_details.dsn_json,
+            pg_details.connect_args_json,
         )
 
         # At least look for signs of the side-effect. Can't test it actually does the
@@ -821,11 +842,16 @@ class TestDatabricks:
 
         assert 'cluster_id' in case_data.connect_args_dict
 
+        registry = get_connection_registry()
+
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
-        registry = get_connection_registry()
         assert len(registry) == 1
 
         # Preexisting file should have been unlinked. The real databricks-connect
@@ -864,12 +890,17 @@ class TestDatabricks:
 
         case_data, case_dict = jsons_for_extra_behavior
 
+        registry = get_connection_registry()
+
         # Should not fail, but won't have done any extra behavior.
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
-        registry = get_connection_registry()
         assert len(registry) == 1
 
         # Left unchanged
@@ -895,11 +926,16 @@ class TestDatabricks:
         # Should not have triggered extra behavior -- cluster_id wasn't present (but
         # we do have a databricks-connect script in the PATH).
 
+        registry = get_connection_registry()
+
         datasources.bootstrap_datasource(
-            datasource_id, case_data.meta_json, case_data.dsn_json, case_data.connect_args_json
+            registry,
+            datasource_id,
+            case_data.meta_json,
+            case_data.dsn_json,
+            case_data.connect_args_json,
         )
 
-        registry = get_connection_registry()
         assert len(registry) == 1
 
         # But won't have breathed on dotconnect file.
@@ -1000,7 +1036,11 @@ class TestSQLite:
         jsons = SampleData.get_sample('memory-sqlite-also-with-max_download_seconds')
 
         datasources.bootstrap_datasource(
-            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+            get_connection_registry(),
+            datasource_id,
+            jsons.meta_json,
+            jsons.dsn_json,
+            jsons.connect_args_json,
         )
 
         engine = get_sqla_engine(jsons.meta_dict['name'])
@@ -1029,7 +1069,11 @@ class TestSQLite:
         )
 
         datasources.bootstrap_datasource(
-            datasource_id, bad_sqlite.meta_json, bad_sqlite.dsn_json, bad_sqlite.connect_args_json
+            get_connection_registry(),
+            datasource_id,
+            bad_sqlite.meta_json,
+            bad_sqlite.dsn_json,
+            bad_sqlite.connect_args_json,
         )
 
         registry = get_connection_registry()

@@ -11,6 +11,7 @@ from managed_service_fixtures import CockroachDetails
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from noteable.datasources import bootstrap_duckdb
 from noteable.logging import RawLogCapture, configure_logging
 from noteable.planar_ally_client.api import PlanarAllyAPI
 from noteable.planar_ally_client.types import (
@@ -19,7 +20,7 @@ from noteable.planar_ally_client.types import (
     FileProgressUpdateMessage,
 )
 from noteable.sql import connection
-from noteable.sql.connection import Connection, bootstrap_duckdb, get_connection_registry
+from noteable.sql.connection import Connection, get_connection_registry
 from noteable.sql.magic import SqlMagic
 from noteable.sql.run import add_commit_blacklist_dialect
 
@@ -121,7 +122,7 @@ def with_empty_connections() -> None:
 @pytest.fixture
 def with_duckdb_bootstrapped(with_empty_connections) -> None:
     # Normal magics bootstrapping will leave us with DuckDB connection populated.
-    bootstrap_duckdb()
+    bootstrap_duckdb(get_connection_registry())
 
     yield
 

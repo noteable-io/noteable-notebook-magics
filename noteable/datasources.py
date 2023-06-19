@@ -10,7 +10,7 @@ import structlog
 from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-from noteable.sql import connection
+from noteable.sql.connection import ConnectionRegistry, get_connection_registry
 from noteable.sql.run import add_commit_blacklist_dialect
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
@@ -24,7 +24,10 @@ def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
     """Digest all of the datasource files Vault injector has created for us and
     inject into ipython-sql as their Connection objects.
 
+    Also register the local memory DuckDB global datasource.
     """
+
+    connection_registry: ConnectionRegistry = get_connection_registry()
 
     if isinstance(secrets_dir, str):
         secrets_dir = Path(secrets_dir)
@@ -32,10 +35,15 @@ def bootstrap_datasources(secrets_dir: Union[Path, str] = DEFAULT_SECRETS_DIR):
     # Look for *.meta.json files.
     for ds_meta_json_path in secrets_dir.glob('*.meta_js'):
         # Derive filenames for the expected related files
-        bootstrap_datasource_from_files(ds_meta_json_path)
+        bootstrap_datasource_from_files(connection_registry, ds_meta_json_path)
+
+    # Also bootstrap the omnipresent mighty DuckDB!
+    bootstrap_duckdb(connection_registry)
 
 
-def bootstrap_datasource_from_files(ds_meta_json_path: Path):
+def bootstrap_datasource_from_files(
+    connection_registry: ConnectionRegistry, ds_meta_json_path: Path
+):
     """Bootstrap a single datasource from files given reference to the meta json file
 
     Assumes the other two files are peers in the directory and named accordingly
@@ -59,10 +67,11 @@ def bootstrap_datasource_from_files(ds_meta_json_path: Path):
     else:
         connect_args_json = None
 
-    bootstrap_datasource(basename, meta_json, dsn_json, connect_args_json)
+    bootstrap_datasource(connection_registry, basename, meta_json, dsn_json, connect_args_json)
 
 
 def bootstrap_datasource(
+    connection_registry: ConnectionRegistry,
     datasource_id: str,
     meta_json: str,
     dsn_json: Optional[str],
@@ -93,8 +102,6 @@ def bootstrap_datasource(
     human_name = metadata.get('name', 'Unnamed legacy connection')
 
     sql_cell_handle = f'@{datasource_id}'
-
-    connection_registry = connection.get_connection_registry()
 
     try:
         # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
@@ -131,6 +138,13 @@ def bootstrap_datasource(
     # Prepare connection URL string.
     url_obj = URL.create(**dsn_dict)
     connection_url = str(url_obj)
+
+    # XXX TODO, make a mixin for future SQLAlchemy DisableAutoCommit subclasses incorporating
+    # this particular need. A good look for the end game here may be that most all of this
+    # 'bootstrapping datasource' code will be within either the Connection base class stuff, unifying
+    # this module with Connection module, or perhaps a slightly parallel class hierarchy for
+    # the bootstrapping class corresponding to the Connection subtype registered for the
+    # drivername field?
 
     # Do we need to tell sql-magic to not try to emit a COMMIT after each statement
     # according to the needs of this driver?
@@ -220,3 +234,16 @@ def pre_process_dict(the_dict: Dict[str, Any]) -> None:
             # so, then remove it from our dict also.
             if len(v) == 0:
                 del the_dict[k]
+
+
+LOCAL_DB_CONN_HANDLE = "@noteable"
+LOCAL_DB_CONN_NAME = "Local Database"
+DUCKDB_LOCATION = "duckdb:///:memory:"
+
+
+def bootstrap_duckdb(registry: ConnectionRegistry):
+    registry.factory_and_register(
+        sql_cell_handle=LOCAL_DB_CONN_HANDLE,
+        human_name=LOCAL_DB_CONN_NAME,
+        connection_url=DUCKDB_LOCATION,
+    )

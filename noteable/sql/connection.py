@@ -5,17 +5,25 @@ import sqlalchemy.engine.base
 import structlog
 from sqlalchemy.engine import Engine
 
-__all__ = ('get_connection_registry', 'get_db_connection', 'get_sqla_connection', 'get_sqla_engine')
+__all__ = (
+    'get_connection_registry',
+    'get_noteable_connection',
+    'get_sqla_connection',
+    'get_sqla_engine',
+)
 
 logger = structlog.get_logger(__name__)
 
 
-LOCAL_DB_CONN_HANDLE = "@noteable"
-LOCAL_DB_CONN_NAME = "Local Database"
-DUCKDB_LOCATION = "duckdb:///:memory:"
-
-
 class UnknownConnectionError(Exception):
+    """There is no noteable.sql.Connection registered for the given string key"""
+
+    pass
+
+
+class SQLAlchemyUnsupportedError(Exception):
+    """The noteable.sql.Connection referenced is not implemented using SQLAlchemy"""
+
     pass
 
 
@@ -76,13 +84,15 @@ class Connection:
     # SLQA-centric methods / properties here down
     ####
 
+    is_sqlalchemy_based = True
+
     @property
-    def engine(self) -> sqlalchemy.engine.base.Engine:
+    def sqla_engine(self) -> sqlalchemy.engine.base.Engine:
         return self._engine
 
     @property
     def dialect(self):
-        return self.engine.url.get_dialect()
+        return self.sqla_engine.url.get_dialect()
 
     _sqla_connection: Optional[sqlalchemy.engine.base.Connection] = None
 
@@ -91,7 +101,7 @@ class Connection:
         """Lazily connect to the database. Return a SQLA Connection object, or die trying."""
 
         if not self._sqla_connection:
-            self._sqla_connection = self.engine.connect()
+            self._sqla_connection = self.sqla_engine.connect()
 
         return self._sqla_connection
 
@@ -249,6 +259,7 @@ _registry_singleton: Optional[ConnectionRegistry] = None
 
 
 def get_connection_registry() -> ConnectionRegistry:
+    """Return the singleton instance of `ConnectionRegistry`"""
     global _registry_singleton
 
     if _registry_singleton is None:
@@ -257,35 +268,42 @@ def get_connection_registry() -> ConnectionRegistry:
     return _registry_singleton
 
 
-def get_db_connection(name_or_handle: str) -> Optional[Connection]:
+def get_noteable_connection(name_or_handle: str) -> Connection:
     """Return the noteable.sql.connection.Connection corresponding to the requested
         datasource a name or handle.
 
-    Will return None if the given handle isn't present in
+    Will raise UnknownConnectionError if the given handle isn't present in
     the connections dict already (created after this kernel was launched?)
     """
     return get_connection_registry().get(name_or_handle)
 
 
-def get_sqla_connection(name_or_handle: str) -> Optional[sqlalchemy.engine.base.Connection]:
-    """Return a SQLAlchemy connection given a name or handle
-    Returns None if cannot find by this string, or the given Connection doesn't support SQLA.
+def get_sqla_connection(name_or_handle: str) -> sqlalchemy.engine.base.Connection:
+    """Return a SQLAlchemy connection given a name or handle.
+
+    Raises UnknownConnectionError if cannot find by this string.
+    Raises SQLAlchemyUnsupportedError if the given Connection doesn't support SQLAlchemy (future expansion)
     """
     conn = get_connection_registry().get(name_or_handle)
-    if conn and hasattr(conn, 'sqla_connection'):
-        return conn.sqla_connection
+
+    if not conn.is_sqlalchemy_based:
+        raise SQLAlchemyUnsupportedError(
+            f'Connection {name_or_handle} ({conn!r}) does not support SQLAlchemy'
+        )
+
+    return conn.sqla_connection
 
 
-def get_sqla_engine(name_or_handle: str) -> Optional[Engine]:
+def get_sqla_engine(name_or_handle: str) -> Engine:
     """Return a SQLAlchemy Engine given a name or handle.
-    Returns None if cannot find by this string.
+
+    Raises UnknownConnectionError if cannot find by this string.
+    Raises SQLAlchemyUnsupportedError if the given Connection doesn't support SQLAlchemy (future expansion)
     """
-    return get_connection_registry().get(name_or_handle).engine
+    conn = get_connection_registry().get(name_or_handle)
+    if not conn.is_sqlalchemy_based:
+        raise SQLAlchemyUnsupportedError(
+            f'Connection {name_or_handle} ({conn!r}) does not support SQLAlchemy'
+        )
 
-
-def bootstrap_duckdb():
-    get_connection_registry().factory_and_register(
-        sql_cell_handle=LOCAL_DB_CONN_HANDLE,
-        human_name=LOCAL_DB_CONN_NAME,
-        connection_url=DUCKDB_LOCATION,
-    )
+    return conn.sqla_engine

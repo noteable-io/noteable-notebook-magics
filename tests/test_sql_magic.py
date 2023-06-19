@@ -12,6 +12,7 @@ from pandas.testing import assert_frame_equal
 from sqlalchemy.exc import OperationalError
 
 from noteable import datasources
+from noteable.sql.connection import get_connection_registry
 from noteable.sql.run import ResultSet
 from tests.conftest import COCKROACH_HANDLE, DatasourceJSONs
 
@@ -477,7 +478,11 @@ class TestSQLite:
             jsons.connect_args_dict = {'max_download_seconds': max_download_seconds}
 
         datasources.bootstrap_datasource(
-            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+            get_connection_registry(),
+            datasource_id,
+            jsons.meta_json,
+            jsons.dsn_json,
+            jsons.connect_args_json,
         )
 
 
@@ -532,7 +537,11 @@ class TestAmazonAthena:
         # Should get postprocessed properly by postprocess_awsathena(), otherwise test
         # will definitely fail.
         datasources.bootstrap_datasource(
-            datasource_id, jsons.meta_json, jsons.dsn_json, jsons.connect_args_json
+            get_connection_registry(),
+            datasource_id,
+            jsons.meta_json,
+            jsons.dsn_json,
+            jsons.connect_args_json,
         )
 
         return datasource_id
