@@ -10,9 +10,9 @@ from sqlalchemy.exc import (
     ProgrammingError,
 )
 
-from noteable.sql.connection import get_connection_registry
 import noteable.sql.parse
 import noteable.sql.run
+from noteable.sql.connection import get_connection_registry
 from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:

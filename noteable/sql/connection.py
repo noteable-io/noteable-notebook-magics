@@ -5,7 +5,6 @@ import sqlalchemy.engine.base
 import structlog
 from sqlalchemy.engine import Engine
 
-
 __all__ = ('get_connection_registry', 'get_db_connection', 'get_sqla_connection', 'get_sqla_engine')
 
 logger = structlog.get_logger(__name__)

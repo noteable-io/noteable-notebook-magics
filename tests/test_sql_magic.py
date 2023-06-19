@@ -134,8 +134,6 @@ class TestSqlMagic:
     def test_unknown_datasource_handle_produces_expected_exception(
         self, sql_magic, capsys, session_durable_registry
     ):
-        from noteable.sql.connection import UnknownConnectionError
-
         initial_connection_count = len(session_durable_registry)
         # sql magic invocation of an unknown connection will end up calling .set() with
         # that unknown connection's handle. Should raise. (This is unit-test-y)

@@ -1,17 +1,6 @@
-from uuid import uuid4
-
 import pytest
 
-
-from noteable.sql.connection import (
-    Connection,
-    ConnectionRegistry,
-    get_connection_registry,
-    get_db_connection,
-    get_sqla_connection,
-    get_sqla_engine,
-    bootstrap_duckdb,
-)
+from noteable.sql.connection import Connection, get_connection_registry
 
 
 class TestConnection:

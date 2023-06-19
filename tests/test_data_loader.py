@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from noteable.data_loader import NoteableDataLoaderMagic
-from noteable.sql.connection import get_connection_registry, get_sqla_engine, UnknownConnectionError
+from noteable.sql.connection import UnknownConnectionError, get_connection_registry, get_sqla_engine
 
 
 @pytest.fixture
