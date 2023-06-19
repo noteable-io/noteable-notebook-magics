@@ -67,12 +67,8 @@ def bootstrap_datasource(
     meta_json: str,
     dsn_json: Optional[str],
     connect_args_json: Optional[str],
-    connection_registry=None,
 ):
     """Bootstrap this single datasource from its three json definition JSON sections"""
-
-    if not connection_registry:
-        connection_registry = connection.get_connection_registry()
 
     metadata = json.loads(meta_json)
 
@@ -97,6 +93,8 @@ def bootstrap_datasource(
     human_name = metadata.get('name', 'Unnamed legacy connection')
 
     sql_cell_handle = f'@{datasource_id}'
+
+    connection_registry = connection.get_connection_registry()
 
     try:
         # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
