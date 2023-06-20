@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from noteable.data_loader import NoteableDataLoaderMagic
-from noteable.sql.connection import Connection
+from noteable.sql.connection import UnknownConnectionError, get_connection_registry, get_sqla_engine
 
 
 @pytest.fixture
@@ -36,8 +36,7 @@ class TestDataLoaderMagic:
         assert len(df) == 2
 
         # Shoulda populated into @notable duckdb
-        assert len(Connection.connections) == 1
-        conn = Connection.connections['@noteable']
+        conn = get_connection_registry().get('@noteable')
         sqla_connection = conn.sqla_connection
         with sqla_connection.begin():
             count = sqla_connection.execute(text('select count(*) from my_table')).scalar_one()
@@ -49,8 +48,7 @@ class TestDataLoaderMagic:
         data_loader.execute(f"{csv_file} my_table2")
 
         # Shoulda populated into @notable duckdb
-        assert len(Connection.connections) == 1
-        conn = Connection.connections['@noteable']
+        conn = conn = get_connection_registry().get('@noteable')
         sqla_connection = conn.sqla_connection
         with sqla_connection.begin():
             # rowcounts better be equal between the two tables!
@@ -68,8 +66,7 @@ class TestDataLoaderMagic:
 
         assert len(df) == 2
 
-        assert len(Connection.connections) == 1
-        conn = Connection.connections[alternate_datasource_handle]
+        conn = get_connection_registry().get(alternate_datasource_handle)
         sqla_connection = conn.sqla_connection
         with sqla_connection.begin():
             assert (
@@ -90,8 +87,7 @@ class TestDataLoaderMagic:
 
         assert len(df) == 2
 
-        assert len(Connection.connections) == 1
-        engine = Connection.get_engine(human_name)
+        engine = get_sqla_engine(human_name)
         sqla_connection = engine.connect()
         with sqla_connection.begin():
             assert (
@@ -104,8 +100,9 @@ class TestDataLoaderMagic:
     @pytest.mark.usefixtures("with_empty_connections")
     def test_cannot_load_into_unknown_handle(self, csv_file, data_loader):
         with pytest.raises(
-            ValueError, match="Could not find datasource identified by '@nonexistenthandle'"
+            UnknownConnectionError,
+            match="Cannot find data connection. If you recently created this connection, please restart the kernel",
         ):
             data_loader.execute(f"{csv_file} the_table --connection @nonexistenthandle")
 
-        assert len(Connection.connections) == 0
+        assert len(get_connection_registry()) == 0

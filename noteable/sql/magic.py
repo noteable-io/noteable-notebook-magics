@@ -10,9 +10,9 @@ from sqlalchemy.exc import (
     ProgrammingError,
 )
 
-import noteable.sql.connection
 import noteable.sql.parse
 import noteable.sql.run
+from noteable.sql.connection import get_connection_registry
 from noteable.sql.meta_commands import MetaCommandException, run_meta_command
 
 try:
@@ -89,7 +89,7 @@ class SqlMagic(Magics, Configurable):
 
         parsed = noteable.sql.parse.parse(command_text, self)
 
-        connect_str = parsed["connection"]
+        datasource_sql_cell_handle = parsed["connection"]
 
         # Get ahold of the connection to use. Original sql-magic lifecycle was to create connections
         # on the fly within cells via magic invocations. Said connection would then become the
@@ -100,9 +100,7 @@ class SqlMagic(Magics, Configurable):
         # expect to use the get portion. If an unknown datasource handle (say, handle of a datasource created _after_
         # kernel launch / our bootstrapping) gets passed into here, an exception will be raised.
         try:
-            conn = noteable.sql.connection.Connection.set(
-                connect_str,
-            )
+            conn = get_connection_registry().get(datasource_sql_cell_handle)
         except noteable.sql.connection.UnknownConnectionError as e:
             # Cell referenced a datasource we don't know about. Exception will have a short + sweet message.
             eprint(str(e))

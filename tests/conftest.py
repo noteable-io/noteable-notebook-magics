@@ -11,6 +11,7 @@ from managed_service_fixtures import CockroachDetails
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from noteable.datasources import bootstrap_duckdb
 from noteable.logging import RawLogCapture, configure_logging
 from noteable.planar_ally_client.api import PlanarAllyAPI
 from noteable.planar_ally_client.types import (
@@ -18,7 +19,8 @@ from noteable.planar_ally_client.types import (
     FileProgressUpdateContent,
     FileProgressUpdateMessage,
 )
-from noteable.sql.connection import Connection, bootstrap_duckdb
+from noteable.sql import connection
+from noteable.sql.connection import Connection, get_connection_registry
 from noteable.sql.magic import SqlMagic
 from noteable.sql.run import add_commit_blacklist_dialect
 
@@ -107,20 +109,20 @@ def mock_dataset_stream():
 
 @pytest.fixture
 def with_empty_connections() -> None:
-    """Empty out the current set of sql magic Connections"""
-    preexisting_connections = Connection.connections
+    """Empty out the current set of sql magic Connections via intalling a temp empty registry singleton for use by individual tests"""
+    orig_registry = connection._registry_singleton
 
-    Connection.connections = {}
+    connection._registry_singleton = None  # Will get repopulated by get_connection_registry()
 
     yield
 
-    Connection.connections = preexisting_connections
+    connection._registry_singleton = orig_registry
 
 
 @pytest.fixture
 def with_duckdb_bootstrapped(with_empty_connections) -> None:
     # Normal magics bootstrapping will leave us with DuckDB connection populated.
-    bootstrap_duckdb()
+    bootstrap_duckdb(get_connection_registry())
 
     yield
 
@@ -237,21 +239,48 @@ def cleanup_any_extra_tables(connection: Connection):
                 db.commit()
 
 
-@pytest.fixture
-def sqlite_database_connection() -> Tuple[str, str]:
-    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource."""
+@pytest.fixture(scope='session')
+def session_durable_registry() -> None:
+    """Empty out the current set of sql magic Connections, setting up a longer-lived registry."""
+    orig_registry = connection._registry_singleton
+
+    connection._registry_singleton = None  # Will get repopulated by get_connection_registry()
+
+    yield get_connection_registry()
+
+    connection._registry_singleton = orig_registry
+
+
+@pytest.fixture()
+def sqlite_database_connection(session_durable_registry) -> Tuple[str, str]:
+    """Make an @sqlite SQLite connection to simulate a non-default bootstrapped datasource.
+
+    This is a function scoped fixture, scribbling into the session-scoped registry, because
+    the existing tests written against sqlite handle expect a new as-from populated_sqlite_database
+    db every time.
+    """
 
     handle = '@sqlite'
     human_name = "My Sqlite Connection"
-    Connection.set("sqlite:///:memory:", name=handle, human_name=human_name)
+    url = "sqlite:///:memory:"
+
+    # Get rid of any previous one from prior tests....
+    session_durable_registry.close_and_pop(handle)
+
+    # And register this new one.
+    session_durable_registry.factory_and_register(
+        sql_cell_handle=handle, human_name=human_name, connection_url=url
+    )
 
     return handle, human_name
 
 
 @pytest.fixture
-def populated_sqlite_database(sqlite_database_connection: Tuple[str, str]) -> None:
+def populated_sqlite_database(
+    session_durable_registry, sqlite_database_connection: Tuple[str, str]
+) -> None:
     handle, _ = sqlite_database_connection
-    connection = Connection.connections[handle]
+    connection = session_durable_registry.get(handle)
     populate_database(connection)
 
     yield
@@ -279,7 +308,9 @@ COCKROACH_HANDLE = f"@{COCKROACH_UUID.hex}"
 
 
 @pytest.fixture(scope='session')
-def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[str, str]:
+def cockroach_database_connection(
+    managed_cockroach: CockroachDetails, session_durable_registry
+) -> Tuple[str, str]:
     # CRDB uses psycopg2 driver. Install the extension that makes control-c work
     # and be able to interrupt statements.
     from noteable.datasource_postprocessing import _install_psycopg2_interrupt_fix
@@ -290,13 +321,19 @@ def cockroach_database_connection(managed_cockroach: CockroachDetails) -> Tuple[
     add_commit_blacklist_dialect('cockroachdb')
 
     human_name = "My Cockroach Connection"
-    Connection.set(managed_cockroach.sync_dsn, name=COCKROACH_HANDLE, human_name=human_name)
+
+    session_durable_registry.factory_and_register(
+        sql_cell_handle=COCKROACH_HANDLE,
+        human_name=human_name,
+        connection_url=managed_cockroach.sync_dsn,
+    )
+
     return COCKROACH_HANDLE, human_name
 
 
 @pytest.fixture(scope='session')
 def bad_port_number_cockroach_connection(
-    managed_cockroach: CockroachDetails,
+    managed_cockroach: CockroachDetails, session_durable_registry
 ) -> Tuple[UUID, str]:
     """Broken cockroach configuration with a bad port number. Won't ever be able to connect.
 
@@ -312,21 +349,30 @@ def bad_port_number_cockroach_connection(
     bad_cockroach_details = CockroachDetails(**as_dict)
 
     human_name = "Bad Port Number Cockroach"
-    Connection.set(bad_cockroach_details.sync_dsn, name=BAD_COCKROACH_HANDLE, human_name=human_name)
+
+    session_durable_registry.factory_and_register(
+        sql_cell_handle=BAD_COCKROACH_HANDLE,
+        human_name=human_name,
+        connection_url=bad_cockroach_details.sync_dsn,
+    )
 
     return (BAD_PORT_COCKROACH_UUID, BAD_COCKROACH_HANDLE)
 
 
 @pytest.fixture(scope='session')
-def session_populated_cockroach_database(cockroach_database_connection: Tuple[str, str]) -> None:
+def session_populated_cockroach_database(
+    cockroach_database_connection: Tuple[str, str], session_durable_registry
+) -> None:
     handle, _ = cockroach_database_connection
-    connection = Connection.connections[handle]
+    connection = session_durable_registry.get(handle)
     populate_database(connection, include_comments=True)
 
 
 @pytest.fixture
 def populated_cockroach_database(
-    session_populated_cockroach_database, cockroach_database_connection: Tuple[str, str]
+    session_populated_cockroach_database,
+    cockroach_database_connection: Tuple[str, str],
+    session_durable_registry,
 ) -> None:
     """Function-scoped version of session_populated_cockroach_database, cleans up any newly created tables
     after each function.
@@ -335,7 +381,7 @@ def populated_cockroach_database(
     yield
 
     handle, _ = cockroach_database_connection
-    connection = Connection.connections[handle]
+    connection = session_durable_registry.get(handle)
 
     cleanup_any_extra_tables(connection)
 

@@ -7,7 +7,8 @@ from IPython.utils.process import arg_split
 from traitlets import Bool, Int
 from traitlets.config import Configurable
 
-from noteable.sql.connection import LOCAL_DB_CONN_HANDLE, get_db_connection
+from noteable.datasources import LOCAL_DB_CONN_HANDLE
+from noteable.sql.connection import get_noteable_connection
 
 EXCEL_MIMETYPES = {
     "application/vnd.ms-excel",  # .xls
@@ -74,11 +75,7 @@ class NoteableDataLoaderMagic(Magics, Configurable):
         else:
             raise ValueError(f"File mimetype {mimetype} is not supported")
 
-        conn = get_db_connection(args.connection)
-        if not conn:
-            raise ValueError(
-                f"Could not find datasource identified by {args.connection!r}. Perhaps restart the kernel?"
-            )
+        conn = get_noteable_connection(args.connection)
 
         tmp_df.to_sql(
             tablename, conn.sqla_connection, if_exists="replace", index=args.include_index
