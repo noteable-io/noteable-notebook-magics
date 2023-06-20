@@ -287,6 +287,7 @@ class SampleData:
             connect_args_dict={
                 'max_download_seconds': '22',
             },
+            expect_identical_connect_args=False,
         ),
         'awsathena': DatasourceJSONs(
             meta_dict={
@@ -412,6 +413,12 @@ class TestBootstrapDatasources:
         for ds_id, sample in id_and_samples:
             assert f'@{ds_id}' in registry
             assert sample.meta_dict['name'] in registry
+
+            # Ensure that the Connection actually got bootstrapped with
+            # the connect_args, otherwise bootstrap_datasource() messed up badly.
+            if sample.connect_args_dict and sample.expect_identical_connect_args:
+                con = registry.get(f'@{ds_id}')
+                assert con._create_engine_kwargs == {'connect_args': sample.connect_args_dict}
 
         # (Let test TestBootstrapDatasource focus on the finer-grained details)
 
