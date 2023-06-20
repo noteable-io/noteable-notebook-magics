@@ -210,6 +210,8 @@ class ConnectionRegistry:
     def get(self, handle_or_human_name: str) -> Optional[Connection]:
         """Find a connection by SQL cell handle or by human assigned name. If not present and expected,
         then perhaps call get_bootstrapping_failure() to learn of any deferred construction issues.
+
+        Raises UnknownConnectionError if there is no Connection registered by this name.
         """
 
         if conn := self.connections.get(handle_or_human_name):
