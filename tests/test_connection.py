@@ -60,7 +60,7 @@ class TestConnectionRegistry:
         handle, human_name = sqlite_database_connection
 
         # Force the already queued-for-bootstrapping mapping to make it all the way ...
-        existing_conn = registry.get(handle)
+        registry.get(handle)
 
         # Will first complain about the handle collision
         with pytest.raises(ValueError, match=f'with handle {handle} is already registered'):

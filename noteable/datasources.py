@@ -1,8 +1,8 @@
 """External datasource / database connection management"""
-from functools import partial
 import json
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -11,7 +11,7 @@ import structlog
 from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-from noteable.sql.connection import ConnectionRegistry, Connection, get_connection_registry
+from noteable.sql.connection import Connection, ConnectionRegistry, get_connection_registry
 from noteable.sql.run import add_commit_blacklist_dialect
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')

@@ -15,7 +15,7 @@ from structlog.testing import LogCapture
 
 from noteable import datasource_postprocessing, datasources
 from noteable.logging import configure_logging
-from noteable.sql.connection import get_connection_registry, get_sqla_engine, Connection
+from noteable.sql.connection import Connection, get_connection_registry, get_sqla_engine
 from noteable.sql.run import _COMMIT_BLACKLIST_DIALECTS
 from tests.conftest import DatasourceJSONs
 
@@ -587,8 +587,6 @@ class TestBootstrapDatasource:
         # Had postprocess_bigquery() not done the promotion from connect_args -> create_engine_kwargs, would
         # die a very different death, complaining about cannot find any credentials anywhere
         # since not passed in and the google magic env var isn't set.
-
-        registry = get_connection_registry()
 
         with pytest.raises(Exception, match='Service account info was not in the expected format'):
             datasources.bootstrap_datasource(
