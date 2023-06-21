@@ -397,6 +397,7 @@ class DatasourceJSONs:
     meta_dict: Dict[str, Any]
     dsn_dict: Optional[Dict[str, str]] = None
     connect_args_dict: Optional[Dict[str, any]] = None
+    expect_identical_connect_args: bool = True
 
     @property
     def meta_json(self) -> str:

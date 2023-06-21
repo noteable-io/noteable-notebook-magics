@@ -121,42 +121,42 @@ def bootstrap_datasource(
             metadata['allow_datasource_dialect_autoinstall'],
         )
 
+        # Prepare connection URL string.
+        url_obj = URL.create(**dsn_dict)
+        connection_url = str(url_obj)
+
+        # XXX TODO, make a mixin for future SQLAlchemy DisableAutoCommit subclasses incorporating
+        # this particular need. A good look for the end game here may be that most all of this
+        # 'bootstrapping datasource' code will be within either the Connection base class stuff, unifying
+        # this module with Connection module, or perhaps a slightly parallel class hierarchy for
+        # the bootstrapping class corresponding to the Connection subtype registered for the
+        # drivername field?
+
+        # Do we need to tell sql-magic to not try to emit a COMMIT after each statement
+        # according to the needs of this driver?
+        if not metadata['sqlmagic_autocommit']:
+            # A sqlalchemy drivername may be comprised of 'dialect+drivername', such as
+            # 'databricks+connector'.
+            # If so, then we must only pass along the LHS of the '+'.
+            dialect = metadata['drivername'].split('+')[0]
+            add_commit_blacklist_dialect(dialect)
+
+        # Register the connection!
+        connection_registry.factory_and_register(
+            sql_cell_handle, human_name, connection_url, **create_engine_kwargs
+        )
+
     except Exception as e:
-        # Exception from either post_processor() or ensure_requirements().
+        # Exception from either post_processor(), ensure_requirements(), or factory_and_register() when
+        # it actually constructs the engine.
         logger.exception(
             'Unable to bootstrap datasource',
             datasource_id=datasource_id,
-            datasource_name=human_name,
+            human_name=human_name,
         )
 
         # Remember the failure so can be shown if / when human tries to use the connection.
         connection_registry.add_bootstrapping_failure(sql_cell_handle, human_name, str(e))
-
-        # And bail early.
-        return
-
-    # Prepare connection URL string.
-    url_obj = URL.create(**dsn_dict)
-    connection_url = str(url_obj)
-
-    # XXX TODO, make a mixin for future SQLAlchemy DisableAutoCommit subclasses incorporating
-    # this particular need. A good look for the end game here may be that most all of this
-    # 'bootstrapping datasource' code will be within either the Connection base class stuff, unifying
-    # this module with Connection module, or perhaps a slightly parallel class hierarchy for
-    # the bootstrapping class corresponding to the Connection subtype registered for the
-    # drivername field?
-
-    # Do we need to tell sql-magic to not try to emit a COMMIT after each statement
-    # according to the needs of this driver?
-    if not metadata['sqlmagic_autocommit']:
-        # A sqlalchemy drivername may be comprised of 'dialect+drivername', such as
-        # 'databricks+connector'.
-        # If so, then we must only pass along the LHS of the '+'.
-        dialect = metadata['drivername'].split('+')[0]
-        add_commit_blacklist_dialect(dialect)
-
-    # Register the connection!
-    connection_registry.factory_and_register(sql_cell_handle, human_name, connection_url)
 
 
 ##

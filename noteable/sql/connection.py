@@ -43,12 +43,9 @@ class Connection:
         Common args to go into the create_engine call (and therefore need to be
         passed in within `create_engine_kwargs`) include:
 
-          * connect_args: SQLA will pass these down to its call to create the DBAPI-level
+          * create_engine_kwargs: SQLA will pass these down to its call to create the DBAPI-level
                             connection class when new low-level connections are
                             established.
-
-          * creator: Callable which itself returns the DBAPI connection. See
-            https://docs-sqlalchemy.readthedocs.io/ko/latest/core/engines.html#custom-dbapi-connect-arguments
 
         No SQLA-level connection is immediately established (see the `sqla_connection` property).
 
@@ -73,6 +70,7 @@ class Connection:
 
         # SLQA-centric fields hereon down, to be pushed into SQLA subclass in the future.
         self._engine = sqlalchemy.create_engine(connection_url, **create_engine_kwargs)
+        self._create_engine_kwargs = create_engine_kwargs
 
     def close(self):
         """General-ish API method; SQLA-centric implementation"""
@@ -133,29 +131,7 @@ class ConnectionRegistry:
 
         If we encounter an exception at factory time, then remember it as a bootstrapping failure.
         """
-        try:
-            conn = self.factory(sql_cell_handle, human_name, connection_url, **kwargs)
-        except Exception as e:
-            # Eat any exceptions coming up from trying to describe the connection down into SQLAlchemy.
-            # Bad data entered about the datasource that SQLA hates?
-            #
-            # If we don't eat this, then it will ultimately break us before we make the call to register
-            # the SQL Magics entirely, and will get errors like '%%sql magic unknown', which is far
-            # worse than attempts to use a broken datasource being met with it being unknown, but other
-            # datasources working fine.
-            logger.exception(
-                'Unable to bootstrap datasource',
-                sql_cell_handle=sql_cell_handle,
-                human_name=human_name,
-                exception=str(e),
-            )
-
-            # Remember the failure so can be shown if / when human tries to use the connection.
-            self.add_bootstrapping_failure(
-                sql_cell_handle=sql_cell_handle, human_name=human_name, error_message=str(e)
-            )
-
-            return
+        conn = self.factory(sql_cell_handle, human_name, connection_url, **kwargs)
 
         # If still here, then all good.
         self.register(conn)
