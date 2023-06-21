@@ -11,7 +11,7 @@ from managed_service_fixtures import CockroachDetails
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from noteable.datasources import bootstrap_duckdb
+from noteable.datasources import queue_bootstrap_duckdb
 from noteable.logging import RawLogCapture, configure_logging
 from noteable.planar_ally_client.api import PlanarAllyAPI
 from noteable.planar_ally_client.types import (
@@ -122,7 +122,7 @@ def with_empty_connections() -> None:
 @pytest.fixture
 def with_duckdb_bootstrapped(with_empty_connections) -> None:
     # Normal magics bootstrapping will leave us with DuckDB connection populated.
-    bootstrap_duckdb(get_connection_registry())
+    queue_bootstrap_duckdb(get_connection_registry())
 
     yield
 
@@ -267,9 +267,17 @@ def sqlite_database_connection(session_durable_registry) -> Tuple[str, str]:
     # Get rid of any previous one from prior tests....
     session_durable_registry.close_and_pop(handle)
 
-    # And register this new one.
-    session_durable_registry.factory_and_register(
-        sql_cell_handle=handle, human_name=human_name, connection_url=url
+    # Register a bootstrapper for this handle / human name. Will be bootstrapped
+    # into a Connection only upon demand.
+    def bootstrapper() -> Connection:
+        return Connection(
+            sql_cell_handle=handle,
+            human_name=human_name,
+            connection_url=url,
+        )
+
+    session_durable_registry.register_datasource_bootstrapper(
+        sql_cell_handle=handle, human_name=human_name, bootstrapper=bootstrapper
     )
 
     return handle, human_name
@@ -280,6 +288,8 @@ def populated_sqlite_database(
     session_durable_registry, sqlite_database_connection: Tuple[str, str]
 ) -> None:
     handle, _ = sqlite_database_connection
+
+    # Will cause the Connection to be bootstrapped and registered upon this demand.
     connection = session_durable_registry.get(handle)
     populate_database(connection)
 
@@ -322,10 +332,12 @@ def cockroach_database_connection(
 
     human_name = "My Cockroach Connection"
 
-    session_durable_registry.factory_and_register(
-        sql_cell_handle=COCKROACH_HANDLE,
-        human_name=human_name,
-        connection_url=managed_cockroach.sync_dsn,
+    session_durable_registry._register(
+        Connection(
+            sql_cell_handle=COCKROACH_HANDLE,
+            human_name=human_name,
+            connection_url=managed_cockroach.sync_dsn,
+        )
     )
 
     return COCKROACH_HANDLE, human_name
@@ -350,10 +362,12 @@ def bad_port_number_cockroach_connection(
 
     human_name = "Bad Port Number Cockroach"
 
-    session_durable_registry.factory_and_register(
-        sql_cell_handle=BAD_COCKROACH_HANDLE,
-        human_name=human_name,
-        connection_url=bad_cockroach_details.sync_dsn,
+    session_durable_registry._register(
+        Connection(
+            sql_cell_handle=BAD_COCKROACH_HANDLE,
+            human_name=human_name,
+            connection_url=bad_cockroach_details.sync_dsn,
+        )
     )
 
     return (BAD_PORT_COCKROACH_UUID, BAD_COCKROACH_HANDLE)
@@ -413,20 +427,25 @@ class DatasourceJSONs:
         if self.connect_args_dict:
             return json.dumps(self.connect_args_dict)
 
-    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path):
+    def json_to_tmpdir(self, datasource_id: str, tmpdir: Path) -> Path:
         """Save our json strings to a tmpdir so can be used to test
-        bootstrap_datasource_from_files or bootstrap_datasources
+        bootstrap_datasource_from_files or bootstrap_datasources.
+
+        Returns the pathname of the meta_json file.
         """
 
+        meta_path = tmpdir / f'{datasource_id}.meta_js'
         json_str_and_paths = [
-            (self.meta_json, tmpdir / f'{datasource_id}.meta_js'),
+            (self.meta_json, meta_path),
             (self.dsn_json, tmpdir / f'{datasource_id}.dsn_js'),
             (self.connect_args_json, tmpdir / f'{datasource_id}.ca_js'),
         ]
 
         for json_str, path in json_str_and_paths:
             if json_str:
-                path.write_text(json_str)
+                path.write_text(json_str, encoding='utf-8')
+
+        return meta_path
 
 
 @pytest.fixture

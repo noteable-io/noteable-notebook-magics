@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Split registry vs. connection modeling roles: `noteable.sql.connection.Connection` class vs `noteable.sql.connection.ConnectionRegistry` class.
 - Fix bootstrap_datasource() passing along of create_engine_kwargs, otherwise misery.
+- Defer data connection bootstrapping until first need, instead of at kernel launch time.
 ### Added
 - `%ntbl change-log-level --rtu-level DEBUG` will update relevant Sending, PA, and Origami libraries to render useful debug logs related to RTU processing in PA
 

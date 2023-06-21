@@ -329,17 +329,25 @@ class TestSQLite:
     """Integration test cases of bootstrapping through to using SQLite datasource type datasource"""
 
     @pytest.mark.parametrize('memory_spelling', ('', ':memory:'))
-    def test_success_against_memory_only_database(self, sql_magic, datasource_id, memory_spelling):
+    def test_success_against_memory_only_database(
+        self, sql_magic, datasource_id, memory_spelling, tmp_path
+    ):
         """Test can bootstrap and use against memory, using either empty string or :memory: spellings."""
 
-        self.bootstrap(datasource_id, memory_spelling)
+        self.queue_bootstrapping(tmp_path, datasource_id, memory_spelling)
 
         results = sql_magic.execute(f'@{datasource_id}\n#scalar\nselect 1+2')
 
         assert results == 3
 
     def test_success_simulated_loading_database_from_figshare(
-        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
+        self,
+        sql_magic,
+        tests_fixture_data: Path,
+        datasource_id: str,
+        requests_mock,
+        log_capture,
+        tmp_path,
     ):
         """Test 'downloading' the database, expecting to find some species in there!"""
 
@@ -352,20 +360,30 @@ class TestSQLite:
             requests_mock.get(mammals_url, body=response_file)
 
             # Bootstrap the datasource to 'download' this data file.
+
+            self.queue_bootstrapping(tmp_path, datasource_id, mammals_url)
+
             with log_capture() as logs:
-                self.bootstrap(datasource_id, mammals_url)
+                results = sql_magic.execute(
+                    f'@{datasource_id} #scalar select count(*) from species'
+                )
 
-            assert logs[0]['event'] == 'Downloading sqlite database initial contents'
-            assert logs[0]['database_url'] == mammals_url
-            assert logs[0]['max_download_seconds'] == 10  # The default when unspecified.
-
-        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
+                # The bootstrapping is delayed until first use.
+                assert logs[0]['event'] == 'Downloading sqlite database initial contents'
+                assert logs[0]['database_url'] == mammals_url
+                assert logs[0]['max_download_seconds'] == 10  # The default when unspecified.
 
         # There oughta be rows in that species table!
         assert results == 54
 
     def test_success_simulated_loading_database_from_figshare_nondefault_max_timeout(
-        self, sql_magic, tests_fixture_data: Path, datasource_id: str, requests_mock, log_capture
+        self,
+        sql_magic,
+        tests_fixture_data: Path,
+        datasource_id: str,
+        requests_mock,
+        tmp_path,
+        log_capture,
     ):
         """Test 'downloading' the database with nondefault max timeout."""
 
@@ -374,18 +392,22 @@ class TestSQLite:
             # Set up response for a GET to that URL to return the contents of our canned copy.
             requests_mock.get(mammals_url, body=response_file)
 
-            # Bootstrap the datasource to 'download' this data file.
-            with log_capture() as logs:
-                self.bootstrap(datasource_id, mammals_url, max_download_seconds=22)
+            # Prep to bootstrap the datasource to 'download' this data file.
+            self.queue_bootstrapping(tmp_path, datasource_id, mammals_url, max_download_seconds=22)
 
+            with log_capture() as logs:
+                # It should get auto-bootstrapped on demand!
+                results = sql_magic.execute(
+                    f'@{datasource_id} #scalar select count(*) from species'
+                )
+
+                # There oughta be rows in that species table!
+                assert results == 54
+
+            # Bootstrapping / downloading shoulda left a log trail....
             assert logs[0]['event'] == 'Downloading sqlite database initial contents'
             assert logs[0]['database_url'] == mammals_url
             assert logs[0]['max_download_seconds'] == 22  # Explicitly specified.
-
-        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
-
-        # There oughta be rows in that species table!
-        assert results == 54
 
     # Works great, but not for CICD use.
     '''
@@ -417,7 +439,7 @@ class TestSQLite:
         ],
     )
     def test_failing_download(
-        self, sql_magic, datasource_id, capsys, requests_mock, exc, expected_substring
+        self, sql_magic, datasource_id, requests_mock, exc, expected_substring, tmp_path
     ):
         failing_url = 'mock://failed.download/'
 
@@ -428,46 +450,43 @@ class TestSQLite:
             exc=exc,
         )
 
-        self.bootstrap(datasource_id, failing_url)
+        # Queue up to delay bootstrapping for this datasource
+        # bootstapping errors are no longer deferred.
+        self.queue_bootstrapping(tmp_path, datasource_id, failing_url)
 
-        results = sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
-
-        assert results is None
-
-        captured = capsys.readouterr()
-
-        assert 'Please check data connection configuration' in captured.err
-        assert expected_substring in captured.err
+        # Will bootstrap upon demand, but will fail and raise the underlying issue immediately.
+        with pytest.raises(type(exc), match=expected_substring):
+            sql_magic.execute(f'@{datasource_id} #scalar select count(*) from species')
 
     @pytest.mark.parametrize('bad_path', ['/usr/bin/bash', 'relative_project_file.sqlite'])
-    def test_fail_bad_pathname(self, sql_magic, datasource_id, bad_path, capsys):
+    def test_fail_bad_pathname(self, sql_magic, datasource_id, bad_path, tmp_path):
         """Test providing local database pathname, but in disallowed place."""
 
         # Not a legal local file -- isn't in a tmp-y place.
-        self.bootstrap(datasource_id, bad_path)
+        self.queue_bootstrapping(tmp_path, datasource_id, bad_path)
 
         # Simulate use in a SQL cell ...
-        results = sql_magic.execute(f'@{datasource_id}\nselect true')
+        with pytest.raises(
+            Exception,
+            match=f'SQLite database files should be located within /tmp, got "{bad_path}"',
+        ):
+            sql_magic.execute(f'@{datasource_id}\nselect true')
 
-        assert results is None
-
-        captured = capsys.readouterr()
-
-        assert 'Please check data connection configuration' in captured.err
-        assert (
-            f'SQLite database files should be located within /tmp, got "{bad_path}"' in captured.err
-        )
-
-    def bootstrap(
-        self, datasource_id: str, database_path_or_url: str, max_download_seconds: int = None
+    def queue_bootstrapping(
+        self,
+        tmp_path: Path,
+        datasource_id: str,
+        database_path_or_url: str,
+        max_download_seconds: int = None,
     ):
+        human_name = f'Test Suite SQLite Datasource {datasource_id}'
         jsons = DatasourceJSONs(
             meta_dict={
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
                 'sqlmagic_autocommit': False,
-                'name': f'Test Suite SQLite Datasource {datasource_id}',
+                'name': human_name,
             },
             dsn_dict={
                 'database': database_path_or_url,
@@ -477,13 +496,10 @@ class TestSQLite:
         if max_download_seconds:
             jsons.connect_args_dict = {'max_download_seconds': max_download_seconds}
 
-        datasources.bootstrap_datasource(
-            get_connection_registry(),
-            datasource_id,
-            jsons.meta_json,
-            jsons.dsn_json,
-            jsons.connect_args_json,
-        )
+        meta_path = jsons.json_to_tmpdir(datasource_id, tmp_path)
+
+        # Will cause the connection registry to bootstrap it when the connection needs to get used the first time.
+        datasources.queue_bootstrap_datasource_from_files(get_connection_registry(), meta_path)
 
 
 class TestAmazonAthena:

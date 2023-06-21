@@ -15,7 +15,7 @@ from structlog.testing import LogCapture
 
 from noteable import datasource_postprocessing, datasources
 from noteable.logging import configure_logging
-from noteable.sql.connection import get_connection_registry, get_sqla_engine
+from noteable.sql.connection import get_connection_registry, get_sqla_engine, Connection
 from noteable.sql.run import _COMMIT_BLACKLIST_DIALECTS
 from tests.conftest import DatasourceJSONs
 
@@ -396,23 +396,28 @@ class SampleData:
 
 class TestBootstrapDatasources:
     @pytest.mark.usefixtures("with_empty_connections")
-    def test_bootstrap_datasources(self, datasource_id_factory, tmp_path: Path):
-        """Test that we bootstrap all of our samples from json files properly."""
+    def test_discover_datasources(self, datasource_id_factory, tmp_path: Path):
+        """Test that we discover + queue for bootstrapping all of our samples from json files properly."""
         id_and_samples = [(datasource_id_factory(), sample) for sample in SampleData.all_samples()]
 
         # Scribble them all out into tmpdir as if on kernel launch
         for ds_id, sample in id_and_samples:
             sample.json_to_tmpdir(ds_id, tmp_path)
 
-        datasources.bootstrap_datasources(tmp_path)
+        datasources.discover_datasources(tmp_path)
 
         # Should now have len(id_and_samples) connections in there!
         registry = get_connection_registry()
 
-        # Each id and human name should have been registered.
+        # Each id and human name should have been queued for bootstrapping.
         for ds_id, sample in id_and_samples:
-            assert f'@{ds_id}' in registry
-            assert sample.meta_dict['name'] in registry
+            handle = f'@{ds_id}'
+            assert handle in registry.boostrappers
+            assert sample.meta_dict['name'] in registry.boostrappers
+
+            # Now cause it to actually get bootstrapped by asking for it.
+            conn = registry.get(handle)
+            assert isinstance(conn, Connection)
 
             # Ensure that the Connection actually got bootstrapped with
             # the connect_args, otherwise bootstrap_datasource() messed up badly.
@@ -436,12 +441,13 @@ class TestBootstrapDatasource:
 
         registry = get_connection_registry()
 
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
+        registry._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
         )
 
         # Check over the created 'Connection' instance.
@@ -480,7 +486,7 @@ class TestBootstrapDatasource:
             not case_data.meta_dict['sqlmagic_autocommit']
         )
 
-    def test_broken_postgres_is_silent_noop(self, datasource_id, log_output):
+    def test_broken_postgres_is_silent_noop(self, datasource_id):
         case_data = DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2'],
@@ -501,23 +507,16 @@ class TestBootstrapDatasource:
         registry = get_connection_registry()
         initial_len = len(registry)
 
-        # Trying to bootstrap this one will fail somewhat silently -- will log exception, but
-        # ultimately not having added new entry into Connection.connections.
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
-        )
+        # Trying to bootstrap this one will fail immediately.
+        with pytest.raises(ValueError, match='invalid literal for int'):
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
 
         assert len(registry) == initial_len
-
-        assert len(log_output.entries) == 1
-
-        e1 = log_output.entries[0]
-        assert e1['event'] == 'Unable to bootstrap datasource'
-        assert e1['human_name'] == 'My PostgreSQL'
 
     def test_postgres_via_psycopg2_binary_is_ok(self, datasource_id):
         """Nowadays we have "psycopg2" source package installed, and newer-generation
@@ -546,17 +545,18 @@ class TestBootstrapDatasource:
 
         registry = get_connection_registry()
 
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
+        registry._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
         )
 
         assert len(registry) == 1
 
-    def test_bigquery_particulars(self, datasource_id, log_output):
+    def test_bigquery_particulars(self, datasource_id):
         """Ensure that we convert connect_args['credential_file_contents'] to
         become its own file, and (indirectly) that we promote all elements in
         connect_args to be toplevel create_engine_kwargs
@@ -572,6 +572,7 @@ class TestBootstrapDatasource:
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'bigquery',
                 'sqlmagic_autocommit': True,
+                'name': 'My bigquery',
             },
             connect_args_dict={
                 # b64 encoding of '{"foo": "bar"}'
@@ -589,24 +590,15 @@ class TestBootstrapDatasource:
 
         registry = get_connection_registry()
 
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
-        )
+        with pytest.raises(Exception, match='Service account info was not in the expected format'):
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
 
-        # No successful side effect.
-
-        assert len(registry) == 0
-
-        assert len(log_output.entries) == 1
-
-        e1 = log_output.entries[0]
-        assert e1['event'] == 'Unable to bootstrap datasource'
-
-        # But we do expect the postprocessor to have run, and to have created this
+        # We do expect the postprocessor to have run, and to have created this
         # file properly....
 
         # /tmp/{datasource_id}_bigquery_credentials.json should now exist and
@@ -620,9 +612,8 @@ class TestBootstrapDatasource:
         pg_details = SampleData.get_sample('simple-postgres')
 
         datasources.bootstrap_datasource(
-            get_connection_registry(),
             datasource_id,
-            pg_details.meta_json,
+            pg_details.meta_dict,
             pg_details.dsn_json,
             pg_details.connect_args_json,
         )
@@ -851,12 +842,13 @@ class TestDatabricks:
 
         registry = get_connection_registry()
 
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
+        registry._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
         )
 
         assert len(registry) == 1
@@ -900,12 +892,13 @@ class TestDatabricks:
         registry = get_connection_registry()
 
         # Should not fail, but won't have done any extra behavior.
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
+        registry._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
         )
 
         assert len(registry) == 1
@@ -935,12 +928,13 @@ class TestDatabricks:
 
         registry = get_connection_registry()
 
-        datasources.bootstrap_datasource(
-            registry,
-            datasource_id,
-            case_data.meta_json,
-            case_data.dsn_json,
-            case_data.connect_args_json,
+        registry._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                case_data.meta_dict,
+                case_data.dsn_json,
+                case_data.connect_args_json,
+            )
         )
 
         assert len(registry) == 1
@@ -1042,14 +1036,14 @@ class TestSQLite:
     def test_actually_connecting_to_sqlite_with_download_seconds(self, datasource_id):
         jsons = SampleData.get_sample('memory-sqlite-also-with-max_download_seconds')
 
-        datasources.bootstrap_datasource(
-            get_connection_registry(),
-            datasource_id,
-            jsons.meta_json,
-            jsons.dsn_json,
-            jsons.connect_args_json,
+        get_connection_registry()._register(
+            datasources.bootstrap_datasource(
+                datasource_id,
+                jsons.meta_dict,
+                jsons.dsn_json,
+                jsons.connect_args_json,
+            )
         )
-
         engine = get_sqla_engine(jsons.meta_dict['name'])
         # Should not barf when trying to connect, https://community.noteable.io/c/issues-and-bugs/cant-connect-to-sqlite-database
         engine.execute('select 1')
@@ -1075,25 +1069,13 @@ class TestSQLite:
             },
         )
 
-        datasources.bootstrap_datasource(
-            get_connection_registry(),
-            datasource_id,
-            bad_sqlite.meta_json,
-            bad_sqlite.dsn_json,
-            bad_sqlite.connect_args_json,
-        )
-
-        registry = get_connection_registry()
-        assert len(registry) == 0
-
-        # And should have had a bootstrapping failure against both the datasource_id
-        # and the human name.
-        assert 'SQLite database files should be located' in registry.get_bootstrapping_failure(
-            human_name
-        )
-        assert 'SQLite database files should be located' in registry.get_bootstrapping_failure(
-            f'@{datasource_id}'
-        )
+        with pytest.raises(ValueError, match='SQLite database files should be located'):
+            datasources.bootstrap_datasource(
+                datasource_id,
+                bad_sqlite.meta_dict,
+                bad_sqlite.dsn_json,
+                bad_sqlite.connect_args_json,
+            )
 
         # There are test(s) over in test_sql_magic.py that prove that when such a broken datasource is
         # attempted to be used, this get_bootstrapping_failure() message will show back up, surfacing

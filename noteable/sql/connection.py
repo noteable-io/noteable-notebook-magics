@@ -1,4 +1,5 @@
-from typing import Dict, Optional
+from __future__ import annotations
+from typing import Callable, Dict, Optional, TypeVar
 
 import sqlalchemy
 import sqlalchemy.engine.base
@@ -10,6 +11,7 @@ __all__ = (
     'get_noteable_connection',
     'get_sqla_connection',
     'get_sqla_engine',
+    'ConnectionBootstrapper',
 )
 
 logger = structlog.get_logger(__name__)
@@ -111,106 +113,92 @@ class Connection:
         self._sqla_connection = None
 
 
+ConnectionBootstrapper: TypeVar = Callable[[], Connection]
+"""Zero-arg function, that when called, will return a Connection instance to be retained in a ConnectionRegistry."""
+
+
 class ConnectionRegistry:
-    """A registry of Connection instances"""
+    """A registry of Connection instances and bootstrapping functions that will create Connections on first need"""
+
+    boostrappers: Dict[str, ConnectionBootstrapper]
+    """Dict of sql cell handle or human name -> function that, when passed this registry, will construct
+       the Connection for that handle upon demand. When the connection is bootstrapped, then
+       the entries will be removed from this dict, in that they won't be needed anymore.
+
+       All external data connections are bootstrapped upon first demand within the notebook, not at notebook launch.
+    """
 
     connections: Dict[str, Connection]
-    """My registry of connections. A single Connection will be multiply-registered, by its '@{sql_cell_handle}' as well as its 'human name' for convenience to humans."""
-
-    bootstrapping_failures: Dict[str, str]
-    """Deferred errors from bootstrapping time. The error will be correlated to both the sql_cell_handle and the human name."""
+    """My registry of bootstrapped, live connections. A single Connection will be multiply-registered, by its '@{sql_cell_handle}'
+       as well as its 'human name' for convenience to humans.
+    """
 
     def __init__(self):
         self.connections = {}
-        self.bootstrapping_failures = {}
+        self.boostrappers = {}
 
-    def factory_and_register(
-        self, sql_cell_handle: str, human_name: str, connection_url: str, **kwargs
+    def register_datasource_bootstrapper(
+        self, sql_cell_handle: str, human_name: str, bootstrapper: ConnectionBootstrapper
     ):
-        """Factory a connection instance and register it.
+        """Register a function that will, upon first need, bootstrap and construct a Connection to be retained."""
 
-        If we encounter an exception at factory time, then remember it as a bootstrapping failure.
-        """
-        conn = self.factory(sql_cell_handle, human_name, connection_url, **kwargs)
+        # Kernel startup in `noteable.datasources.discover_datasources()` will call into this once for each possible
+        # datasource found in vault secret filesystem, as well as for DuckDB.
 
-        # If still here, then all good.
-        self.register(conn)
-
-    def factory(self, sql_cell_handle: str, human_name: str, connection_url: str, **kwargs):
-        """Construct the appropriate Connection subclass.
-
-        Does not register the instance, only returns it.
-        """
-
-        # Simple for now, only knows how to make SQLA-ish Connection objs. Will generalize in later steps and figure out how
-        # to have the SQLA Connection subclass declare its preference for some, and other subclasses like Jira declare preference
-        # for others.
-        return Connection(
-            sql_cell_handle=sql_cell_handle,
-            human_name=human_name,
-            connection_url=connection_url,
-            **kwargs,
-        )
-
-    def register(self, conn: Connection):
-        """Register this connection into self under both its SQL cell handle it its human assigned name"""
-
-        if not isinstance(conn, Connection):
-            raise ValueError('connection must be a Connection instance')
-
-        if conn.sql_cell_handle in self.connections:
+        if not (sql_cell_handle and sql_cell_handle.startswith('@')):
             raise ValueError(
-                f'Datasource with handle {conn.sql_cell_handle} is already registered!'
+                f'sql_cell_handle must be provided and start with "@": {sql_cell_handle}'
             )
 
-        self.connections[conn.sql_cell_handle] = conn
-        self.connections[conn.human_name] = conn
-
-        self.bootstrapping_failures.pop(conn.sql_cell_handle, None)
-        self.bootstrapping_failures.pop(conn.human_name, None)
-
-    def add_bootstrapping_failure(self, sql_cell_handle: str, human_name: str, error_message: str):
-        """Remember (short) reason why we could not bootstrap a connection by this name,
-        so that we can tell the user about it if / when they try to use the connection
-        in a SQL cell.
-        """
-
-        if sql_cell_handle in self.connections:
-            raise ValueError(
-                'Strange: this connection is already defined, but now reporting bootstrapping failure? Perhaps close_and_pop() first?'
+        if not callable(bootstrapper):
+            raise TypeError(
+                f'Data connection bootstrapper functions must be zero-arg callables, got {type(bootstrapper)} for {sql_cell_handle!r}'
             )
 
-        self.bootstrapping_failures[sql_cell_handle] = error_message
-        self.bootstrapping_failures[human_name] = error_message
+        # Explicitly allow new registration shadowing out a prior one for test suite purposes at this time.
+        self.boostrappers[sql_cell_handle] = bootstrapper
+        self.boostrappers[human_name] = bootstrapper
 
-    def get(self, handle_or_human_name: str) -> Optional[Connection]:
-        """Find a connection by SQL cell handle or by human assigned name. If not present and expected,
-        then perhaps call get_bootstrapping_failure() to learn of any deferred construction issues.
+    def get(self, handle_or_human_name: str) -> Connection:
+        """Find a connection either by cell handle or by human assigned name.
 
-        Raises UnknownConnectionError if there is no Connection registered by this name.
+            If not constructed already, then consult the pending-to-be-bootstrapped
+            dict, and if there's a bootstrapper registered, then call it to bootstrap
+            the connection.
+
+            Any exceptions raised by the bootstrapping process will be thrown by this method, even
+            from repeated bootstrapping attempts within same notebook kernel, since bootstrappers won't
+            be able to get their connection registered (and then the bootstrapper forgotten about)
+            within this registry until the bootstrapping process completes successfully.
+
+        Raises UnknownConnectionError if there is no Connection registered by this name and no
+        registered bootstrapper.
+
+        Raises any exception coming from the bootstrapper function if was needed to be called.
         """
 
         if conn := self.connections.get(handle_or_human_name):
             return conn
 
-        # Perhaps had bootstrapping error?
-        if bootstrapping_error := self.get_bootstrapping_failure(handle_or_human_name):
-            # Could use a better exception type here.
-            raise UnknownConnectionError(
-                f'Please check data connection configuration, correct, and restart kernel:\n{bootstrapping_error}'
-            )
+        # Hopefully just not bootstrapped yet? Consult the pending bootstrappers!
+        if bootstrapper := self.boostrappers.get(handle_or_human_name):
+            # Any data connection bootstrapping errors will be raised right now for this cell.
+            conn = bootstrapper()
+
+            if not isinstance(conn, Connection):
+                raise TypeError(
+                    f'Data connection bootstrapper for {handle_or_human_name} returned something other than a Connection instance!'
+                )
+
+            # Register the connection handler from now on. Will de-register the bootstrapper.
+            self._register(conn)
+
+            return conn
 
         # Otherwise is just plain unknown.
         raise UnknownConnectionError(
             'Cannot find data connection. If you recently created this connection, please restart the kernel.'
         )
-
-    def get_bootstrapping_failure(self, handle_or_name: str) -> Optional[str]:
-        """Return failure-to-bootstrap reason (if any) related to this
-        datasource by either its sql handle / id ("@3464564") or its human
-        name ("My PostgreSQL")
-        """
-        return self.bootstrapping_failures.get(handle_or_name)
 
     def close_and_pop(self, handle_or_name: str):
         """If this handle_or_name is in self, then close it and forget about it."""
@@ -223,14 +211,30 @@ class ConnectionRegistry:
                 self.connections.pop(conn.sql_cell_handle, None)
                 self.connections.pop(conn.human_name, None)
 
-        self.bootstrapping_failures.pop(handle_or_name, None)
-
     def __len__(self):
         # Each Connection is double-registered under both sql_cell_handle and human name, so div by two.
         return len(self.connections) // 2
 
-    def __contains__(self, key: str):
-        return key in self.connections
+    def _register(self, conn: Connection):
+        """Register this connection into self under both its SQL cell handle and its human assigned name"""
+
+        if not isinstance(conn, Connection):
+            raise ValueError('connection must be a Connection instance')
+
+        if conn.sql_cell_handle in self.connections:
+            raise ValueError(
+                f'Datasource with handle {conn.sql_cell_handle} is already registered!'
+            )
+
+        if conn.human_name in self.connections:
+            raise ValueError(f'Datasource with human name {conn.human_name} is already registered!')
+
+        self.connections[conn.sql_cell_handle] = conn
+        self.connections[conn.human_name] = conn
+
+        # No longer need any existing bootstrapper entries for these names (bootstrapping now complete).
+        self.boostrappers.pop(conn.sql_cell_handle, None)
+        self.boostrappers.pop(conn.human_name, None)
 
 
 _registry_singleton: Optional[ConnectionRegistry] = None
