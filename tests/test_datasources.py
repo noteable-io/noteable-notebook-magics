@@ -412,8 +412,8 @@ class TestBootstrapDatasources:
         # Each id and human name should have been queued for bootstrapping.
         for ds_id, sample in id_and_samples:
             handle = f'@{ds_id}'
-            assert handle in registry.boostrappers
-            assert sample.meta_dict['name'] in registry.boostrappers
+            assert handle in registry.bootstrappers
+            assert sample.meta_dict['name'] in registry.bootstrappers
 
             # Now cause it to actually get bootstrapped by asking for it.
             conn = registry.get(handle)

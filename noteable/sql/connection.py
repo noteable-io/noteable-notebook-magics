@@ -121,7 +121,7 @@ ConnectionBootstrapper: TypeVar = Callable[[], Connection]
 class ConnectionRegistry:
     """A registry of Connection instances and bootstrapping functions that will create Connections on first need"""
 
-    boostrappers: Dict[str, ConnectionBootstrapper]
+    bootstrappers: Dict[str, ConnectionBootstrapper]
     """Dict of sql cell handle or human name -> function that, when passed this registry, will construct
        the Connection for that handle upon demand. When the connection is bootstrapped, then
        the entries will be removed from this dict, in that they won't be needed anymore.
@@ -136,7 +136,7 @@ class ConnectionRegistry:
 
     def __init__(self):
         self.connections = {}
-        self.boostrappers = {}
+        self.bootstrappers = {}
 
     def register_datasource_bootstrapper(
         self, sql_cell_handle: str, human_name: str, bootstrapper: ConnectionBootstrapper
@@ -157,8 +157,8 @@ class ConnectionRegistry:
             )
 
         # Explicitly allow new registration shadowing out a prior one for test suite purposes at this time.
-        self.boostrappers[sql_cell_handle] = bootstrapper
-        self.boostrappers[human_name] = bootstrapper
+        self.bootstrappers[sql_cell_handle] = bootstrapper
+        self.bootstrappers[human_name] = bootstrapper
 
     def get(self, handle_or_human_name: str) -> Connection:
         """Find a connection either by cell handle or by human assigned name.
@@ -182,7 +182,7 @@ class ConnectionRegistry:
             return conn
 
         # Hopefully just not bootstrapped yet? Consult the pending bootstrappers!
-        if bootstrapper := self.boostrappers.get(handle_or_human_name):
+        if bootstrapper := self.bootstrappers.get(handle_or_human_name):
             # Any data connection bootstrapping errors will be raised right now for this cell.
             conn = bootstrapper()
 
@@ -234,8 +234,8 @@ class ConnectionRegistry:
         self.connections[conn.human_name] = conn
 
         # No longer need any existing bootstrapper entries for these names (bootstrapping now complete).
-        self.boostrappers.pop(conn.sql_cell_handle, None)
-        self.boostrappers.pop(conn.human_name, None)
+        self.bootstrappers.pop(conn.sql_cell_handle, None)
+        self.bootstrappers.pop(conn.human_name, None)
 
 
 _registry_singleton: Optional[ConnectionRegistry] = None
