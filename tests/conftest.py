@@ -22,7 +22,7 @@ from noteable.planar_ally_client.types import (
 from noteable.sql import connection
 from noteable.sql.connection import Connection, get_connection_registry
 from noteable.sql.magic import SqlMagic
-from noteable.sql.sqlalchemy import SQLAlchemyConnection
+from noteable.sql.sqlalchemy import PostgreSQLConnection, SQLiteConnection
 
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
@@ -262,7 +262,6 @@ def sqlite_database_connection(session_durable_registry) -> Tuple[str, str]:
 
     handle = '@sqlite'
     human_name = "My Sqlite Connection"
-    url = "sqlite:///:memory:"
 
     # Get rid of any previous one from prior tests....
     session_durable_registry.close_and_pop(handle)
@@ -270,11 +269,11 @@ def sqlite_database_connection(session_durable_registry) -> Tuple[str, str]:
     # Register a bootstrapper for this handle / human name. Will be bootstrapped
     # into a Connection only upon demand.
     def bootstrapper() -> Connection:
-        return SQLAlchemyConnection(
-            sql_cell_handle=handle,
-            human_name=human_name,
-            connection_url=url,
-            needs_explicit_commit=False,
+        return SQLiteConnection(
+            handle,
+            {'name': human_name},  # metadata dict
+            {'drivername': 'sqlite', 'database': ':memory:'},  # dsn_dict
+            {},  # create_engine_kwargs
         )
 
     session_durable_registry.register_datasource_bootstrapper(
@@ -324,14 +323,13 @@ def cockroach_database_connection(
 ) -> Tuple[str, str]:
     # CRDB uses psycopg2 driver. Install the extension that makes control-c work
     # and be able to interrupt statements.
-    from noteable.datasource_postprocessing import _install_psycopg2_interrupt_fix
 
-    _install_psycopg2_interrupt_fix()
+    PostgreSQLConnection._install_psycopg2_interrupt_fix()
 
     human_name = "My Cockroach Connection"
 
     session_durable_registry._register(
-        SQLAlchemyConnection(
+        PostgreSQLConnection(
             sql_cell_handle=COCKROACH_HANDLE,
             human_name=human_name,
             connection_url=managed_cockroach.sync_dsn,

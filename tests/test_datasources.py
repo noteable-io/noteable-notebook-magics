@@ -13,10 +13,20 @@ import pytest
 import structlog
 from structlog.testing import LogCapture
 
-from noteable import datasource_postprocessing, datasources
+from noteable import datasources
 from noteable.logging import configure_logging
 from noteable.sql.connection import Connection, get_connection_registry, get_sqla_engine
-from noteable.sql.sqlalchemy import SQLAlchemyConnection
+from noteable.sql.sqlalchemy import (
+    SQLAlchemyConnection,
+    PostgreSQLConnection,
+    BigQueryConnection,
+    SnowflakeConnection,
+    SQLiteConnection,
+    AwsAthenaConnection,
+    DatabricksConnection,
+    ClickhouseConnection,
+    MsSqlConnection,
+)
 from tests.conftest import DatasourceJSONs
 
 
@@ -304,6 +314,7 @@ class SampleData:
                 'database': 'default_database',
             },
             connect_args_dict={'s3_staging_dir': 's3://myamazonawsbucket/results/'},
+            expect_identical_connect_args=False,
         ),
         # Originally, we used pymysql for SingleStore, mysql, mariadb.
         # Older generation datasource data in Vault will still request to use this driver
@@ -444,7 +455,7 @@ class TestBootstrapDatasource:
         registry._register(
             datasources.bootstrap_datasource(
                 datasource_id,
-                case_data.meta_dict,
+                dict(case_data.meta_dict),  # pass copy, 'cause bootstrapping will modify in place.
                 case_data.dsn_json,
                 case_data.connect_args_json,
             )
@@ -726,7 +737,7 @@ class TestDatabricks:
             },
         )
 
-    def test_postprocess_databricks_pops_correctly(self, datasource_id, jsons_for_extra_behavior):
+    def test_preprocess_databricks_pops_correctly(self, datasource_id, jsons_for_extra_behavior):
         """Ensure that postprocess_databricks side effect pops from the correct dict (connect_args,
         not the containing create_engine_kwargs dict), even w/o databricks-connect
         being found in the $PATH.
@@ -741,7 +752,7 @@ class TestDatabricks:
 
         create_engine_kwargs = {'connect_args': connect_args}
 
-        datasource_postprocessing.postprocess_databricks(
+        DatabricksConnection.preprocess_configuration(
             datasource_id,
             jsons_obj.dsn_dict,
             create_engine_kwargs,
@@ -774,7 +785,7 @@ class TestDatabricks:
         create_engine_kwargs = {'connect_args': jsons_obj.connect_args_dict}
 
         with pytest.raises(ValueError, match=expected_error_message):
-            datasource_postprocessing.postprocess_databricks(
+            DatabricksConnection.preprocess_configuration(
                 datasource_id,
                 jsons_obj.dsn_dict,
                 create_engine_kwargs,
@@ -783,14 +794,14 @@ class TestDatabricks:
     @pytest.fixture()
     def short_script_timeout(self):
         """Respell datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT to 1 (second)"""
-        original_value = datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
+        original_value = DatabricksConnection.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
 
-        datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 1
+        DatabricksConnection.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 1
 
         try:
-            yield datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
+            yield DatabricksConnection.DATABRICKS_CONNECT_SCRIPT_TIMEOUT
         finally:
-            datasource_postprocessing.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = original_value
+            DatabricksConnection.DATABRICKS_CONNECT_SCRIPT_TIMEOUT = original_value
 
     def test_databricks_connect_taking_too_long(
         datasource_id, databricks_connect_in_path, short_script_timeout, jsons_for_extra_behavior
@@ -814,7 +825,7 @@ class TestDatabricks:
         create_engine_kwargs = {'connect_args': jsons_obj.connect_args_dict}
 
         with pytest.raises(ValueError, match='databricks-connect took longer than'):
-            datasource_postprocessing.postprocess_databricks(
+            DatabricksConnection.preprocess_configuration(
                 datasource_id,
                 jsons_obj.dsn_dict,
                 create_engine_kwargs,
@@ -1006,7 +1017,7 @@ class TestSQLite:
             'memory-sqlite-also-with-max_download_seconds',
         ),
     )
-    def test_postprocess_sqlite_pops_max_download_seconds_correctly(
+    def test_preprocess_sqlite_pops_max_download_seconds_correctly(
         self, sample: Union[str, DatasourceJSONs], datasource_id, requests_mock, tests_fixture_data
     ):
         if isinstance(sample, str):
@@ -1023,7 +1034,7 @@ class TestSQLite:
                 # Set up response for a GET to that URL to return the contents of our canned copy.
                 requests_mock.get(jsons.dsn_dict['database'], body=response_file)
 
-            datasource_postprocessing.postprocess_sqlite(
+            SQLiteConnection.preprocess_configuration(
                 datasource_id, dsn_dict=jsons.dsn_dict, create_engine_kwargs=create_engine_kwargs
             )
 
@@ -1129,7 +1140,7 @@ def test_pre_process_dict(test_dict, expected):
 def test_postprocess_snowflake(dsn_dict, expected):
     """Prove handling of database, schema -> 'database/schema'"""
 
-    datasource_postprocessing.postprocess_snowflake(None, dsn_dict, {})
+    SnowflakeConnection.preprocess_configuration(None, dsn_dict, {})
     assert dsn_dict == expected
 
 
@@ -1142,7 +1153,7 @@ def test_postprocess_snowflake(dsn_dict, expected):
                 # input DSN dict
                 {'host': 'us-west-1', 'username': 'ADFGD:/', 'password': 'MMHq:/'},
                 # input connect args dict
-                {'s3_staging_dir': 's3://myamazonbucket/results/'},
+                {'connect_args': {'s3_staging_dir': 's3://myamazonbucket/results/'}},
             ),
             (
                 # Resulting DSN dict
@@ -1152,14 +1163,14 @@ def test_postprocess_snowflake(dsn_dict, expected):
                     'password': 'MMHq%3A%2F',
                 },
                 # resulting connect args dict
-                {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'},
+                {'connect_args': {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'}},
             ),
         ),
     ],
 )
 def test_postprocess_awsathena(input_dicts, expected_dicts):
     dsn_dict, create_engine_dict = input_dicts
-    datasource_postprocessing.postprocess_awsathena(None, dsn_dict, create_engine_dict)
+    AwsAthenaConnection.preprocess_configuration(None, dsn_dict, create_engine_dict)
     assert dsn_dict == expected_dicts[0]
     assert create_engine_dict == expected_dicts[1]
 
@@ -1186,13 +1197,13 @@ def test_postprocess_awsathena(input_dicts, expected_dicts):
 def test_postprocess_clickhouse(input_create_engine_dict, expected_query_params):
     with patch.object(certifi, 'where', return_value='/path/to/certifi/cert.pem'):
         dsn_dict = {}
-        datasource_postprocessing.postprocess_clickhouse(None, dsn_dict, input_create_engine_dict)
+        ClickhouseConnection.preprocess_configuration(None, dsn_dict, input_create_engine_dict)
         assert dsn_dict['query'] == expected_query_params
 
 
 def test_postprocess_clickhouse_raises_on_bad_secure_connection():
     with pytest.raises(ValueError):
-        datasource_postprocessing.postprocess_clickhouse(
+        ClickhouseConnection.preprocess_configuration(
             None, None, {'connect_args': {'secure_connection': 'foobar'}}
         )
 
@@ -1227,5 +1238,5 @@ def test_postprocess_clickhouse_raises_on_bad_secure_connection():
     ],
 )
 def test_postprocess_mssql_pyodbc(input_create_engine_dict, expected_connect_args_dict):
-    datasource_postprocessing.postprocess_mssql_pyodbc(None, None, input_create_engine_dict)
+    MsSqlConnection.preprocess_configuration(None, None, input_create_engine_dict)
     assert input_create_engine_dict['connect_args'] == expected_connect_args_dict

@@ -227,16 +227,14 @@ def pre_process_dict(the_dict: Dict[str, Any]) -> None:
 
 LOCAL_DB_CONN_HANDLE = "@noteable"
 LOCAL_DB_CONN_NAME = "Local Database"
-DUCKDB_LOCATION = "duckdb:///:memory:"
 
 
 def local_duckdb_bootstrapper() -> Connection:
     """Return the noteable.sql.connection.Connection to use for local memory DuckDB."""
-    return SQLAlchemyConnection(
-        sql_cell_handle=LOCAL_DB_CONN_HANDLE,
-        human_name=LOCAL_DB_CONN_NAME,
-        connection_url=DUCKDB_LOCATION,
-        needs_explicit_commit=True,
+    return noteable.sql.sqlalchemy.SQLAlchemyConnection(
+        LOCAL_DB_CONN_HANDLE,
+        {'name': LOCAL_DB_CONN_NAME},
+        {'drivername': 'duckdb', 'database': ':memory:'},
     )
 
 

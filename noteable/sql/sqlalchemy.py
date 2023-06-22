@@ -59,6 +59,12 @@ class SQLAlchemyResult(ResultSet):
             self.has_results_to_report = False
 
 
+@connection_class('duckdb')
+@connection_class('redshift+redshift_connector')
+@connection_class('trino')
+@connection_class('mysql+pymysql')
+@connection_class('mysql+mysqldb')
+@connection_class('singlestoredb')
 class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
@@ -72,7 +78,7 @@ class SQLAlchemyConnection(BaseConnection):
         cell_handle: str,
         metadata: Dict[str, Any],
         dsn_dict: Dict[str, Any],
-        create_engine_kwargs: Dict[str, Any],
+        create_engine_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         Construct a new 'connection', which in reality is a sqla Engine
@@ -97,9 +103,15 @@ class SQLAlchemyConnection(BaseConnection):
 
         """
 
+        if not create_engine_kwargs:
+            create_engine_kwargs = {}
+
         human_name = metadata['name']
 
         super().__init__(cell_handle, human_name)
+
+        if 'sqlmagic_autocommit' in metadata:
+            self._needs_explicit_commit = metadata['sqlmagic_autocommit']
 
         connection_url = str(URL.create(**dsn_dict))
 
@@ -201,6 +213,10 @@ class PostgreSQLConnection(SQLAlchemyConnection):
         Thanks, internet stranger!
         """
 
+        cls._install_psycopg2_interrupt_fix()
+
+    @classmethod
+    def _install_psycopg2_interrupt_fix(cls):
         if not cls._installed_psycopg2_interrupt_fix:
             import psycopg2.extensions
             import psycopg2.extras
@@ -291,6 +307,8 @@ class SnowflakeConnection(SQLAlchemyConnection):
 
 @connection_class('sqlite')
 class SQLiteConnection(SQLAlchemyConnection):
+    _needs_explicit_commit: False
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -360,7 +378,7 @@ class SQLiteConnection(SQLAlchemyConnection):
                 )
 
 
-@connection_class('awsathena')
+@connection_class('awsathena+rest')
 class AwsAthenaConnection(SQLAlchemyConnection):
     _needs_explicit_commit = True
 
@@ -385,7 +403,8 @@ class AwsAthenaConnection(SQLAlchemyConnection):
         dsn_dict['password'] = quote_plus(dsn_dict['password'])
 
         # 3. quote_plus s3_staging_dir
-        create_engine_kwargs['s3_staging_dir'] = quote_plus(create_engine_kwargs['s3_staging_dir'])
+        connect_args = create_engine_kwargs['connect_args']
+        connect_args['s3_staging_dir'] = quote_plus(connect_args['s3_staging_dir'])
 
 
 @connection_class('databricks+connector')
