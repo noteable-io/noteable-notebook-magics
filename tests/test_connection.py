@@ -2,6 +2,7 @@ import pytest
 import sqlalchemy.engine.base
 
 from noteable.sql.connection import (
+    BaseConnection,
     Connection,
     UnknownConnectionError,
     get_connection_registry,
@@ -14,11 +15,14 @@ from noteable.sql.connection import (
 class TestConnection:
     def test_sql_cell_handles_must_start_with_at(self):
         with pytest.raises(ValueError, match="sql_cell_handle values must start with '@'"):
-            Connection('no_leading_at', 'sdf', 'sqlite:///:memory:')
+            BaseConnection('no_leading_at', 'sdf')
 
     def test_must_have_human_name(self):
         with pytest.raises(ValueError, match="Connections must have a human-assigned name"):
-            Connection('@foo', '', 'sqlite:///:memory:')
+            BaseConnection(
+                '@foo',
+                '',
+            )
 
 
 class TestConnectionRegistry:
@@ -64,10 +68,10 @@ class TestConnectionRegistry:
 
         # Will first complain about the handle collision
         with pytest.raises(ValueError, match=f'with handle {handle} is already registered'):
-            registry._register(Connection(handle, human_name, 'sqlite:///:memory:'))
+            registry._register(BaseConnection(handle, human_name))
 
         with pytest.raises(ValueError, match=f'with human name {human_name} is already registered'):
-            registry._register(Connection(handle + 'sdfsdf', human_name, 'sqlite:///:memory:'))
+            registry._register(BaseConnection(handle + 'sdfsdf', human_name))
 
 
 class TestGetNoteableConnection:

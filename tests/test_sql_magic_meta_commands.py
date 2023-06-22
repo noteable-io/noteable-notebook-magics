@@ -645,7 +645,7 @@ class TestFullIntrospection:
 
         # Expect the core tables plus our dregs_table.
         # (The 'Done.\n' comes from the 'create table' execution creating dregs_table.)
-        assert f'\nDiscovered {len(KNOWN_TABLES) + NUM_NEW_TABLES} relations' in out
+        assert f'Discovered {len(KNOWN_TABLES) + NUM_NEW_TABLES} relations' in out
 
         for name, kind in KNOWN_TABLES_AND_KINDS:
             assert f'Introspected {kind} public.{name}' in out

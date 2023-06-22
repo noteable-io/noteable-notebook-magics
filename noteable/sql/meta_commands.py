@@ -81,6 +81,11 @@ class MetaCommand:
     include_in_help = True
 
     def __init__(self, shell: InteractiveShell, conn: Connection, assign_to_varname: Optional[str]):
+        if not conn.is_sqlalchemy_based:
+            raise ValueError(
+                'Meta commands only working against SQLAlchemy-based connections at this time.'
+            )
+
         self.shell = shell
         self.conn = conn
         self.assign_to_varname = assign_to_varname

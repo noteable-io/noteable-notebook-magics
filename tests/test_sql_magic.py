@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 
 from noteable import datasources
 from noteable.sql.connection import get_connection_registry
-from noteable.sql.run import ResultSet
+from noteable.sql.sqlalchemy import SQLAlchemyResult
 from tests.conftest import COCKROACH_HANDLE, DatasourceJSONs
 
 
@@ -154,7 +154,7 @@ class TestSqlMagic:
 @pytest.mark.usefixtures("populated_cockroach_database", "populated_sqlite_database")
 class TestDDLStatements:
     @pytest.mark.parametrize('conn_name', ['@sqlite', COCKROACH_HANDLE])
-    def test_ddl_lifecycle(self, conn_name: str, sql_magic, capsys):
+    def test_ddl_lifecycle(self, conn_name: str, sql_magic):
         table_name = f'test_table_{uuid4().hex}'
 
         r = sql_magic.execute(
@@ -173,9 +173,6 @@ class TestDDLStatements:
         r = sql_magic.execute(f"{conn_name}\ndelete from {table_name} where name = 'billy'")
         # Just one row affected here, and printed to stdout
         assert r == 1
-
-        captured = capsys.readouterr()
-        assert captured.out == 'Done.\n2 rows affected.\n1 row affected.\n'
 
     @pytest.mark.parametrize('conn_name', [COCKROACH_HANDLE])
     def test_insert_returning_returns_dataframe(self, conn_name: str, sql_magic):
@@ -239,7 +236,7 @@ class TestJinjaTemplatesWithinSqlMagic:
         assert isinstance(results, int)
         assert results == 2
 
-    def test_insert_into(self, sql_magic, ipython_shell, capsys):
+    def test_insert_into(self, sql_magic, ipython_shell):
         """Create a one-off table, then test inserting into from python variables interpolated by jinja"""
 
         sql_magic.execute(
@@ -256,9 +253,6 @@ class TestJinjaTemplatesWithinSqlMagic:
             COCKROACH_HANDLE
             + '\ninsert into scratch(id, name) values ({{id_value}}, {{name_value}})'
         )
-
-        captured = capsys.readouterr()
-        assert '1 row affected' in captured.out
 
         # Now expect the row to be present and we can grab the inserted name
         # back by interpolated id query.
@@ -658,7 +652,7 @@ class TestResultSet:
     def test_create_result_set(self, sqla_result_mock_attrs, expected_result_set_attrs):
         sqla_result_mock = Mock(**sqla_result_mock_attrs)
 
-        result_set = ResultSet(sqla_result_mock, None, None)
+        result_set = SQLAlchemyResult(sqla_result_mock)
 
         for attr, expected_value in expected_result_set_attrs.items():
             if attr == 'to_dataframe_return_value':

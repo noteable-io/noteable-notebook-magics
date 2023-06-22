@@ -16,7 +16,7 @@ from structlog.testing import LogCapture
 from noteable import datasource_postprocessing, datasources
 from noteable.logging import configure_logging
 from noteable.sql.connection import Connection, get_connection_registry, get_sqla_engine
-from noteable.sql.run import _COMMIT_BLACKLIST_DIALECTS
+from noteable.sql.sqlalchemy import SQLAlchemyConnection
 from tests.conftest import DatasourceJSONs
 
 
@@ -461,12 +461,6 @@ class TestBootstrapDatasource:
         expected_human_name = case_data.meta_dict.get('name')
         assert the_conn.human_name == expected_human_name
 
-        # Test get_sqla_engine() while here,
-        assert the_conn._engine is get_sqla_engine(expected_sql_cell_handle_name)
-        if expected_human_name:
-            # Can only work this way also if the datasource name was present in meta-json.
-            assert the_conn._engine is get_sqla_engine(expected_human_name)
-
         # Ensure the required packages are installed -- excercies either the 'auto-installation'
         # code useful when trying out new datasource types in integration, or having been
         # already installed because is listed as a dependency here in noteable-notebook-magics requirements.
@@ -479,12 +473,17 @@ class TestBootstrapDatasource:
             pkg_to_installed.values()
         ), f'Not all packages smell installed! {pkg_to_installed}'
 
-        # If case_data.meta_dict['sqlmagic_autocommit'] is False, then expect to see the dialect portion of
-        # drivername mentioned in ipython-sql's _COMMIT_BLACKLIST_DIALECTS set.
-        dialect = case_data.meta_dict['drivername'].split('+')[0]
-        assert (dialect in _COMMIT_BLACKLIST_DIALECTS) == (
-            not case_data.meta_dict['sqlmagic_autocommit']
-        )
+        if isinstance(the_conn, SQLAlchemyConnection):
+            # Test get_sqla_engine() while here,
+            assert the_conn._engine is get_sqla_engine(expected_sql_cell_handle_name)
+            if expected_human_name:
+                # Can only work this way also if the datasource name was present in meta-json.
+                assert the_conn._engine is get_sqla_engine(expected_human_name)
+
+            if 'sqlmagic_autocommit' in case_data.meta_dict:
+                assert the_conn._needs_explicit_commit == (
+                    case_data.meta_dict['sqlmagic_autocommit']
+                )
 
     def test_broken_postgres_is_silent_noop(self, datasource_id):
         case_data = DatasourceJSONs(
