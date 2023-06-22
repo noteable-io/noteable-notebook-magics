@@ -4,19 +4,24 @@ import subprocess
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pkg_resources
 import structlog
-from sqlalchemy.engine import URL
 
 # ipython-sql thinks mighty highly of isself with this package name.
-from noteable.sql.connection import Connection, ConnectionRegistry, get_connection_registry
-from noteable.sql.sqlalchemy import SQLAlchemyConnection
+from noteable.sql.connection import (
+    Connection,
+    ConnectionRegistry,
+    get_connection_registry,
+    get_connection_class,
+)
+
+# Import all our known concrete Connection implementations.
+import noteable.sql.sqlalchemy  # noqa
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
-from noteable.datasource_postprocessing import post_processor_by_drivername
 
 logger = structlog.get_logger(__name__)
 
@@ -120,20 +125,12 @@ def bootstrap_datasource(
     pre_process_dict(dsn_dict)
     pre_process_dict(connect_args)
 
-    # XXX XXXX XXXX
-    # From here downward should be in each concrete subclass's __init__
-    # ('cept probably the ensure_requirements bit)
-    # Convert post_processor_by_drivername into registry of drivername -> Connection subclass
-    # Lots of this becomes common code in SQLAlchemyConnection. The ones not needing current
-    # post-processing can be registered explicitly to SQLAlchemyConnection and don't need
-    # own subclass. HOME STRETCH BAYBAY
+    # Late lookup the Connection subclass implementation registered for this drivername.
+    # Will raise KeyError if none are registered.
+    connection_class = get_connection_class(drivername)
 
-    # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
-    # before we make use of any of their contents. Post-processors may end up rejecting this
-    # configuration, so catch and handle just like a failure when calling Connection.set().
-    if drivername in post_processor_by_drivername:
-        post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[drivername]
-        post_processor(datasource_id, dsn_dict, create_engine_kwargs)
+    if hasattr(connection_class, 'preprocess_configuration'):
+        connection_class.preprocess_configuration(datasource_id, dsn_dict, create_engine_kwargs)
 
     # Ensure the required driver packages are installed already, or, if allowed,
     # install them on the fly.
@@ -143,26 +140,12 @@ def bootstrap_datasource(
         metadata['allow_datasource_dialect_autoinstall'],
     )
 
-    # Prepare connection URL string.
-    url_obj = URL.create(**dsn_dict)
-    connection_url = str(url_obj)
+    # Individual Connection classes don't need to be bothered with these.
+    del metadata['required_python_modules']
+    del metadata['allow_datasource_dialect_autoinstall']
 
-    # Register the connection + return it.
-    sql_cell_handle = f'@{datasource_id}'
-
-    # XXX Todo: polymorphy / mapping connection subclass to construct based on driver name
-    # will happen here once we have a class hierarchy. Until then, only exactly one class
-    # to construct!
-
-    connection = SQLAlchemyConnection(
-        sql_cell_handle=sql_cell_handle,
-        human_name=metadata['name'],
-        connection_url=connection_url,
-        needs_explicit_commit=metadata['sqlmagic_autocommit'],
-        **create_engine_kwargs,
-    )
-
-    return connection
+    # Construct + return Connection subclass instance.
+    return connection_class(f'@{datasource_id}', metadata, dsn_dict, create_engine_kwargs)
 
 
 ##

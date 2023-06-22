@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Dict, List, Optional, Protocol, TypeVar, runtime_checkable, Type
 
 import pandas as pd
 import sqlalchemy
@@ -19,6 +19,8 @@ __all__ = (
     'ResultSet',
     'Connection',
     'ConnectionRegistry',
+    'connection_class',
+    'get_connection_class',
 )
 
 logger = structlog.get_logger(__name__)
@@ -120,6 +122,32 @@ class BaseConnection(Connection):
         # Common bits to make it into base class when splittin this up into SQLA subclass and Random HTTP/Python Client API subclasses.
         self.sql_cell_handle = sql_cell_handle
         self.human_name = human_name
+
+
+# Dict of drivername -> Connection implementation
+_drivername_to_connection_type: Dict[str, Type[Connection]] = {}
+
+
+def connection_class(drivername: str):
+    """Decorator to register a concrete Connection implementation to use for the given driver"""
+
+    # Explicitly allows for overwriting any old binding so as to allow for notebook-side
+    # hotpatching.
+
+    def decorator_outer(clazz):
+        _drivername_to_connection_type[drivername] = clazz
+
+        return clazz
+
+    return decorator_outer
+
+
+def get_connection_class(drivername: str) -> Type[Connection]:
+    """Return the Connection implementation class registered for this driver.
+
+    Raises KeyError if no implementation is registered.
+    """
+    return _drivername_to_connection_type[drivername]
 
 
 ConnectionBootstrapper: TypeVar = Callable[[], Connection]
