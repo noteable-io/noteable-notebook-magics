@@ -22,32 +22,6 @@ class TestConnection:
 
 
 class TestConnectionRegistry:
-    def test_hates_null_connection(self):
-        registry = get_connection_registry()
-        with pytest.raises(ValueError, match='must be a Connection instance'):
-            registry.register(None)
-
-    def test_hates_double_registration(self, sqlite_database_connection):
-        # The sqlite_database_connection fixture will have already registered it.
-        registry = get_connection_registry()
-
-        handle, human_name = sqlite_database_connection
-
-        with pytest.raises(ValueError, match='is already registered'):
-            registry.register(Connection(handle, human_name, 'sqlite:///:memory:'))
-
-    def tests_hates_double_reported_bootstrapping_failures(self, sqlite_database_connection):
-        registry = get_connection_registry()
-
-        handle, human_name = sqlite_database_connection
-
-        with pytest.raises(
-            ValueError, match='s already defined, but now reporting bootstrapping failure'
-        ):
-            registry.add_bootstrapping_failure(
-                handle, human_name, 'Whacktastical late error reporting, Batman!'
-            )
-
     def test_can_find_by_either_sql_cell_handle_or_human_name(self, sqlite_database_connection):
         registry = get_connection_registry()
 
@@ -56,6 +30,44 @@ class TestConnectionRegistry:
         assert registry.get(handle) == registry.get(human_name) and isinstance(
             registry.get(handle), Connection
         )
+
+    def test_register_datasource_bootstrapper_hates_malformed_cell_handle(self):
+        with pytest.raises(ValueError, match='sql_cell_handle must be provided and start with "@"'):
+            get_connection_registry().register_datasource_bootstrapper('bad', 'foo', lambda: None)
+
+    def test_register_datasource_bootstrapper_hates_bootstrapper_not_callable(self):
+        with pytest.raises(
+            TypeError, match='Data connection bootstrapper functions must be zero-arg callables'
+        ):
+            get_connection_registry().register_datasource_bootstrapper('@bad', 'foo', None)
+
+    def test_registry_hates_if_bootstrapper_returns_non_connection(self):
+        registry = get_connection_registry()
+
+        registry.register_datasource_bootstrapper('@123', '123', lambda: None)
+        with pytest.raises(TypeError, match='returned something other than a Connection instance'):
+            registry.get('@123')
+
+    def test_register_hates_null_connection(self):
+        registry = get_connection_registry()
+        with pytest.raises(ValueError, match='must be a Connection instance'):
+            registry._register(None)
+
+    def test_register_hates_double_registration(self, sqlite_database_connection):
+        # The sqlite_database_connection fixture will have already registered it.
+        registry = get_connection_registry()
+
+        handle, human_name = sqlite_database_connection
+
+        # Force the already queued-for-bootstrapping mapping to make it all the way ...
+        registry.get(handle)
+
+        # Will first complain about the handle collision
+        with pytest.raises(ValueError, match=f'with handle {handle} is already registered'):
+            registry._register(Connection(handle, human_name, 'sqlite:///:memory:'))
+
+        with pytest.raises(ValueError, match=f'with human name {human_name} is already registered'):
+            registry._register(Connection(handle + 'sdfsdf', human_name, 'sqlite:///:memory:'))
 
 
 class TestGetNoteableConnection:
