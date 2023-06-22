@@ -13,7 +13,7 @@ import certifi
 import requests
 import sqlalchemy
 import structlog
-from sqlalchemy.engine import URL, Dialect
+from sqlalchemy.engine import URL, CursorResult, Dialect
 
 from .connection import BaseConnection, ResultSet, connection_class
 
@@ -22,7 +22,7 @@ logger = structlog.get_logger(__name__)
 
 class SQLAlchemyResult(ResultSet):
     """
-    Results of a SQL query.
+    Results of a query from SQLAlchemy.
     """
 
     # Result of a SELECT or perhaps INSERT INTO ... RETURNING projecting a result set.
@@ -34,7 +34,7 @@ class SQLAlchemyResult(ResultSet):
 
     has_results_to_report: bool = True
 
-    def __init__(self, sqla_result):
+    def __init__(self, sqla_result: CursorResult):
         # Check for non-empty list of keys in addition to returns_rows flag.
 
         # NOTE: Clickhouse does funky things with INSERT/UPDATE/DELETE statements
@@ -54,11 +54,11 @@ class SQLAlchemyResult(ResultSet):
 
 
 @connection_class('duckdb')
-@connection_class('redshift+redshift_connector')
-@connection_class('trino')
 @connection_class('mysql+pymysql')
 @connection_class('mysql+mysqldb')
+@connection_class('redshift+redshift_connector')
 @connection_class('singlestoredb')
+@connection_class('trino')
 class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
@@ -174,51 +174,37 @@ class SQLAlchemyConnection(BaseConnection):
         pass
 
 
-@connection_class('cockroachdb')
-@connection_class('postgresql')
-class PostgreSQLConnection(SQLAlchemyConnection):
-    needs_explicit_commit = False
-    _installed_psycopg2_interrupt_fix: bool = False
+###
+# Now come all of the SQLAlchemy-based implementations that needed to override some behavior.
+# Please keep in alphabetical order.
+###
 
+
+@connection_class('awsathena+rest')
+class AwsAthenaConnection(SQLAlchemyConnection):
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
     ) -> None:
-        """Install fix for ENG-4327 (cannot interrupt kernels doing SQL queries)
-        for PostgreSQL.
+        """Postprocess awsathena details:
 
-        psycopg2 is ultimately a wrapper around libpq, which when performing a
-        query, ends up blocking delivery of KeyboardInterrupt aka SIGINT.
+            1. Host will be just the region name. Expand to -> athena.{region_name}.amazonaws.com
+            2. Username + password will be AWS access key id + secret value. Needs to be quote_plus protected.
+            3. Likewise the 's3_staging_dir' present in create_engine_kwargs.
 
-        However, registering a `wait_callback`, will cause psycopg2 to use
-        libpq's nonblocking query interface, which in conjunction with
-        `wait_select` will allow KeyboardInterrupt to, well, interrupt long-running
-        queries.
-
-        https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
-        (as of Aug 2022)
-
-        This was discovered from expecting that other people have complained about this
-        issue, and lo and behold, https://github.com/psycopg/psycopg2/issues/333, with bottom
-        line:
-
-            For people finding this from the Internet, on recent versions of the library, use this:
-                psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
-
-        Thanks, internet stranger!
+        See https://github.com/laughingman7743/PyAthena/
         """
 
-        cls._install_psycopg2_interrupt_fix()
+        # 1. Flesh out host
+        dsn_dict['host'] = f"athena.{dsn_dict['host']}.amazonaws.com"
 
-    @classmethod
-    def _install_psycopg2_interrupt_fix(cls):
-        if not cls._installed_psycopg2_interrupt_fix:
-            import psycopg2.extensions
-            import psycopg2.extras
+        # 2. quote_plus username / password
+        dsn_dict['username'] = quote_plus(dsn_dict['username'])
+        dsn_dict['password'] = quote_plus(dsn_dict['password'])
 
-            psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
-
-            cls._installed_psycopg2_interrupt_fix = True
+        # 3. quote_plus s3_staging_dir
+        connect_args = create_engine_kwargs['connect_args']
+        connect_args['s3_staging_dir'] = quote_plus(connect_args['s3_staging_dir'])
 
 
 @connection_class('bigquery')
@@ -275,6 +261,157 @@ class BigQueryConnection(SQLAlchemyConnection):
             # 2.3. Record pathname as new key in create_engine_kwargs. Yay, BQ connections
             # might work now!
             create_engine_kwargs['credentials_path'] = path.as_posix()
+
+
+@connection_class('clickhouse+http')
+class ClickhouseConnection(SQLAlchemyConnection):
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        connect_args = create_engine_kwargs["connect_args"]
+
+        # These are the enum options from the JSON schema for the dropdown titled "Secure Connection (HTTPS)"
+        # Convert them to the values that the clickhouse driver expects.
+        secure_connection = connect_args.pop("secure_connection")
+        if secure_connection == "Yes, use HTTPS":
+            query = {"protocol": "https", "verify": "False"}
+        elif secure_connection == "Yes, use HTTPS and verify server certificate":
+            query = {"protocol": "https", "verify": certifi.where()}
+        elif secure_connection == "No, use HTTP":
+            query = {"protocol": "http", "verify": "False"}
+        else:
+            raise ValueError(
+                f"Unexpected value for secure_connection: {secure_connection}. "
+                "Expected one of: "
+                '"Yes, use HTTPS", '
+                '"Yes, use HTTPS and verify server certificate", '
+                '"No, use HTTP"'
+            )
+
+        # https://clickhouse-sqlalchemy.readthedocs.io/en/latest/connection.html#http
+        # The `protocol` and `verify` options need to be passed as
+        # query parameters to the URL and not as connect_args to create_engine.
+        # It simply doesn't work if they are passed as connect_args.
+        # Why? That is left as an exercise for the reader.
+        dsn_dict["query"] = query
+
+
+@connection_class('databricks+connector')
+class DatabricksConnection(SQLAlchemyConnection):
+    DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 10
+
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        """ENG-5517: If cluser_id is present, and `databricks-connect` is in the path, then
+        set up and run it.
+
+        Also be sure to purge cluster_id, org_id, port from connect_args portion of create_engine_kwargs,
+        in that these fields were added for only going into this side effect.
+        """
+
+        cluster_id_key = 'cluster_id'
+        connect_file_opt_keys = [cluster_id_key, 'org_id', 'port']
+
+        # Collect data to drive databricks-connect if we've got a cluster_id and script is in $PATH.
+        connect_args = create_engine_kwargs['connect_args']
+        # Only wanted for getting connect_args. Any additional dereferencing is a bug.
+        del create_engine_kwargs
+
+        if cluster_id_key in connect_args and shutil.which('databricks-connect'):
+            # host, token (actually, our password field) come from dsn_dict.
+            # (and what databricks-connect wants as 'host' is actually a https:// URL. Sigh.)
+            args = {
+                'host': f'https://{dsn_dict["host"]}/',
+                'token': dsn_dict['password'],
+            }
+            for key in connect_file_opt_keys:
+                if key in connect_args:
+                    args[key] = connect_args[key]
+
+            connect_file_path = Path(os.environ['HOME']) / '.databricks-connect'
+
+            # rm -f any preexisting file.
+            if connect_file_path.exists():
+                connect_file_path.unlink()
+
+            p = Popen(['databricks-connect', 'configure'], stdout=PIPE, stdin=PIPE, stderr=PIPE)
+            try:
+                _stdout, stderr = p.communicate(
+                    # Indention ugly so as to not prefix each input with whitespace.
+                    # And oh, be sure to have a newline betwen each input into the 'interactive' script.
+                    input=f"""y
+{args['host']}
+{args['token']}
+{args[cluster_id_key]}
+{args['org_id']}
+{args['port']}""".encode(),
+                    timeout=cls.DATABRICKS_CONNECT_SCRIPT_TIMEOUT,
+                )
+            except TimeoutExpired:
+                raise ValueError(
+                    f'databricks-connect took longer than {cls.DATABRICKS_CONNECT_SCRIPT_TIMEOUT} seconds to complete.'
+                )
+
+            if p.returncode != 0:
+                # Failed to exectute the script. Raise an exception.
+                raise ValueError(
+                    "Failed to execute databricks-connect configure script: " + stderr.decode()
+                )
+
+        # Always be sure to purge these only-for-databricks-connect file args from connect_args,
+        # even if not all were present.
+        for key in connect_file_opt_keys:
+            connect_args.pop(key, '')
+
+
+@connection_class('cockroachdb')
+@connection_class('postgresql')
+class PostgreSQLConnection(SQLAlchemyConnection):
+    needs_explicit_commit = False
+    _installed_psycopg2_interrupt_fix: bool = False
+
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        """Install fix for ENG-4327 (cannot interrupt kernels doing SQL queries)
+        for PostgreSQL.
+
+        psycopg2 is ultimately a wrapper around libpq, which when performing a
+        query, ends up blocking delivery of KeyboardInterrupt aka SIGINT.
+
+        However, registering a `wait_callback`, will cause psycopg2 to use
+        libpq's nonblocking query interface, which in conjunction with
+        `wait_select` will allow KeyboardInterrupt to, well, interrupt long-running
+        queries.
+
+        https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
+        (as of Aug 2022)
+
+        This was discovered from expecting that other people have complained about this
+        issue, and lo and behold, https://github.com/psycopg/psycopg2/issues/333, with bottom
+        line:
+
+            For people finding this from the Internet, on recent versions of the library, use this:
+                psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+        Thanks, internet stranger!
+        """
+
+        cls._install_psycopg2_interrupt_fix()
+
+    @classmethod
+    def _install_psycopg2_interrupt_fix(cls):
+        if not cls._installed_psycopg2_interrupt_fix:
+            import psycopg2.extensions
+            import psycopg2.extras
+
+            psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+            cls._installed_psycopg2_interrupt_fix = True
 
 
 @connection_class('snowflake')
@@ -371,137 +508,6 @@ class SQLiteConnection(SQLAlchemyConnection):
                 raise ValueError(
                     f'SQLite database files should be located within /tmp, got "{cur_path}"'
                 )
-
-
-@connection_class('awsathena+rest')
-class AwsAthenaConnection(SQLAlchemyConnection):
-    @classmethod
-    def preprocess_configuration(
-        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
-    ) -> None:
-        """Postprocess awsathena details:
-
-            1. Host will be just the region name. Expand to -> athena.{region_name}.amazonaws.com
-            2. Username + password will be AWS access key id + secret value. Needs to be quote_plus protected.
-            3. Likewise the 's3_staging_dir' present in create_engine_kwargs.
-
-        See https://github.com/laughingman7743/PyAthena/
-        """
-
-        # 1. Flesh out host
-        dsn_dict['host'] = f"athena.{dsn_dict['host']}.amazonaws.com"
-
-        # 2. quote_plus username / password
-        dsn_dict['username'] = quote_plus(dsn_dict['username'])
-        dsn_dict['password'] = quote_plus(dsn_dict['password'])
-
-        # 3. quote_plus s3_staging_dir
-        connect_args = create_engine_kwargs['connect_args']
-        connect_args['s3_staging_dir'] = quote_plus(connect_args['s3_staging_dir'])
-
-
-@connection_class('databricks+connector')
-class DatabricksConnection(SQLAlchemyConnection):
-    DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 10
-
-    @classmethod
-    def preprocess_configuration(
-        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
-    ) -> None:
-        """ENG-5517: If cluser_id is present, and `databricks-connect` is in the path, then
-        set up and run it.
-
-        Also be sure to purge cluster_id, org_id, port from connect_args portion of create_engine_kwargs,
-        in that these fields were added for only going into this side effect.
-        """
-
-        cluster_id_key = 'cluster_id'
-        connect_file_opt_keys = [cluster_id_key, 'org_id', 'port']
-
-        # Collect data to drive databricks-connect if we've got a cluster_id and script is in $PATH.
-        connect_args = create_engine_kwargs['connect_args']
-        # Only wanted for getting connect_args. Any additional dereferencing is a bug.
-        del create_engine_kwargs
-
-        if cluster_id_key in connect_args and shutil.which('databricks-connect'):
-            # host, token (actually, our password field) come from dsn_dict.
-            # (and what databricks-connect wants as 'host' is actually a https:// URL. Sigh.)
-            args = {
-                'host': f'https://{dsn_dict["host"]}/',
-                'token': dsn_dict['password'],
-            }
-            for key in connect_file_opt_keys:
-                if key in connect_args:
-                    args[key] = connect_args[key]
-
-            connect_file_path = Path(os.environ['HOME']) / '.databricks-connect'
-
-            # rm -f any preexisting file.
-            if connect_file_path.exists():
-                connect_file_path.unlink()
-
-            p = Popen(['databricks-connect', 'configure'], stdout=PIPE, stdin=PIPE, stderr=PIPE)
-            try:
-                _stdout, stderr = p.communicate(
-                    # Indention ugly so as to not prefix each input with whitespace.
-                    # And oh, be sure to have a newline betwen each input into the 'interactive' script.
-                    input=f"""y
-{args['host']}
-{args['token']}
-{args[cluster_id_key]}
-{args['org_id']}
-{args['port']}""".encode(),
-                    timeout=cls.DATABRICKS_CONNECT_SCRIPT_TIMEOUT,
-                )
-            except TimeoutExpired:
-                raise ValueError(
-                    f'databricks-connect took longer than {cls.DATABRICKS_CONNECT_SCRIPT_TIMEOUT} seconds to complete.'
-                )
-
-            if p.returncode != 0:
-                # Failed to exectute the script. Raise an exception.
-                raise ValueError(
-                    "Failed to execute databricks-connect configure script: " + stderr.decode()
-                )
-
-        # Always be sure to purge these only-for-databricks-connect file args from connect_args,
-        # even if not all were present.
-        for key in connect_file_opt_keys:
-            connect_args.pop(key, '')
-
-
-@connection_class('clickhouse+http')
-class ClickhouseConnection(SQLAlchemyConnection):
-    @classmethod
-    def preprocess_configuration(
-        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
-    ) -> None:
-        connect_args = create_engine_kwargs["connect_args"]
-
-        # These are the enum options from the JSON schema for the dropdown titled "Secure Connection (HTTPS)"
-        # Convert them to the values that the clickhouse driver expects.
-        secure_connection = connect_args.pop("secure_connection")
-        if secure_connection == "Yes, use HTTPS":
-            query = {"protocol": "https", "verify": "False"}
-        elif secure_connection == "Yes, use HTTPS and verify server certificate":
-            query = {"protocol": "https", "verify": certifi.where()}
-        elif secure_connection == "No, use HTTP":
-            query = {"protocol": "http", "verify": "False"}
-        else:
-            raise ValueError(
-                f"Unexpected value for secure_connection: {secure_connection}. "
-                "Expected one of: "
-                '"Yes, use HTTPS", '
-                '"Yes, use HTTPS and verify server certificate", '
-                '"No, use HTTP"'
-            )
-
-        # https://clickhouse-sqlalchemy.readthedocs.io/en/latest/connection.html#http
-        # The `protocol` and `verify` options need to be passed as
-        # query parameters to the URL and not as connect_args to create_engine.
-        # It simply doesn't work if they are passed as connect_args.
-        # Why? That is left as an exercise for the reader.
-        dsn_dict["query"] = query
 
 
 @connection_class('mssql+pyodbc')

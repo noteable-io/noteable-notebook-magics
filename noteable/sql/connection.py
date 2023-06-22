@@ -40,20 +40,25 @@ class SQLAlchemyUnsupportedError(Exception):
 
 class ResultSet(Protocol):
     """
-    Results of a query against a data connection.
+    Results of a query against any kind of data connection / connection type.
     """
 
-    # Result of a SELECT or perhaps INSERT INTO ... RETURNING projecting a result set.
     keys: Optional[List[str]]
-    rows: Optional[list]
+    """Column names from the result, if any"""
 
+    rows: Optional[list]
+    """List of rows from the result, if any. Each row should be len(keys) long."""
     # In case of an INSERT, UPDATE, or DELETE statement.
+
     rowcount: Optional[int]
+    """How many rows were affected by an INSERT/UPDATE/DELETE sort of statement?"""
 
     has_results_to_report: bool
+    """Most queries will have results to report, but CREATE TABLE and other DDLs may not."""
 
     @property
     def is_scalar_value(self) -> bool:
+        """Is result expressable as a single scalar value w/o losing any information?"""
         return self.has_results_to_report and (
             (self.rowcount is not None) or (len(self.rows) == 1 and len(self.rows[0]) == 1)
         )
