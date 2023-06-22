@@ -1,27 +1,21 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-
 import os
 import shutil
 from base64 import b64decode
 from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
 from tempfile import NamedTemporaryFile
-
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus, urlparse
 
 import certifi
 import requests
-import structlog
-
-
 import sqlalchemy
-from sqlalchemy.engine import Dialect
-from sqlalchemy.engine import URL
+import structlog
+from sqlalchemy.engine import URL, Dialect
 
 from .connection import BaseConnection, ResultSet, connection_class
-
 
 logger = structlog.get_logger(__name__)
 
@@ -69,8 +63,8 @@ class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
     is_sqlalchemy_based: bool = True
+    need_explicit_commit: bool = True
 
-    _needs_explicit_commit: bool = True
     """Do we need to explicitly commit() after executing a statement? See `execute()`"""
 
     def __init__(
@@ -111,7 +105,7 @@ class SQLAlchemyConnection(BaseConnection):
         super().__init__(cell_handle, human_name)
 
         if 'sqlmagic_autocommit' in metadata:
-            self._needs_explicit_commit = metadata['sqlmagic_autocommit']
+            self.needs_explicit_commit = metadata['sqlmagic_autocommit']
 
         connection_url = str(URL.create(**dsn_dict))
 
@@ -126,7 +120,7 @@ class SQLAlchemyConnection(BaseConnection):
 
         result = sqla_connection.execute(sqlalchemy.sql.text(statement), bind_dict)
 
-        if self._needs_explicit_commit:
+        if self.needs_explicit_commit:
             sqla_connection.execute("commit")
 
         return SQLAlchemyResult(result)
@@ -183,6 +177,7 @@ class SQLAlchemyConnection(BaseConnection):
 @connection_class('cockroachdb')
 @connection_class('postgresql')
 class PostgreSQLConnection(SQLAlchemyConnection):
+    needs_explicit_commit = False
     _installed_psycopg2_interrupt_fix: bool = False
 
     @classmethod
@@ -307,7 +302,7 @@ class SnowflakeConnection(SQLAlchemyConnection):
 
 @connection_class('sqlite')
 class SQLiteConnection(SQLAlchemyConnection):
-    _needs_explicit_commit: False
+    needs_explicit_commit = False
 
     @classmethod
     def preprocess_configuration(
@@ -380,8 +375,6 @@ class SQLiteConnection(SQLAlchemyConnection):
 
 @connection_class('awsathena+rest')
 class AwsAthenaConnection(SQLAlchemyConnection):
-    _needs_explicit_commit = True
-
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -479,8 +472,6 @@ class DatabricksConnection(SQLAlchemyConnection):
 
 @connection_class('clickhouse+http')
 class ClickhouseConnection(SQLAlchemyConnection):
-    _needs_explicit_commit = True
-
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -515,8 +506,6 @@ class ClickhouseConnection(SQLAlchemyConnection):
 
 @connection_class('mssql+pyodbc')
 class MsSqlConnection(SQLAlchemyConnection):
-    _needs_explicit_commit = True
-
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]

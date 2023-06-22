@@ -330,10 +330,16 @@ def cockroach_database_connection(
 
     session_durable_registry._register(
         PostgreSQLConnection(
-            sql_cell_handle=COCKROACH_HANDLE,
-            human_name=human_name,
-            connection_url=managed_cockroach.sync_dsn,
-            needs_explicit_commit=False,
+            COCKROACH_HANDLE,
+            {'name': human_name, 'drivername': 'cockroachdb'},
+            {
+                'username': managed_cockroach.username,
+                'host': managed_cockroach.hostname,
+                'port': managed_cockroach.sql_port,
+                'database': managed_cockroach.dbname,
+                'drivername': 'cockroachdb',
+            },
+            {},
         )
     )
 
@@ -360,11 +366,17 @@ def bad_port_number_cockroach_connection(
     human_name = "Bad Port Number Cockroach"
 
     session_durable_registry._register(
-        SQLAlchemyConnection(
-            sql_cell_handle=BAD_COCKROACH_HANDLE,
-            human_name=human_name,
-            connection_url=bad_cockroach_details.sync_dsn,
-            needs_explicit_commit=False,
+        PostgreSQLConnection(
+            BAD_COCKROACH_HANDLE,
+            {'name': human_name, 'drivername': 'cockroachdb'},
+            {
+                'username': bad_cockroach_details.username,
+                'host': bad_cockroach_details.hostname,
+                'port': bad_cockroach_details.sql_port,
+                'database': bad_cockroach_details.dbname,
+                'drivername': 'cockroachdb',
+            },
+            {},
         )
     )
 

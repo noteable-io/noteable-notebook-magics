@@ -17,15 +17,13 @@ from noteable import datasources
 from noteable.logging import configure_logging
 from noteable.sql.connection import Connection, get_connection_registry, get_sqla_engine
 from noteable.sql.sqlalchemy import (
-    SQLAlchemyConnection,
-    PostgreSQLConnection,
-    BigQueryConnection,
-    SnowflakeConnection,
-    SQLiteConnection,
     AwsAthenaConnection,
-    DatabricksConnection,
     ClickhouseConnection,
+    DatabricksConnection,
     MsSqlConnection,
+    SnowflakeConnection,
+    SQLAlchemyConnection,
+    SQLiteConnection,
 )
 from tests.conftest import DatasourceJSONs
 
@@ -492,7 +490,7 @@ class TestBootstrapDatasource:
                 assert the_conn._engine is get_sqla_engine(expected_human_name)
 
             if 'sqlmagic_autocommit' in case_data.meta_dict:
-                assert the_conn._needs_explicit_commit == (
+                assert the_conn.needs_explicit_commit == (
                     case_data.meta_dict['sqlmagic_autocommit']
                 )
 

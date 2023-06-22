@@ -9,16 +9,15 @@ from typing import Any, Dict, List, Optional, Union
 import pkg_resources
 import structlog
 
+# Import all our known concrete Connection implementations.
+import noteable.sql.sqlalchemy  # noqa
 # ipython-sql thinks mighty highly of isself with this package name.
 from noteable.sql.connection import (
     Connection,
     ConnectionRegistry,
-    get_connection_registry,
     get_connection_class,
+    get_connection_registry,
 )
-
-# Import all our known concrete Connection implementations.
-import noteable.sql.sqlalchemy  # noqa
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
