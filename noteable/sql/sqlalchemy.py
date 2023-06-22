@@ -53,7 +53,6 @@ class SQLAlchemyResult(ResultSet):
             self.has_results_to_report = False
 
 
-@connection_class('duckdb')
 @connection_class('mysql+pymysql')
 @connection_class('mysql+mysqldb')
 @connection_class('redshift+redshift_connector')
@@ -63,7 +62,7 @@ class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
     is_sqlalchemy_based: bool = True
-    need_explicit_commit: bool = True
+    needs_explicit_commit: bool = True
 
     """Do we need to explicitly commit() after executing a statement? See `execute()`"""
 
@@ -367,6 +366,42 @@ class DatabricksConnection(SQLAlchemyConnection):
             connect_args.pop(key, '')
 
 
+@connection_class('duckdb')
+class DuckDBConnection(SQLAlchemyConnection):
+    needs_explicit_commit = False
+
+
+@connection_class('mssql+pyodbc')
+class MsSqlConnection(SQLAlchemyConnection):
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        connect_args = create_engine_kwargs["connect_args"]
+
+        # If the user has asked to verify the server certificate, then we should not trust it
+        # (i.e. set TrustServerCertificate=no), and vice versa.
+        # It's a bit counterintuitive, but that's how it works.
+        # https://learn.microsoft.com/en-us/sql/relational-databases/native-client-odbc-api/sqlsetconnectattr?view=sql-server-ver16#sql_copt_ss_trust_server_certificate
+        if connect_args.pop("verify"):
+            connect_args["TrustServerCertificate"] = "no"
+        else:
+            connect_args["TrustServerCertificate"] = "yes"
+
+        # Static options that are always set.
+        connect_args.update(
+            {
+                # This is the driver package installed in the polymorph base image - msodbcsql18
+                "Driver": "ODBC Driver 18 for SQL Server",
+                # https://learn.microsoft.com/en-us/sql/connect/odbc/dsn-connection-string-attribute?view=sql-server-ver16#authentication---sql_copt_ss_authentication
+                # SQL Server authentication with username and password.
+                "Authentication": "SqlPassword",
+                # Default for ODBC Driver 18+
+                "Encrypt": "yes",
+            }
+        )
+
+
 @connection_class('cockroachdb')
 @connection_class('postgresql')
 class PostgreSQLConnection(SQLAlchemyConnection):
@@ -508,34 +543,3 @@ class SQLiteConnection(SQLAlchemyConnection):
                 raise ValueError(
                     f'SQLite database files should be located within /tmp, got "{cur_path}"'
                 )
-
-
-@connection_class('mssql+pyodbc')
-class MsSqlConnection(SQLAlchemyConnection):
-    @classmethod
-    def preprocess_configuration(
-        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
-    ) -> None:
-        connect_args = create_engine_kwargs["connect_args"]
-
-        # If the user has asked to verify the server certificate, then we should not trust it
-        # (i.e. set TrustServerCertificate=no), and vice versa.
-        # It's a bit counterintuitive, but that's how it works.
-        # https://learn.microsoft.com/en-us/sql/relational-databases/native-client-odbc-api/sqlsetconnectattr?view=sql-server-ver16#sql_copt_ss_trust_server_certificate
-        if connect_args.pop("verify"):
-            connect_args["TrustServerCertificate"] = "no"
-        else:
-            connect_args["TrustServerCertificate"] = "yes"
-
-        # Static options that are always set.
-        connect_args.update(
-            {
-                # This is the driver package installed in the polymorph base image - msodbcsql18
-                "Driver": "ODBC Driver 18 for SQL Server",
-                # https://learn.microsoft.com/en-us/sql/connect/odbc/dsn-connection-string-attribute?view=sql-server-ver16#authentication---sql_copt_ss_authentication
-                # SQL Server authentication with username and password.
-                "Authentication": "SqlPassword",
-                # Default for ODBC Driver 18+
-                "Encrypt": "yes",
-            }
-        )

@@ -11,6 +11,7 @@ import structlog
 
 # Import all our known concrete Connection implementations.
 import noteable.sql.sqlalchemy  # noqa
+
 # ipython-sql thinks mighty highly of isself with this package name.
 from noteable.sql.connection import (
     Connection,
@@ -230,7 +231,7 @@ LOCAL_DB_CONN_NAME = "Local Database"
 
 def local_duckdb_bootstrapper() -> Connection:
     """Return the noteable.sql.connection.Connection to use for local memory DuckDB."""
-    return noteable.sql.sqlalchemy.SQLAlchemyConnection(
+    return noteable.sql.sqlalchemy.DuckDBConnection(
         LOCAL_DB_CONN_HANDLE,
         {'name': LOCAL_DB_CONN_NAME},
         {'drivername': 'duckdb', 'database': ':memory:'},
