@@ -11,7 +11,6 @@ import structlog
 
 # Import all our known concrete Connection implementations.
 import noteable.sql.sqlalchemy  # noqa
-
 # ipython-sql thinks mighty highly of isself with this package name.
 from noteable.sql.connection import (
     Connection,
