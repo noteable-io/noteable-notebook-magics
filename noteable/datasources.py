@@ -4,19 +4,23 @@ import subprocess
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pkg_resources
 import structlog
-from sqlalchemy.engine import URL
 
+# Import all our known concrete Connection implementations.
+import noteable.sql.sqlalchemy  # noqa
 # ipython-sql thinks mighty highly of isself with this package name.
-from noteable.sql.connection import Connection, ConnectionRegistry, get_connection_registry
-from noteable.sql.run import add_commit_blacklist_dialect
+from noteable.sql.connection import (
+    Connection,
+    ConnectionRegistry,
+    get_connection_class,
+    get_connection_registry,
+)
 
 DEFAULT_SECRETS_DIR = Path('/vault/secrets')
 
-from noteable.datasource_postprocessing import post_processor_by_drivername
 
 logger = structlog.get_logger(__name__)
 
@@ -120,12 +124,12 @@ def bootstrap_datasource(
     pre_process_dict(dsn_dict)
     pre_process_dict(connect_args)
 
-    # Do any per-drivername post-processing of and dsn_dict and create_engine_kwargs
-    # before we make use of any of their contents. Post-processors may end up rejecting this
-    # configuration, so catch and handle just like a failure when calling Connection.set().
-    if drivername in post_processor_by_drivername:
-        post_processor: Callable[[str, dict, dict], None] = post_processor_by_drivername[drivername]
-        post_processor(datasource_id, dsn_dict, create_engine_kwargs)
+    # Late lookup the Connection subclass implementation registered for this drivername.
+    # Will raise KeyError if none are registered.
+    connection_class = get_connection_class(drivername)
+
+    if hasattr(connection_class, 'preprocess_configuration'):
+        connection_class.preprocess_configuration(datasource_id, dsn_dict, create_engine_kwargs)
 
     # Ensure the required driver packages are installed already, or, if allowed,
     # install them on the fly.
@@ -135,41 +139,12 @@ def bootstrap_datasource(
         metadata['allow_datasource_dialect_autoinstall'],
     )
 
-    # Prepare connection URL string.
-    url_obj = URL.create(**dsn_dict)
-    connection_url = str(url_obj)
+    # Individual Connection classes don't need to be bothered with these.
+    del metadata['required_python_modules']
+    del metadata['allow_datasource_dialect_autoinstall']
 
-    # XXX TODO, make a mixin for future SQLAlchemy DisableAutoCommit subclasses incorporating
-    # this particular need. A good look for the end game here may be that most all of this
-    # 'bootstrapping datasource' code will be within either the Connection base class stuff, unifying
-    # this module with Connection module, or perhaps a slightly parallel class hierarchy for
-    # the bootstrapping class corresponding to the Connection subtype registered for the
-    # drivername field?
-
-    # Do we need to tell sql-magic to not try to emit a COMMIT after each statement
-    # according to the needs of this driver?
-    if not metadata['sqlmagic_autocommit']:
-        # A sqlalchemy drivername may be comprised of 'dialect+drivername', such as
-        # 'databricks+connector'.
-        # If so, then we must only pass along the LHS of the '+'.
-        dialect = metadata['drivername'].split('+')[0]
-        add_commit_blacklist_dialect(dialect)
-
-    # Register the connection + return it.
-    sql_cell_handle = f'@{datasource_id}'
-
-    # XXX Todo: polymorphy / mapping connection subclass to construct based on driver name
-    # will happen here once we have a class hierarchy. Until then, only exactly one class
-    # to construct!
-
-    connection = Connection(
-        sql_cell_handle=sql_cell_handle,
-        human_name=metadata['name'],
-        connection_url=connection_url,
-        **create_engine_kwargs,
-    )
-
-    return connection
+    # Construct + return Connection subclass instance.
+    return connection_class(f'@{datasource_id}', metadata, dsn_dict, create_engine_kwargs)
 
 
 ##
@@ -251,15 +226,14 @@ def pre_process_dict(the_dict: Dict[str, Any]) -> None:
 
 LOCAL_DB_CONN_HANDLE = "@noteable"
 LOCAL_DB_CONN_NAME = "Local Database"
-DUCKDB_LOCATION = "duckdb:///:memory:"
 
 
 def local_duckdb_bootstrapper() -> Connection:
     """Return the noteable.sql.connection.Connection to use for local memory DuckDB."""
-    return Connection(
-        sql_cell_handle=LOCAL_DB_CONN_HANDLE,
-        human_name=LOCAL_DB_CONN_NAME,
-        connection_url=DUCKDB_LOCATION,
+    return noteable.sql.sqlalchemy.DuckDBConnection(
+        LOCAL_DB_CONN_HANDLE,
+        {'name': LOCAL_DB_CONN_NAME},
+        {'drivername': 'duckdb', 'database': ':memory:'},
     )
 
 

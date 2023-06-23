@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Protocol, Type, TypeVar, runtime_checkable
 
+import pandas as pd
 import sqlalchemy
 import sqlalchemy.engine.base
 import structlog
@@ -13,6 +14,13 @@ __all__ = (
     'get_sqla_connection',
     'get_sqla_engine',
     'ConnectionBootstrapper',
+    'UnknownConnectionError',
+    'SQLAlchemyUnsupportedError',
+    'ResultSet',
+    'Connection',
+    'ConnectionRegistry',
+    'connection_class',
+    'get_connection_class',
 )
 
 logger = structlog.get_logger(__name__)
@@ -30,37 +38,86 @@ class SQLAlchemyUnsupportedError(Exception):
     pass
 
 
-class Connection:
+class ResultSet(Protocol):
+    """
+    Results of a query against any kind of data connection / connection type.
+    """
+
+    keys: Optional[List[str]]
+    """Column names from the result, if any"""
+
+    rows: Optional[list]
+    """List of rows from the result, if any. Each row should be len(keys) long."""
+    # In case of an INSERT, UPDATE, or DELETE statement.
+
+    rowcount: Optional[int]
+    """How many rows were affected by an INSERT/UPDATE/DELETE sort of statement?"""
+
+    has_results_to_report: bool
+    """Most queries will have results to report, but CREATE TABLE and other DDLs may not."""
+
+    @property
+    def is_scalar_value(self) -> bool:
+        """Is result expressable as a single scalar value w/o losing any information?"""
+        return self.has_results_to_report and (
+            (self.rowcount is not None) or (len(self.rows) == 1 and len(self.rows[0]) == 1)
+        )
+
+    @property
+    def scalar_value(self):
+        """Return either the only row / column value, or the affected num of rows
+        from an INSERT/DELETE/UPDATE statement as bare scalar"""
+
+        # Should only be called if self.is_scalar_value
+        if self.rowcount is not None:
+            return self.rowcount
+        else:
+            return self.rows[0][0]
+
+    @property
+    def can_become_dataframe(self) -> bool:
+        return self.has_results_to_report and self.rows is not None
+
+    def to_dataframe(self) -> pd.DataFrame:
+        "Returns a Pandas DataFrame instance built from the result set, if possible."
+
+        # Should only be called if self.can_become_dataframe is True
+
+        # Worst case will be a zero row but defined columns dataframe.
+        return pd.DataFrame(self.rows, columns=self.keys)
+
+
+@runtime_checkable
+class Connection(Protocol):
+    """Protocol defining all Noteable Data Connection implementations"""
+
     sql_cell_handle: str
     """Machine-accessible name/id, aka @35647345345345 ..."""
+
     human_name: str
     """Human assigned datasource name"""
 
-    def __init__(
-        self, sql_cell_handle: str, human_name: str, connection_url: str, **create_engine_kwargs
-    ):
-        """
-        Construct a new 'connection', which in reality is a sqla Engine
-        plus some convienent metadata.
+    is_sqlalchemy_based: bool
+    """Is this conection implemented on top of SQLAlchemy?"""
 
-        Common args to go into the create_engine call (and therefore need to be
-        passed in within `create_engine_kwargs`) include:
+    # Lifecycle methods
 
-          * create_engine_kwargs: SQLA will pass these down to its call to create the DBAPI-level
-                            connection class when new low-level connections are
-                            established.
+    def execute(self, statement: str, bind_dict: Dict[str, Any]) -> ResultSet:
+        """Execute this statement, possibly interpolating the values in bind_dict"""
+        ...  # pragma: no cover
 
-        No SQLA-level connection is immediately established (see the `sqla_connection` property).
+    def close(self) -> None:
+        """Close any resources currently allocated to this connection"""
+        ...  # pragma: no cover
 
-        'name' is what we call now the 'sql_cell_handle' -- starts with '@', followed by
-        the hex of the datasource uuid (usually -- the legacy "local database" (was sqlite, now duckdb)
-        and bigquery do not use the hex convention because they predate datasources)
 
-        'human_name' is the name that the user gave the datasource ('My PostgreSQL Connection')
-        (again, only for real datasource connections). There's a slight risk of name collision
-        due to having the same name used between user and space scopes, but so be it.
+class BaseConnection(Connection):
+    sql_cell_handle: str
+    human_name: str
 
-        """
+    def __init__(self, sql_cell_handle: str, human_name: str):
+        super().__init__()
+
         if not sql_cell_handle.startswith("@"):
             raise ValueError("sql_cell_handle values must start with '@'")
 
@@ -71,47 +128,31 @@ class Connection:
         self.sql_cell_handle = sql_cell_handle
         self.human_name = human_name
 
-        # SLQA-centric fields hereon down, to be pushed into SQLA subclass in the future.
-        self._engine = sqlalchemy.create_engine(connection_url, **create_engine_kwargs)
-        self._create_engine_kwargs = create_engine_kwargs
 
-    def close(self):
-        """General-ish API method; SQLA-centric implementation"""
-        if self._sqla_connection:
-            self._sqla_connection.close()
-        self.reset_connection_pool()
+# Dict of drivername -> Connection implementation
+_drivername_to_connection_type: Dict[str, Type[Connection]] = {}
 
-    ####
-    # SLQA-centric methods / properties here down
-    ####
 
-    is_sqlalchemy_based = True
+def connection_class(drivername: str):
+    """Decorator to register a concrete Connection implementation to use for the given driver"""
 
-    @property
-    def sqla_engine(self) -> sqlalchemy.engine.base.Engine:
-        return self._engine
+    # Explicitly allows for overwriting any old binding so as to allow for notebook-side
+    # hotpatching.
 
-    @property
-    def dialect(self):
-        return self.sqla_engine.url.get_dialect()
+    def decorator_outer(clazz):
+        _drivername_to_connection_type[drivername] = clazz
 
-    _sqla_connection: Optional[sqlalchemy.engine.base.Connection] = None
+        return clazz
 
-    @property
-    def sqla_connection(self) -> sqlalchemy.engine.base.Connection:
-        """Lazily connect to the database. Return a SQLA Connection object, or die trying."""
+    return decorator_outer
 
-        if not self._sqla_connection:
-            self._sqla_connection = self.sqla_engine.connect()
 
-        return self._sqla_connection
+def get_connection_class(drivername: str) -> Type[Connection]:
+    """Return the Connection implementation class registered for this driver.
 
-    def reset_connection_pool(self):
-        """Reset the SQLA connection pool, such as after an exception suspected to indicate
-        a broken connection has been raised.
-        """
-        self._engine.dispose()
-        self._sqla_connection = None
+    Raises KeyError if no implementation is registered.
+    """
+    return _drivername_to_connection_type[drivername]
 
 
 ConnectionBootstrapper: TypeVar = Callable[[], Connection]
