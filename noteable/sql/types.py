@@ -1,17 +1,10 @@
-# Declare the message types
-
 import enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, root_validator, validator
 
-r"""
-Messaging types used for SQL cell meta command \introspect when describing
-the structure of a discovered table or view up to Gate for permanent storage for
-front-end GUI schema navigation uses.
-
-These types culminating in RelationStructureDescription are inputs to the Gate
-POST route(s).
+"""
+Pydantic Types used for neutrally describing structures within SQL databases
 """
 
 
@@ -27,12 +20,7 @@ class RelationKind(str, enum.Enum):
 
 
 class ColumnModel(BaseModel):
-    """Pydantic model defining a column of an introspected table or view.
-
-    Used in two contexts:
-       * SQLAlchemy validation prior to assigning new value into DatasourceRelationDAO.columns JSONB column
-       * Subcomponent of upcoming pydantic model(s) used for route I/O (ENG-5356, ENG-5359).
-    """
+    """Pydantic model defining a column of an introspected table or view."""
 
     name: str
     is_nullable: bool
@@ -45,12 +33,7 @@ class ColumnModel(BaseModel):
 
 
 class IndexModel(BaseModel):
-    """Pydantic model defining an introspected index.
-
-    Used in two contexts:
-       * SQLAlchemy validation prior to assigning new value into DatasourceRelationDAO.indexes JSONB column
-       * Subcomponent of upcoming pydantic models used for route I/O (ENG-5356, ENG-5359).
-    """
+    """Pydantic model defining an index."""
 
     name: str
     is_unique: bool
@@ -61,12 +44,7 @@ class IndexModel(BaseModel):
 
 
 class UniqueConstraintModel(BaseModel):
-    """Pydantic model defining an introspected unique constraint.
-
-    Used in two contexts:
-       * SQLAlchemy validation prior to assigning new value into DatasourceRelationDAO.unique_constraints JSONB column
-       * Subcomponent of upcoming pydantic models used for route I/O (ENG-5356, ENG-5359).
-    """
+    """Pydantic model defining a unique constraint."""
 
     name: str
     columns: List[str]
@@ -76,12 +54,7 @@ class UniqueConstraintModel(BaseModel):
 
 
 class CheckConstraintModel(BaseModel):
-    """Pydantic model defining an introspected check constraint.
-
-    Used in two contexts:
-       * SQLAlchemy validation prior to assigning new value into DatasourceRelationDAO.check_constraints JSONB column
-       * Subcomponent of upcoming pydantic models used for route I/O (ENG-5356, ENG-5359).
-    """
+    """Pydantic model defining a check constraint."""
 
     name: str
     expression: str
@@ -91,18 +64,21 @@ class CheckConstraintModel(BaseModel):
 
 
 class ForeignKeysModel(BaseModel):
-    """Pydantic model defining an introspected foreign key constraint.
-
-    Used in two contexts:
-       * SQLAlchemy validation prior to assigning new value into DatasourceRelationDAO.foreign_keys JSONB column
-       * Subcomponent of upcoming pydantic models used for route I/O (ENG-5356, ENG-5359).
-    """
+    """Pydantic model defining a foreign key constraint."""
 
     name: str
-    referenced_schema: str
+    referenced_schema: Optional[str]
     referenced_relation: str
     columns: List[str]
     referenced_columns: List[str]
+
+    @validator('referenced_schema')
+    def validate_schema_name(cls, v):
+        """Promote from None to empty string"""
+        if v is None:
+            v = ''
+
+        return v
 
     @root_validator
     def check_lists_same_length(cls, values):
@@ -119,12 +95,10 @@ class ForeignKeysModel(BaseModel):
 
 
 class RelationStructureDescription(BaseModel):
-    """Pydantic model describing the POST structure kernel-space will use to describe a
-    schema-discovered table or view within a datasource.
-    """
+    """Pydantic model describing the POST structure kernel-space will use to describe a table or view within a data connection."""
 
     # First, the singular fields.
-    schema_name: str = Field(
+    schema_name: Optional[str] = Field(
         description="Name of schema containing the relation. Empty string for degenerate value."
     )
     relation_name: str = Field(description="Name of the table or view")
@@ -149,6 +123,14 @@ class RelationStructureDescription(BaseModel):
     )
     foreign_keys: List[ForeignKeysModel] = Field(description="List of foreign key definitions")
 
+    @validator('schema_name')
+    def validate_schema_name(cls, v):
+        """Promote from None to empty string"""
+        if v is None:
+            v = ''
+
+        return v
+
     @root_validator
     def view_definition_vs_kind(cls, values):
         """Fail if a tring to describe a view with None for the view definition. At worst
@@ -159,7 +141,7 @@ class RelationStructureDescription(BaseModel):
         if not (values.get("view_definition") is None) == (
             values.get("kind") == RelationKind.table
         ):
-            raise ValueError("Views require definitions, tables must not have view definition")
+            raise ValueError("Views require definitions; tables must not have view definition")
 
         return values
 

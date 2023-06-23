@@ -1,12 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Protocol, Type, TypeVar, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypeVar,
+    runtime_checkable,
+)
 
 import pandas as pd
 import sqlalchemy
 import sqlalchemy.engine.base
 import structlog
 from sqlalchemy.engine import Engine
+
+from .types import RelationKind, RelationStructureDescription
 
 __all__ = (
     'get_connection_registry',
@@ -108,6 +121,35 @@ class Connection(Protocol):
 
     def close(self) -> None:
         """Close any resources currently allocated to this connection"""
+        ...  # pragma: no cover
+
+
+@runtime_checkable
+class IntrospectableConnection(Protocol):
+    """Sub-Protocol of Connection describing Connection types supporting schema / table / view discovery"""
+
+    def get_schema_names(self) -> List[str]:
+        """Return list of subordinate namespaces (schemas). Return the empty list if namespaces are not supported."""
+        ...  # pragma: no cover
+
+    def get_relation_names(self, schema_name: Optional[str]) -> List[Tuple[RelationKind, str]]:
+        """Return list of the pairs of (RelationKind, relation name) describing the relations within the given namespace.
+
+        The returned names should _not_ include the `schema_name` component.
+
+        `schema_name` will be None if `get_schema_names()` returned the empty list.
+
+
+        """
+        ...  # pragma: no cover
+
+    def get_relation_structure(
+        self, kind: RelationKind, schema_name: Optional[str], relation_name: str
+    ) -> RelationStructureDescription:
+        """Return the structure of the given relation.
+
+        `schema_name` will be None if `get_schema_names()` returned the empty list.
+        """
         ...  # pragma: no cover
 
 

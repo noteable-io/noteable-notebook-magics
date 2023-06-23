@@ -12,17 +12,21 @@ from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
 from noteable.sql.connection import get_sqla_connection
-from noteable.sql.gate_messaging_types import RelationStructureDescription
+from noteable.sql.types import RelationStructureDescription
 from noteable.sql.meta_commands import (
     IntrospectAndStoreDatabaseCommand,
     MetaCommandException,
     MetaCommandInvocationException,
     RelationStructureMessager,
-    SchemaStrippingInspector,
     _all_command_classes,
     convert_relation_glob_to_regex,
-    handle_not_implemented,
     parse_schema_and_relation_glob,
+)
+
+from noteable.sql.sqlalchemy.utils import (
+    BigQueryInspector,
+    handle_not_implemented,
+    WrappedInspector,
 )
 from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES, KNOWN_TABLES_AND_KINDS
 
@@ -778,7 +782,7 @@ class TestFullIntrospection:
         """Monkeypatch SchemaStrippingInspector.get_pk_constraint to describe all primary keys as
         name = None, as MySQL might have"""
 
-        orig_implementation = SchemaStrippingInspector.get_pk_constraint
+        orig_implementation = WrappedInspector.get_pk_constraint
 
         def get_pk_constaint_all_anonymous(
             self, table_name: str, schema: Optional[str] = None
@@ -789,14 +793,14 @@ class TestFullIntrospection:
 
             return orig_dict
 
-        SchemaStrippingInspector.get_pk_constraint = get_pk_constaint_all_anonymous
+        WrappedInspector.get_pk_constraint = get_pk_constaint_all_anonymous
 
         try:
             yield
 
         finally:
             # Repair the class.
-            SchemaStrippingInspector.get_pk_constraint = orig_implementation
+            WrappedInspector.get_pk_constraint = orig_implementation
 
     def test_introspection_vs_unnamed_primary_keys(
         self, sql_magic, capsys, patched_requests_mock, patch_make_all_pks_unnamed
@@ -864,7 +868,7 @@ class TestRelationStructure:
     @pytest.mark.parametrize('kind,view_defn', [('table', 'select 1'), ('view', None)])
     def test_fail_view_kind_vs_view_defn_mismatch(self, kind, view_defn):
         with pytest.raises(
-            ValueError, match="Views require definitions, tables must not have view definition"
+            ValueError, match="Views require definitions; tables must not have view definition"
         ):
             self.try_cons(kind=kind, view_definition=view_defn)
 
@@ -987,28 +991,56 @@ class TestParseSchemaAndRelationGlob:
         assert parse_schema_and_relation_glob(mock_inspector, 'schema.foo*') == ('schema', 'foo*')
 
 
-class TestSchemaStrippingInspector:
-    """Most of the methods of SchemaStrippingInspector will have been tested implicitly by this
-    test suite already, but when used against CRDB and sqlite, it won't have needed to actually
-    strip schema prefixes from the underlying inspector results. So let's act like we're wrapping
-    BigQuery here and have the underlying results include the schema name mixed in, which then
-    SchemaStrippingInspector should strip out"""
+class TestWrappedInspector:
+    @pytest.fixture()
+    def wrapped_inspector(self):
+        class AllUnimplmented:
+            def __getattr__(self, attr):
+                raise NotImplementedError
 
-    def test_strip_schema(self):
-        ssi = SchemaStrippingInspector(None)
+        return WrappedInspector(AllUnimplmented())
+
+    def test_handles_unimplemented_get_view_definition(self, wrapped_inspector):
+        assert wrapped_inspector.get_view_definition('foo', 'schema') == '(unobtainable)'
+
+    def test_handles_unimplemented_get_check_constraints(self, wrapped_inspector):
+        assert wrapped_inspector.get_check_constraints('foo', 'schema') == []
+
+    def test_handles_unimplemented_get_unique_constraints(self, wrapped_inspector):
+        assert wrapped_inspector.get_unique_constraints('foo', 'schema') == []
+
+
+class TestBigQueryInspectorInspector:
+    def test_strip_schema_strips(self):
+        ssi = BigQueryInspector(None)
         assert ssi._strip_schema(['foo.t1', 'foo.t2'], 'foo') == ['t1', 't2']
+
+    def test_strip_schema_if_no_schema(self):
+        ssi = BigQueryInspector(None)
+        assert ssi._strip_schema(['foo.t1', 'foo.t2']) == ['foo.t1', 'foo.t2']
+
+    @pytest.mark.parametrize('schema,expected_view_name', [('foo', 'foo.bar'), ('', 'bar')])
+    def test_get_view_definition(self, schema, expected_view_name, mocker):
+        mock_underlying = mocker.Mock(Inspector)
+        mock_underlying.get_view_definition.side_effect = (
+            lambda view_name, schema: f'select * from {view_name}'
+        )
+
+        assert expected_view_name in BigQueryInspector(mock_underlying).get_view_definition(
+            'bar', schema
+        )
 
     def test_get_table_names_does_strip_schema(self, mocker):
         mock_underlying = mocker.Mock(Inspector)
         mock_underlying.get_table_names.side_effect = lambda _: ['foo.t1', 'foo.t2']
 
-        assert SchemaStrippingInspector(mock_underlying).get_table_names('foo') == ['t1', 't2']
+        assert BigQueryInspector(mock_underlying).get_table_names('foo') == ['t1', 't2']
 
     def test_get_view_names_does_strip_schema(self, mocker):
         mock_underlying = mocker.Mock(Inspector)
         mock_underlying.get_view_names.side_effect = lambda _: ['foo.v1', 'foo.v2']
 
-        assert SchemaStrippingInspector(mock_underlying).get_view_names('foo') == ['v1', 'v2']
+        assert BigQueryInspector(mock_underlying).get_view_names('foo') == ['v1', 'v2']
 
 
 @pytest.mark.parametrize(
