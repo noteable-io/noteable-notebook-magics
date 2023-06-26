@@ -85,7 +85,6 @@ class SampleData:
                 'required_python_modules': ['sqlalchemy-cockroachdb', 'psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'cockroachdb',
-                'sqlmagic_autocommit': False,
                 'name': 'My CRDB',
             },
             dsn_dict={
@@ -101,7 +100,6 @@ class SampleData:
                 'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
-                'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL',
             },
             dsn_dict={
@@ -117,7 +115,6 @@ class SampleData:
                 'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
-                'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL SSL',
             },
             dsn_dict={
@@ -135,7 +132,6 @@ class SampleData:
                 # Packages installed already in noteable-notebook-magics
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'redshift+redshift_connector',
-                'sqlmagic_autocommit': True,
                 'name': 'My RedShift',
             },
             dsn_dict={
@@ -151,7 +147,6 @@ class SampleData:
                 'required_python_modules': ['trino[sqlalchemy]'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'trino',
-                'sqlmagic_autocommit': False,  # This one is special!
                 'name': 'My Trino',
             },
             dsn_dict={
@@ -166,7 +161,6 @@ class SampleData:
                 'required_python_modules': ['sqlalchemy-databricks'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'databricks+connector',
-                'sqlmagic_autocommit': False,  # This one is special!
                 'name': 'My Databricks',
             },
             dsn_dict={
@@ -187,7 +181,6 @@ class SampleData:
                 'required_python_modules': ['snowflake-sqlalchemy'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
-                'sqlmagic_autocommit': True,
                 'name': 'My Snowflake',
             },
             dsn_dict={
@@ -204,7 +197,6 @@ class SampleData:
                 'required_python_modules': ['snowflake-sqlalchemy'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
-                'sqlmagic_autocommit': True,
                 'name': 'My Snowflake with database',
             },
             dsn_dict={
@@ -222,7 +214,6 @@ class SampleData:
                 'required_python_modules': ['snowflake-sqlalchemy'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
-                'sqlmagic_autocommit': True,
                 'name': 'Snowflake with database and schema',
             },
             dsn_dict={
@@ -241,7 +232,6 @@ class SampleData:
                 'required_python_modules': ['snowflake-sqlalchemy'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'snowflake',
-                'sqlmagic_autocommit': True,
                 'name': 'Snowflake with empty db and schema',
             },
             dsn_dict={
@@ -260,7 +250,6 @@ class SampleData:
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
                 'name': 'Explicit Memory SQLite',
             },
             dsn_dict={
@@ -272,7 +261,6 @@ class SampleData:
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
                 'name': 'Implicit Memory SQLite',
             },
             dsn_dict={
@@ -285,7 +273,6 @@ class SampleData:
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
                 'name': 'Memory SQLite with max_download',
             },
             dsn_dict={
@@ -302,7 +289,6 @@ class SampleData:
                 'required_python_modules': ["PyAthena[SQLAlchemy]"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'awsathena+rest',
-                'sqlmagic_autocommit': False,
                 'name': 'My AWS Athena',
             },
             dsn_dict={
@@ -312,7 +298,6 @@ class SampleData:
                 'database': 'default_database',
             },
             connect_args_dict={'s3_staging_dir': 's3://myamazonawsbucket/results/'},
-            expect_identical_connect_args=False,
         ),
         # Originally, we used pymysql for SingleStore, mysql, mariadb.
         # Older generation datasource data in Vault will still request to use this driver
@@ -322,7 +307,6 @@ class SampleData:
                 'required_python_modules': ["pymysql"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'mysql+pymysql',
-                'sqlmagic_autocommit': False,
                 'name': 'Old Singlestore',
             },
             dsn_dict={
@@ -339,7 +323,6 @@ class SampleData:
                 'required_python_modules': ["sqlalchemy-singlestoredb"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'singlestoredb',
-                'sqlmagic_autocommit': False,
                 'name': 'New Singlestore',
             },
             dsn_dict={
@@ -356,7 +339,6 @@ class SampleData:
                 'required_python_modules': ["pymysql"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'mysql+pymysql',
-                'sqlmagic_autocommit': False,
                 'name': 'Old Mariadb',
             },
             dsn_dict={
@@ -373,7 +355,6 @@ class SampleData:
                 'required_python_modules': ["mysqlclient"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'mysql+mysqldb',
-                'sqlmagic_autocommit': False,
                 'name': 'New Mariadb',
             },
             dsn_dict={
@@ -427,6 +408,13 @@ class TestBootstrapDatasources:
             # Now cause it to actually get bootstrapped by asking for it.
             conn = registry.get(handle)
             assert isinstance(conn, Connection)
+
+            if conn.is_sqlalchemy_based:
+                # Must be an explicit subclass.
+                assert type(conn) is not SQLAlchemyConnection
+
+                # Must be explicitly declared in the subtype.
+                assert conn.needs_explicit_commit in (True, False)
 
             # Ensure that the Connection actually got bootstrapped with
             # the connect_args, otherwise bootstrap_datasource() messed up badly.
@@ -489,18 +477,12 @@ class TestBootstrapDatasource:
                 # Can only work this way also if the datasource name was present in meta-json.
                 assert the_conn._engine is get_sqla_engine(expected_human_name)
 
-            if 'sqlmagic_autocommit' in case_data.meta_dict:
-                assert the_conn.needs_explicit_commit == (
-                    case_data.meta_dict['sqlmagic_autocommit']
-                )
-
     def test_broken_postgres_is_silent_noop(self, datasource_id):
         case_data = DatasourceJSONs(
             meta_dict={
                 'required_python_modules': ['psycopg2'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
-                'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL',
             },
             dsn_dict={
@@ -539,7 +521,6 @@ class TestBootstrapDatasource:
                 'required_python_modules': ['psycopg2-binary'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'postgresql',
-                'sqlmagic_autocommit': True,
                 'name': 'My PostgreSQL',
             },
             dsn_dict={
@@ -579,7 +560,6 @@ class TestBootstrapDatasource:
                 'required_python_modules': ['sqlalchemy-bigquery'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'bigquery',
-                'sqlmagic_autocommit': True,
                 'name': 'My bigquery',
             },
             connect_args_dict={
@@ -708,7 +688,6 @@ class TestDatabricks:
                 'required_python_modules': ['sqlalchemy-databricks'],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'databricks+connector',
-                'sqlmagic_autocommit': False,  # This one is special!
                 'name': 'Databricks With Extras',
             },
             dsn_dict={
@@ -1002,7 +981,6 @@ class TestSQLite:
                     'required_python_modules': [],
                     'allow_datasource_dialect_autoinstall': False,
                     'drivername': 'sqlite',
-                    'sqlmagic_autocommit': False,
                     'name': 'Download file sqlite',
                 },
                 dsn_dict={
@@ -1067,7 +1045,6 @@ class TestSQLite:
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
                 'name': human_name,
             },
             dsn_dict={
@@ -1161,7 +1138,7 @@ def test_postprocess_snowflake(dsn_dict, expected):
                     'password': 'MMHq%3A%2F',
                 },
                 # resulting connect args dict
-                {'connect_args': {'s3_staging_dir': 's3%3A%2F%2Fmyamazonbucket%2Fresults%2F'}},
+                {'connect_args': {'s3_staging_dir': 's3://myamazonbucket/results/'}},
             ),
         ),
     ],
