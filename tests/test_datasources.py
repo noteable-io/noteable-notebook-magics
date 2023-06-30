@@ -614,6 +614,29 @@ class TestBootstrapDatasource:
 
         assert psycopg2.extensions.get_wait_callback() is psycopg2.extras.wait_select
 
+    def test_connection_class_failure_happens_every_time(self, datasource_id, mocker):
+        snowflake_details = SampleData.get_sample("snowflake-with-empty-db-and-schema")
+        mocker.patch("noteable.sql.sqlalchemy.SnowflakeConnection.__init__", side_effect=ValueError("boom"))
+
+        with pytest.raises(ValueError, match="boom"):
+            datasources.bootstrap_datasource(
+                datasource_id,
+                snowflake_details.meta_dict,
+                snowflake_details.dsn_json,
+                snowflake_details.connect_args_json,
+            )
+
+        # Should get the same error twice!
+        # This ensures that nothing else in bootstrap_datasource is cached incorrectly.
+        # Previously, we'd get KeyError: 'required_python_modules' on the second call.
+        with pytest.raises(ValueError, match="boom"):
+            datasources.bootstrap_datasource(
+                datasource_id,
+                snowflake_details.meta_dict,
+                snowflake_details.dsn_json,
+                snowflake_details.connect_args_json,
+            )
+
 
 @pytest.mark.usefixtures("with_empty_connections")
 class TestDatabricks:

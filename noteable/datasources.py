@@ -108,6 +108,8 @@ def bootstrap_datasource(
             f'bootstrap_datasource() expects `metadata` to be passed in as a dict, got {type(metadata)}'
         )
 
+    metadata = metadata.copy()  # don't mutate the mutable metadata passed to us
+
     # Yes, bigquery connections may end up with nothing in dsn_json.
     dsn_dict = json.loads(dsn_json) if dsn_json else {}
 
