@@ -479,7 +479,6 @@ class TestSQLite:
                 'required_python_modules': [],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'sqlite',
-                'sqlmagic_autocommit': False,
                 'name': human_name,
             },
             dsn_dict={
@@ -532,7 +531,6 @@ class TestAmazonAthena:
                 'required_python_modules': ["PyAthena[SQLAlchemy]"],
                 'allow_datasource_dialect_autoinstall': False,
                 'drivername': 'awsathena+rest',
-                'sqlmagic_autocommit': False,
                 'name': 'My AWS Athena',
             },
             dsn_dict={

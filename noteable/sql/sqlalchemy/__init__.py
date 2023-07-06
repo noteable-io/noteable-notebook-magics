@@ -31,19 +31,15 @@ from .utils import SQLAlchemyResult, WrappedInspector, BigQueryInspector
 logger = structlog.get_logger(__name__)
 
 
-@connection_class('mysql+pymysql')
-@connection_class('mysql+mysqldb')
-@connection_class('redshift+redshift_connector')
-@connection_class('singlestoredb')
-@connection_class('trino')
 class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
-    """Base class for all SQLAlchemy-based Connection implementations"""
+    """Base class for all SQLAlchemy-based Connection implementations. Each type _must_ make
+    and register a subclass, at very least to define value for cls.needs_explicit_commit"""
+
+    needs_explicit_commit: bool
+    """Will there be an implicit transaction open which demands commit()ing between execute() calls?"""
 
     is_sqlalchemy_based: bool = True
-    """Is this connection implemented on top of SQLAlchemy?"""
-
-    needs_explicit_commit: bool = True
-    """Do we need to explicitly commit() after executing a statement? See `execute()`"""
+    """Is this connection type implemented on top of SQLAlchemy?"""
 
     _avoid_introspection_schemas: Tuple[str] = ('information_schema',)
     """What schema names should be avoided at introspection time due to being system-ish. Compared against case-insenseitively"""
@@ -84,9 +80,6 @@ class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
         human_name = metadata['name']
 
         super().__init__(cell_handle, human_name)
-
-        if 'sqlmagic_autocommit' in metadata:
-            self.needs_explicit_commit = metadata['sqlmagic_autocommit']
 
         connection_url = str(URL.create(**dsn_dict))
 
@@ -196,6 +189,8 @@ class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
 
 @connection_class('awsathena+rest')
 class AwsAthenaConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = False
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -204,7 +199,6 @@ class AwsAthenaConnection(SQLAlchemyConnection):
 
             1. Host will be just the region name. Expand to -> athena.{region_name}.amazonaws.com
             2. Username + password will be AWS access key id + secret value. Needs to be quote_plus protected.
-            3. Likewise the 's3_staging_dir' present in create_engine_kwargs.
 
         See https://github.com/laughingman7743/PyAthena/
         """
@@ -216,13 +210,11 @@ class AwsAthenaConnection(SQLAlchemyConnection):
         dsn_dict['username'] = quote_plus(dsn_dict['username'])
         dsn_dict['password'] = quote_plus(dsn_dict['password'])
 
-        # 3. quote_plus s3_staging_dir
-        connect_args = create_engine_kwargs['connect_args']
-        connect_args['s3_staging_dir'] = quote_plus(connect_args['s3_staging_dir'])
-
 
 @connection_class('bigquery')
 class BigQueryConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = False
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -294,6 +286,8 @@ class BigQueryConnection(SQLAlchemyConnection):
 
 @connection_class('clickhouse+http')
 class ClickhouseConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = False
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -328,6 +322,8 @@ class ClickhouseConnection(SQLAlchemyConnection):
 
 @connection_class('databricks+connector')
 class DatabricksConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = False
+
     DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 10
 
     @classmethod
@@ -401,8 +397,19 @@ class DuckDBConnection(SQLAlchemyConnection):
     needs_explicit_commit = False
 
 
+@connection_class('mysql+pymysql')
+@connection_class('mysql+mysqldb')
+@connection_class('singlestoredb')
+class MySQLFamilyConnection(SQLAlchemyConnection):
+    """Base class for all SQLAlchemy-based Connection implementations"""
+
+    needs_explicit_commit: bool = False
+
+
 @connection_class('mssql+pyodbc')
 class MsSqlConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = False
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -479,8 +486,15 @@ class PostgreSQLConnection(SQLAlchemyConnection):
             cls._installed_psycopg2_interrupt_fix = True
 
 
+@connection_class('redshift+redshift_connector')
+class Redshift(SQLAlchemyConnection):
+    needs_explicit_commit: bool = True
+
+
 @connection_class('snowflake')
 class SnowflakeConnection(SQLAlchemyConnection):
+    needs_explicit_commit: bool = True
+
     @classmethod
     def preprocess_configuration(
         cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
@@ -573,3 +587,10 @@ class SQLiteConnection(SQLAlchemyConnection):
                 raise ValueError(
                     f'SQLite database files should be located within /tmp, got "{cur_path}"'
                 )
+
+
+@connection_class('trino')
+class TrinoConnection(SQLAlchemyConnection):
+    """Trino connection type"""
+
+    needs_explicit_commit: bool = False
