@@ -67,6 +67,7 @@ class ForeignKeysModel(BaseModel):
     """Pydantic model defining a foreign key constraint."""
 
     name: str
+    # `referenced_schema` Can be constructed with None, but will be promoted to empty string.
     referenced_schema: Optional[str]
     referenced_relation: str
     columns: List[str]
