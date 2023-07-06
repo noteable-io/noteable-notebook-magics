@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repackaged all code to be in 'noteable' toplevel package, not 'noteable_magics.'
 - Better datasets download progress bars
 
+### Fixed
+- Don't mutate `metadata` passed to `bootstrap_datasource()`
+  - Previously, a `KeyError` would be raised, hiding the underlying error when creating a connection
+
 ## [2.0.0] - 2022-03-15
 ### Changed
 - Upgrade `ipython` to `^7.31.1` for security fix
