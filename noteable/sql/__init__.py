@@ -1,2 +1,2 @@
-from .connection import get_sqla_connection, get_sqla_engine, ResultSet, Connection  # noqa
-from .types import RelationStructureDescription, RelationKind  # noqa
+from .connection import Connection, ResultSet, get_sqla_connection, get_sqla_engine  # noqa
+from .types import RelationKind, RelationStructureDescription  # noqa

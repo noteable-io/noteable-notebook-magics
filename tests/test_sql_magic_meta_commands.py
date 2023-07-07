@@ -3,7 +3,6 @@ import re
 import urllib.parse
 from datetime import datetime
 from typing import List, Optional, Tuple
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pandas as pd
@@ -11,10 +10,8 @@ import pytest
 from IPython.display import HTML
 from sqlalchemy.engine.reflection import Inspector
 
-from noteable.sql.connection import get_sqla_connection
-from noteable.sql.types import RelationStructureDescription
+from noteable.sql.connection import InspectorProtocol, IntrospectableConnection, get_sqla_connection
 from noteable.sql.meta_commands import (
-    IntrospectAndStoreDatabaseCommand,
     MetaCommandException,
     MetaCommandInvocationException,
     RelationStructureMessager,
@@ -22,12 +19,12 @@ from noteable.sql.meta_commands import (
     convert_relation_glob_to_regex,
     parse_schema_and_relation_glob,
 )
-
 from noteable.sql.sqlalchemy.utils import (
     BigQueryInspector,
-    handle_not_implemented,
     WrappedInspector,
+    handle_not_implemented,
 )
+from noteable.sql.types import RelationStructureDescription
 from tests.conftest import COCKROACH_HANDLE, COCKROACH_UUID, KNOWN_TABLES, KNOWN_TABLES_AND_KINDS
 
 
@@ -37,7 +34,7 @@ class TestListSchemas:
         'connection_handle,expected_results',
         [
             ('@sqlite', {'num_schemas': 1, 'primary_schema_name': 'main'}),
-            (COCKROACH_HANDLE, {'num_schemas': 3, 'primary_schema_name': 'public'}),
+            (COCKROACH_HANDLE, {'num_schemas': 1, 'primary_schema_name': 'public'}),
         ],
     )
     @pytest.mark.parametrize(
@@ -178,10 +175,8 @@ class TestRelationsCommand:
         results = ipython_namespace['_']
         mock_display.assert_called_with(results)
 
-        assert len(results) > 100  # information_schema, crdb_internal have very many members.
-        assert set(results['Schema'].tolist()) == set(
-            ('crdb_internal', 'information_schema', 'public')
-        )
+        assert len(results) == 4  #
+        assert set(results['Schema'].tolist()) == set(('public',))
 
         assert results[results.Schema == 'public']['Relation'].tolist() == [
             'int_table',
@@ -232,10 +227,8 @@ class TestTablesCommand:
         mock_display.assert_called_with(results)
 
         assert results.columns.tolist() == ['Schema', 'Table']
-        assert len(results) > 100  # crdb_internal, information schema have lots.
-        assert set(results['Schema'].tolist()) == set(
-            ['crdb_internal', 'information_schema', 'public']
-        )
+        assert len(results) == 3
+        assert set(results['Schema'].tolist()) == set(['public'])
         # No str_int_view!
         assert results[results.Schema == 'public']['Table'].tolist() == [
             'int_table',
@@ -271,7 +264,7 @@ class TestViewsCommand:
 
         # Not exactly sure why it thinks 'information_schema' isn't chock full of views, but oh well.
         assert results.columns.tolist() == ['Schema', 'View']
-        assert results['Schema'].unique().tolist() == ['crdb_internal', 'public']
+        assert results['Schema'].unique().tolist() == ['public']
         assert results[results.Schema == 'public']['View'].tolist() == ['str_int_view']
 
         # Show all views in single glob'd schema (matches 'public' only)
@@ -802,34 +795,6 @@ class TestFullIntrospection:
             # Repair the class.
             WrappedInspector.get_pk_constraint = orig_implementation
 
-    def test_introspection_vs_unnamed_primary_keys(
-        self, sql_magic, capsys, patched_requests_mock, patch_make_all_pks_unnamed
-    ):
-        """Ensure that no problems happen if primary keys are unnamed. We should inject '(unnamed primary key)' in
-        as the name. ENG-5416."""
-
-        # Introspect the whole DB after having made the PKs have no name via fixture patch_make_all_pks_unnamed().
-        sql_magic.execute(rf'{COCKROACH_HANDLE} \introspect')
-
-        out, err = capsys.readouterr()
-
-        # Look ma, no exceptions in this case anymore!
-        assert 'Exception' not in out
-
-        primary_key_names = set()
-
-        for req in patched_requests_mock.request_history:
-            if req.method == 'POST' and req.url.endswith('/schema/relations'):
-                dict_list = req.json()
-                for member_dict in dict_list:
-                    from_json = RelationStructureDescription(**member_dict)
-
-                    if from_json.primary_key_name and from_json.primary_key_columns:
-                        primary_key_names.add(from_json.primary_key_name)
-
-        # In this test, all pk names will be described as unnamed due to the monkeypatching.
-        assert primary_key_names == set(('(unnamed primary key)',))
-
     @pytest.mark.usefixtures("populated_sqlite_database")
     def test_cannot_introspect_legacy_datasource(self, sql_magic, capsys):
         r"""Only datasource-uuid-based connections should be \introspect fodder"""
@@ -975,20 +940,20 @@ class TestParseSchemaAndRelationGlob:
     def test_when_default_schema_is_available(
         self, inp: str, expected_result: Tuple[Optional[str], Optional[str]], mocker
     ):
-        mock_inspector = mocker.Mock(Inspector)
-        mock_inspector.default_schema_name = 'default'
-        assert parse_schema_and_relation_glob(mock_inspector, inp) == expected_result
+        mock_conn = mocker.Mock(IntrospectableConnection)
+        mock_conn.default_schema_name = 'default'
+        assert parse_schema_and_relation_glob(mock_conn, inp) == expected_result
 
     def test_when_default_schema_is_not_available(self, mocker):
         """Test when the dialect's inspector doesn't distinguish any schema as the default, as BigQuery and Trino do"""
-        mock_inspector = mocker.Mock(Inspector)
-        mock_inspector.default_schema_name = None
-        mock_inspector.get_schema_names.side_effect = lambda: ['first', 'random_schema']
+        mock_conn = mocker.Mock(InspectorProtocol)
+        mock_conn.default_schema_name = None
+        mock_conn.get_schema_names.side_effect = lambda: ['first', 'random_schema']
 
-        assert parse_schema_and_relation_glob(mock_inspector, 'foo') == ('first', 'foo')
-        assert parse_schema_and_relation_glob(mock_inspector, '*') == ('first', '*')
-        assert parse_schema_and_relation_glob(mock_inspector, '.') == ('first', '*')
-        assert parse_schema_and_relation_glob(mock_inspector, 'schema.foo*') == ('schema', 'foo*')
+        assert parse_schema_and_relation_glob(mock_conn, 'foo') == ('first', 'foo')
+        assert parse_schema_and_relation_glob(mock_conn, '*') == ('first', '*')
+        assert parse_schema_and_relation_glob(mock_conn, '.') == ('first', '*')
+        assert parse_schema_and_relation_glob(mock_conn, 'schema.foo*') == ('schema', 'foo*')
 
 
 class TestWrappedInspector:
@@ -1102,27 +1067,3 @@ class TestHandleNotImplemented:
             @handle_not_implemented()
             def func():
                 raise NotImplementedError
-
-
-class TestIntrospectAndStoreDatabaseCommand:
-    def test_all_table_and_views_excludes_avoid_schemas_set(self):
-        mock_inspector = MagicMock()
-        mock_inspector.default_schema_name = 'default'
-        mock_inspector.get_schema_names.return_value = [
-            's1',
-            's2',
-            'information_schema',
-            'pg_catalog',
-            'crdb_internal',
-            # Comes from Clickhouse default system tables
-            'INFORMATION_SCHEMA',
-        ]
-        mock_inspector.get_table_names.return_value = [
-            't1',
-            't2',
-        ]
-        mock_inspector.get_view_names.return_value = ['v1', 'v2']
-
-        results = IntrospectAndStoreDatabaseCommand.all_table_and_views(mock_inspector)
-
-        assert {r[0] for r in results} == {'s1', 's2', 'default'}

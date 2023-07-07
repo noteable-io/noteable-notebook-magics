@@ -22,7 +22,7 @@ from noteable.planar_ally_client.types import (
 from noteable.sql import connection
 from noteable.sql.connection import Connection, get_connection_registry
 from noteable.sql.magic import SqlMagic
-from noteable.sql.sqlalchemy import PostgreSQLConnection, SQLiteConnection
+from noteable.sql.sqlalchemy import CockroachDBConnection, SQLiteConnection
 
 # managed_service_fixtures plugin for a live cockroachdb
 pytest_plugins = 'managed_service_fixtures'
@@ -324,12 +324,12 @@ def cockroach_database_connection(
     # CRDB uses psycopg2 driver. Install the extension that makes control-c work
     # and be able to interrupt statements.
 
-    PostgreSQLConnection._install_psycopg2_interrupt_fix()
+    CockroachDBConnection._install_psycopg2_interrupt_fix()
 
     human_name = "My Cockroach Connection"
 
     session_durable_registry._register(
-        PostgreSQLConnection(
+        CockroachDBConnection(
             COCKROACH_HANDLE,
             {'name': human_name, 'drivername': 'cockroachdb'},
             {
@@ -366,7 +366,7 @@ def bad_port_number_cockroach_connection(
     human_name = "Bad Port Number Cockroach"
 
     session_durable_registry._register(
-        PostgreSQLConnection(
+        CockroachDBConnection(
             BAD_COCKROACH_HANDLE,
             {'name': human_name, 'drivername': 'cockroachdb'},
             {

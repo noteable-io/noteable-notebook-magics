@@ -1,13 +1,13 @@
-from functools import wraps
-from typing import Any, Callable, List, Optional
-from sqlalchemy.engine.reflection import Inspector
-from sqlalchemy.engine.base import Engine
-from sqlalchemy.engine import CursorResult
-
-from noteable.sql import ResultSet
-
+from functools import lru_cache, wraps
+from typing import Any, Callable, Iterable, List, Optional, Tuple
 
 import structlog
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.types import TypeEngine
+
+from noteable.sql import ResultSet
+from noteable.sql.connection import InspectorProtocol
 
 logger = structlog.get_logger(__name__)
 
@@ -69,11 +69,17 @@ def handle_not_implemented(default: Any = None, default_factory: Callable[[], An
     return wrapper
 
 
-class WrappedInspector:
-    """Wraps the underlying sqlalchemy inspector, guards against a few methods returning NotImplemented"""
+class WrappedInspector(InspectorProtocol):
+    """Base implementation for InspectorProtocol on top of SQLAlchemy datasources.
+    Wraps the underlying sqlalchemy Inspector instance, guards against a few methods returning NotImplemented
+    """
 
-    def __init__(self, underlying_inspector: Inspector):
+    max_concurrency = 10
+    schemas_to_avoid: Iterable[str]
+
+    def __init__(self, underlying_inspector: Inspector, schemas_to_avoid=('information_schema',)):
         self.underlying_inspector = underlying_inspector
+        self.schemas_to_avoid = schemas_to_avoid
 
     # Direct passthrough attributes / methods
     @property
@@ -81,15 +87,33 @@ class WrappedInspector:
         # BigQuery, Trino dialects may end up returning None.
         return self.underlying_inspector.default_schema_name
 
-    @property
-    def engine(self) -> Engine:
-        return self.underlying_inspector.engine
-
     def get_schema_names(self) -> List[str]:
-        return self.underlying_inspector.get_schema_names()
+        """Returns all schemas reported by the underlying SQLA inspector, minus
+        those we have been instructed to avoid, case-insensitively"""
+        underlying_schemas = self.underlying_inspector.get_schema_names()
+
+        # Ensure that the default schema is named also. Some dialect omits this
+        # (can't remember which, though)
+        default_schema = self.underlying_inspector.default_schema_name
+        if default_schema and default_schema not in underlying_schemas:
+            underlying_schemas.append(default_schema)
+
+        # Honor avoiding schemas_to_avoid case insensitively
+        return [s for s in underlying_schemas if s.lower() not in self.schemas_to_avoid]
 
     def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_columns(relation_name, schema=schema)
+        """Call the underlying get_columns(), but convert the type object members
+        to strings, not SQLA-centric objects."""
+        columns: List[dict] = self.underlying_inspector.get_columns(relation_name, schema=schema)
+
+        for col in columns:
+            col['type'] = _determine_column_type_name(col['type'])
+
+            # Some dialects do not return at all, but are expected to.
+            if 'comment' not in col:
+                col['comment'] = ''
+
+        return columns
 
     @handle_not_implemented('(unobtainable)')
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
@@ -112,12 +136,23 @@ class WrappedInspector:
     def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
         return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
 
-    # Now the value-adding filtering methods.
     def get_table_names(self, schema: Optional[str] = None) -> List[str]:
         return self.underlying_inspector.get_table_names(schema)
 
     def get_view_names(self, schema: Optional[str] = None) -> List[str]:
         return self.underlying_inspector.get_view_names(schema)
+
+
+class AthenaInspector(WrappedInspector):
+    def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> Optional[dict]:
+        # Athena does not support PKs, and the underlying dialect returns emtpy _list_,
+        # not an empty _dict_!
+
+        # Athena dialect returns ... an empty _list_ instead of a dict, contrary to what
+        # https://docs.sqlalchemy.org/en/14/core/reflection.html#sqlalchemy.engine.reflection.Inspector.get_pk_constraint
+        # specifies for the return result from inspector.get_pk_constraint().
+
+        return None
 
 
 class BigQueryInspector(WrappedInspector):
@@ -126,6 +161,9 @@ class BigQueryInspector(WrappedInspector):
     BigQuery dialect inspector seems to include the schema (dataset) name in those return results,
     unlike other dialects.
     """
+
+    # BQ's introspection API doesn't seem to be fully thread safe?
+    max_concurrency = 1
 
     def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
         # Sigh. Have to explicitly interpolate schema back into view name, else
@@ -151,3 +189,50 @@ class BigQueryInspector(WrappedInspector):
         # Remove "schema." from the start of each name if starts with.
         # (name[False:] is equiv to name[0:], 'cause python bools are subclasses of ints)
         return [name[name.startswith(prefix) and len(prefix) :] for name in names]
+
+
+class CockroachDBInspector(WrappedInspector):
+    def get_table_names(self, schema: Optional[str] = None) -> List[str]:
+        return self._get_tables_and_views(schema)[0]
+
+    def get_view_names(self, schema: Optional[str] = None) -> List[str]:
+        return self._get_tables_and_views(schema)[1]
+
+    @lru_cache(maxsize=None)
+    def _get_tables_and_views(self, schema: Optional[str]) -> Tuple[List[str], List[str]]:
+        """Returns tuple of table names, view names. Deals with CRDB's tendency to describe
+        views as both tables and views
+
+        """
+        table_names = set(self.underlying_inspector.get_table_names(schema))
+        view_names = self.underlying_inspector.get_view_names(schema)
+
+        if view_names:
+            # Remove any view names from our pristeen list of table names.
+            table_names.difference_update(view_names)
+
+        return (list(table_names), view_names)
+
+
+class MySQLInspector(WrappedInspector):
+    def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> Optional[dict]:
+        # MySQL seems to support unnamed primary keys? So ensure all are named.
+
+        pk_constraint = self.underlying_inspector.get_pk_constraint(table_name, schema)
+        if pk_constraint and not pk_constraint.get('name'):
+            pk_constraint['name'] = '(unnamed primary key)'
+
+        return pk_constraint
+
+
+def _determine_column_type_name(sqla_column_type_object: TypeEngine) -> str:
+    """Convert the possibly db-centric TypeEngine instance to a sqla-generic type string"""
+    try:
+        type_name = str(sqla_column_type_object.as_generic()).lower()
+    except (NotImplementedError, AssertionError):
+        # ENG-5268: More esoteric types like UUID do not implement .as_generic()
+        # ENG-5808: Some Databricks types are not fully implemented and fail
+        # assertions within .as_generic()
+        type_name = str(sqla_column_type_object).replace('()', '').lower()
+
+    return type_name

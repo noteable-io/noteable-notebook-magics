@@ -6,32 +6,40 @@ from base64 import b64decode
 from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Type
 from urllib.parse import quote_plus, urlparse
 
 import certifi
 import requests
 import sqlalchemy
 import structlog
-from sqlalchemy.engine import URL, Dialect
 from sqlalchemy import inspect
-
+from sqlalchemy.engine import URL, Dialect
 
 from noteable.sql.connection import (
     BaseConnection,
+    InspectorProtocol,
     IntrospectableConnection,
     ResultSet,
     connection_class,
 )
 
-from noteable.sql.types import RelationStructureDescription, RelationKind
-
-from .utils import SQLAlchemyResult, WrappedInspector, BigQueryInspector
+from .utils import (
+    AthenaInspector,
+    BigQueryInspector,
+    CockroachDBInspector,
+    MySQLInspector,
+    SQLAlchemyResult,
+    WrappedInspector,
+)
 
 logger = structlog.get_logger(__name__)
 
 
-class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
+UNSET = object()
+
+
+class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations. Each type _must_ make
     and register a subclass, at very least to define value for cls.needs_explicit_commit"""
 
@@ -41,7 +49,7 @@ class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
     is_sqlalchemy_based: bool = True
     """Is this connection type implemented on top of SQLAlchemy?"""
 
-    _avoid_introspection_schemas: Tuple[str] = ('information_schema',)
+    schemas_to_avoid: Tuple[str] = ('information_schema',)
     """What schema names should be avoided at introspection time due to being system-ish. Compared against case-insenseitively"""
 
     def __init__(
@@ -107,32 +115,6 @@ class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
             self._sqla_connection.close()
         self.reset_connection_pool()
 
-    """ IntrospectableConnection implementation """
-
-    def get_schema_names(self) -> List[str]:
-        """Return list of subordinate namespaces (schemas). Return the empty list if namespaces are not supported."""
-        ...  # pragma: no cover
-
-    def get_relations(self, schema_name: Optional[str]) -> List[Tuple[RelationKind, str]]:
-        """Return list of the pairs of (RelationKind, relation name) describing the relations within the given namespace.
-
-        The returned names should _not_ include the `schema_name` component.
-
-        `schema_name` will be None if `get_schema_names()` returned the empty list.
-
-
-        """
-        ...  # pragma: no cover
-
-    def get_relation_structure(
-        self, kind: RelationKind, schema_name: Optional[str], relation_name: str
-    ) -> RelationStructureDescription:
-        """Return the structure of the given relation.
-
-        `schema_name` will be None if `get_schema_names()` returned the empty list.
-        """
-        ...  # pragma: no cover
-
     """ SQLAlchemyConnection-centric public interface """
 
     @property
@@ -177,18 +159,29 @@ class SQLAlchemyConnection(BaseConnection, IntrospectableConnection):
 
         pass
 
-    def _get_inspector(self) -> WrappedInspector:
-        return WrappedInspector(inspect(self.sqla_engine))
+
+class IntrospectableSQLAlchemyConnection(IntrospectableConnection, SQLAlchemyConnection):
+    inspector_class: Type[InspectorProtocol] = WrappedInspector
+    """What class to construct within get_inspector(). Defaults to WrappedInspector"""
+
+    def get_inspector(self) -> InspectorProtocol:
+        # Return whatever InspectorProtocol implementation we're tied to,
+        # defaulting to WrappedInspector.
+
+        return self.inspector_class(
+            inspect(self.sqla_engine), schemas_to_avoid=self.schemas_to_avoid
+        )
 
 
 ###
-# Now come all of the SQLAlchemy-based implementations that needed to override some behavior.
+# Now come all of the SQLAlchemy-based datasource connection implementations.
 # Please keep in alphabetical order.
 ###
 
 
 @connection_class('awsathena+rest')
-class AwsAthenaConnection(SQLAlchemyConnection):
+class AwsAthenaConnection(IntrospectableSQLAlchemyConnection):
+    inspector_class = AthenaInspector
     needs_explicit_commit: bool = False
 
     @classmethod
@@ -212,7 +205,7 @@ class AwsAthenaConnection(SQLAlchemyConnection):
 
 
 @connection_class('bigquery')
-class BigQueryConnection(SQLAlchemyConnection):
+class BigQueryConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = False
 
     @classmethod
@@ -268,7 +261,7 @@ class BigQueryConnection(SQLAlchemyConnection):
             # might work now!
             create_engine_kwargs['credentials_path'] = path.as_posix()
 
-    def _get_inspector(self) -> BigQueryInspector:
+    def get_inspector(self) -> BigQueryInspector:
         # BigQuery dialect inspector at least curiously includes schema name + '.'
         # in the relation name portion of the results of get_table_names(), get_view_names(),
         # which then breaks code in our SingleRelationCommand (describe structure of single table/view)
@@ -281,12 +274,13 @@ class BigQueryConnection(SQLAlchemyConnection):
         #  dialects will return table and view name lists w/o the schema prefix prepended, so
         #  will just cost us an iota more CPU in exchange for greater confidence)
 
-        return BigQueryInspector(super()._get_inspector())
+        return BigQueryInspector(super().get_inspector())
 
 
 @connection_class('clickhouse+http')
-class ClickhouseConnection(SQLAlchemyConnection):
+class ClickhouseConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = False
+    schemas_to_avoid = ('information_schema', 'system')
 
     @classmethod
     def preprocess_configuration(
@@ -320,8 +314,60 @@ class ClickhouseConnection(SQLAlchemyConnection):
         dsn_dict["query"] = query
 
 
+class BasePostgreSQLConnection(IntrospectableSQLAlchemyConnection):
+    needs_explicit_commit = False
+    _installed_psycopg2_interrupt_fix: bool = False
+    schemas_to_avoid = ('pg_catalog', 'information_schema')
+
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        """Install fix for ENG-4327 (cannot interrupt kernels doing SQL queries)
+        for PostgreSQL.
+
+        psycopg2 is ultimately a wrapper around libpq, which when performing a
+        query, ends up blocking delivery of KeyboardInterrupt aka SIGINT.
+
+        However, registering a `wait_callback`, will cause psycopg2 to use
+        libpq's nonblocking query interface, which in conjunction with
+        `wait_select` will allow KeyboardInterrupt to, well, interrupt long-running
+        queries.
+
+        https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
+        (as of Aug 2022)
+
+        This was discovered from expecting that other people have complained about this
+        issue, and lo and behold, https://github.com/psycopg/psycopg2/issues/333, with bottom
+        line:
+
+            For people finding this from the Internet, on recent versions of the library, use this:
+                psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+        Thanks, internet stranger!
+        """
+
+        cls._install_psycopg2_interrupt_fix()
+
+    @classmethod
+    def _install_psycopg2_interrupt_fix(cls):
+        if not cls._installed_psycopg2_interrupt_fix:
+            import psycopg2.extensions
+            import psycopg2.extras
+
+            psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+            cls._installed_psycopg2_interrupt_fix = True
+
+
+@connection_class('cockroachdb')
+class CockroachDBConnection(BasePostgreSQLConnection):
+    inspector_class = CockroachDBInspector
+    schemas_to_avoid = BasePostgreSQLConnection.schemas_to_avoid + ('crdb_internal',)
+
+
 @connection_class('databricks+connector')
-class DatabricksConnection(SQLAlchemyConnection):
+class DatabricksConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = False
 
     DATABRICKS_CONNECT_SCRIPT_TIMEOUT = 10
@@ -393,21 +439,22 @@ class DatabricksConnection(SQLAlchemyConnection):
 
 
 @connection_class('duckdb')
-class DuckDBConnection(SQLAlchemyConnection):
+class DuckDBConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit = False
 
 
 @connection_class('mysql+pymysql')
 @connection_class('mysql+mysqldb')
 @connection_class('singlestoredb')
-class MySQLFamilyConnection(SQLAlchemyConnection):
+class MySQLFamilyConnection(IntrospectableSQLAlchemyConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
+    inspector_class = MySQLInspector
     needs_explicit_commit: bool = False
 
 
 @connection_class('mssql+pyodbc')
-class MsSqlConnection(SQLAlchemyConnection):
+class MsSqlConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = False
 
     @classmethod
@@ -439,60 +486,18 @@ class MsSqlConnection(SQLAlchemyConnection):
         )
 
 
-@connection_class('cockroachdb')
 @connection_class('postgresql')
-class PostgreSQLConnection(SQLAlchemyConnection):
-    needs_explicit_commit = False
-    _installed_psycopg2_interrupt_fix: bool = False
-
-    @classmethod
-    def preprocess_configuration(
-        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
-    ) -> None:
-        """Install fix for ENG-4327 (cannot interrupt kernels doing SQL queries)
-        for PostgreSQL.
-
-        psycopg2 is ultimately a wrapper around libpq, which when performing a
-        query, ends up blocking delivery of KeyboardInterrupt aka SIGINT.
-
-        However, registering a `wait_callback`, will cause psycopg2 to use
-        libpq's nonblocking query interface, which in conjunction with
-        `wait_select` will allow KeyboardInterrupt to, well, interrupt long-running
-        queries.
-
-        https://github.com/psycopg/psycopg2/blob/master/lib/extras.py#L749-L774
-        (as of Aug 2022)
-
-        This was discovered from expecting that other people have complained about this
-        issue, and lo and behold, https://github.com/psycopg/psycopg2/issues/333, with bottom
-        line:
-
-            For people finding this from the Internet, on recent versions of the library, use this:
-                psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
-
-        Thanks, internet stranger!
-        """
-
-        cls._install_psycopg2_interrupt_fix()
-
-    @classmethod
-    def _install_psycopg2_interrupt_fix(cls):
-        if not cls._installed_psycopg2_interrupt_fix:
-            import psycopg2.extensions
-            import psycopg2.extras
-
-            psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
-
-            cls._installed_psycopg2_interrupt_fix = True
+class PostgreSQLConnection(BasePostgreSQLConnection):
+    pass
 
 
 @connection_class('redshift+redshift_connector')
-class Redshift(SQLAlchemyConnection):
+class Redshift(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = True
 
 
 @connection_class('snowflake')
-class SnowflakeConnection(SQLAlchemyConnection):
+class SnowflakeConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit: bool = True
 
     @classmethod
@@ -517,7 +522,7 @@ class SnowflakeConnection(SQLAlchemyConnection):
 
 
 @connection_class('sqlite')
-class SQLiteConnection(SQLAlchemyConnection):
+class SQLiteConnection(IntrospectableSQLAlchemyConnection):
     needs_explicit_commit = False
 
     @classmethod
@@ -590,7 +595,7 @@ class SQLiteConnection(SQLAlchemyConnection):
 
 
 @connection_class('trino')
-class TrinoConnection(SQLAlchemyConnection):
+class TrinoConnection(IntrospectableSQLAlchemyConnection):
     """Trino connection type"""
 
     needs_explicit_commit: bool = False

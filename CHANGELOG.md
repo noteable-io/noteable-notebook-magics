@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Force all SQLAlchemy datasource subtypes to be their own individual concrete classes individually declaring their own needs_explicit_commit value for sanity, correctness, and clarity.
   - Stop expecting sqlmagic_autocommit being presented in gate-side metadata. Only consider the SQLAlchemy subtype's classlevel boolean. The field will be removed from Gate side in future work.
 - Athena does _must not_  `quote_plus(connect_args['s3_staging_dir'])` -- they won't work encoded that way. It wants direct passing. Not sure where I got that idea.
+- Reimplement schema introspection on top of neutral interface `InspectorProtocol`, based on SQLAlchemy's Inspector API, but not descending from it.
 
 ### Added
 - `%ntbl change-log-level --rtu-level DEBUG` will update relevant Sending, PA, and Origami libraries to render useful debug logs related to RTU processing in PA

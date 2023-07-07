@@ -7,7 +7,6 @@ from typing import (
     List,
     Optional,
     Protocol,
-    Tuple,
     Type,
     TypeVar,
     runtime_checkable,
@@ -18,8 +17,6 @@ import sqlalchemy
 import sqlalchemy.engine.base
 import structlog
 from sqlalchemy.engine import Engine
-
-from .types import RelationKind, RelationStructureDescription
 
 __all__ = (
     'get_connection_registry',
@@ -125,32 +122,51 @@ class Connection(Protocol):
 
 
 @runtime_checkable
+class InspectorProtocol(Protocol):
+    """Protocol describing a subset of the SQLAlchemy Inspector class"""
+
+    max_concurrency: int
+    """Maximum concurrency allowed within introspection"""
+
+    default_schema_name: Optional[str]
+
+    def get_schema_names(self) -> List[str]:
+        ...  # pragma: no cover
+
+    def get_table_names(self, schema: Optional[str] = None) -> List[str]:
+        ...  # pragma: no cover
+
+    def get_view_names(self, schema: Optional[str] = None) -> List[str]:
+        ...  # pragma: no cover
+
+    def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
+        ...  # pragma: no cover
+
+    def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
+        ...  # pragma: no cover
+
+    def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
+        ...  # pragma: no cover
+
+    def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        ...  # pragma: no cover
+
+    def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        ...  # pragma: no cover
+
+    def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        ...  # pragma: no cover
+
+    def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
+        ...  # pragma: no cover
+
+
+@runtime_checkable
 class IntrospectableConnection(Protocol):
     """Sub-Protocol of Connection describing Connection types supporting schema / table / view discovery"""
 
-    def get_schema_names(self) -> List[str]:
-        """Return list of subordinate namespaces (schemas). Return the empty list if namespaces are not supported."""
-        ...  # pragma: no cover
-
-    def get_relation_names(self, schema_name: Optional[str]) -> List[Tuple[RelationKind, str]]:
-        """Return list of the pairs of (RelationKind, relation name) describing the relations within the given namespace.
-
-        The returned names should _not_ include the `schema_name` component.
-
-        `schema_name` will be None if `get_schema_names()` returned the empty list.
-
-
-        """
-        ...  # pragma: no cover
-
-    def get_relation_structure(
-        self, kind: RelationKind, schema_name: Optional[str], relation_name: str
-    ) -> RelationStructureDescription:
-        """Return the structure of the given relation.
-
-        `schema_name` will be None if `get_schema_names()` returned the empty list.
-        """
-        ...  # pragma: no cover
+    def get_inspector(self) -> InspectorProtocol:
+        """Return an object for performing introspections into this database using a SQLAlchemy-esqe API"""
 
 
 class BaseConnection(Connection):
