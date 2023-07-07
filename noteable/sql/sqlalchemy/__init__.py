@@ -36,9 +36,6 @@ from .utils import (
 logger = structlog.get_logger(__name__)
 
 
-UNSET = object()
-
-
 class SQLAlchemyConnection(BaseConnection):
     """Base class for all SQLAlchemy-based Connection implementations. Each type _must_ make
     and register a subclass, at very least to define value for cls.needs_explicit_commit"""
