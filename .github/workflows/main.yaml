@@ -24,8 +24,9 @@ jobs:
       fail-fast: false
       matrix:
         python-version:
-          - "3.8"
           - "3.9"
+          - "3.10"
+          - "3.11"
     outputs:
       DEPLOY_TAG: ${{ steps.build-args.outputs.SHA_TAG || steps.build-args.outputs.BRANCH_TAG }}
     steps:
@@ -53,19 +54,15 @@ jobs:
       # Run all of the tests
       - name: Flake8 - Style guide enforcement
         run: poetry run flake8 noteable/ tests/ --count --show-source --statistics --benchmark
-        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Black - Format check
         run: poetry run black --diff noteable/ tests/
-        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Isort - Import format check
         run: poetry run isort --diff --check noteable/ tests/
-        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Safety - Python dependency vulnerability check
         run: poetry export --without-hashes -f requirements.txt | poetry run safety check --stdin -i 51457 -i 51668
-        if: ${{ matrix.python-version == 3.9 }}
 
       - name: Set env
         id: vars
