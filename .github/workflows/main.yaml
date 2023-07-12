@@ -26,7 +26,6 @@ jobs:
         python-version:
           - "3.9"
           - "3.10"
-          - "3.11"
     outputs:
       DEPLOY_TAG: ${{ steps.build-args.outputs.SHA_TAG || steps.build-args.outputs.BRANCH_TAG }}
     steps:
