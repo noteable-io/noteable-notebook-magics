@@ -1,16 +1,6 @@
 from __future__ import annotations
 
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Protocol,
-    Type,
-    TypeVar,
-    runtime_checkable,
-)
+from typing import Any, Callable, Dict, List, Optional, Protocol, Type, TypeVar, runtime_checkable
 
 import pandas as pd
 import sqlalchemy

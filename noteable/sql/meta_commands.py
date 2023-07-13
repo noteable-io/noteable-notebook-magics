@@ -13,7 +13,6 @@ import requests
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
-
 # Will be good when this layer of code doesn't import anything sqlalchemy
 from sqlalchemy.exc import NoSuchTableError
 
