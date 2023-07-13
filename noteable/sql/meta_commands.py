@@ -6,22 +6,18 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from functools import wraps
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 import requests
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
-from sqlalchemy import inspect
-from sqlalchemy.engine.base import Engine
-from sqlalchemy.engine.reflection import Inspector
+# Will be good when this layer of code doesn't import anything sqlalchemy
 from sqlalchemy.exc import NoSuchTableError
-from sqlalchemy.types import TypeEngine
 
-from noteable.sql.connection import Connection
-from noteable.sql.gate_messaging_types import (
+from noteable.sql.connection import Connection, InspectorProtocol, IntrospectableConnection
+from noteable.sql.types import (
     CheckConstraintModel,
     ColumnModel,
     ForeignKeysModel,
@@ -81,9 +77,9 @@ class MetaCommand:
     include_in_help = True
 
     def __init__(self, shell: InteractiveShell, conn: Connection, assign_to_varname: Optional[str]):
-        if not conn.is_sqlalchemy_based:
+        if not isinstance(conn, IntrospectableConnection):
             raise ValueError(
-                'Meta commands only working against SQLAlchemy-based connections at this time.'
+                'Meta commands only work against introspectable connection implementations.'
             )
 
         self.shell = shell
@@ -121,23 +117,9 @@ class MetaCommand:
         """
         raise NotImplementedError
 
-    def get_inspector(self) -> SchemaStrippingInspector:
-        engine = self.conn._engine
-        underlying_inspector = inspect(engine)
-
-        # BigQuery dialect inspector at least curiously includes schema name + '.'
-        # in the relation name portion of the results of get_table_names(), get_view_names(),
-        # which then breaks code in our SingleRelationCommand (describe structure of single table/view)
-        # So, wrap with a proxy Inspector implementation which ensures that those two methods
-        # will not return relation names of the form 'schema.relation'.
-
-        # (Why do this unconditionally, and not just for when engine.name == 'bigquery'?
-        #  Because we want our test suite to cover all methods of this implementation, but
-        #  we don't explicitly test against BigQuery directly in the test suite. Non-BigQuery
-        #  dialects will return table and view name lists w/o the schema prefix prepended, so
-        #  will just cost us an iota more CPU in exchange for greater confidence)
-
-        return SchemaStrippingInspector(underlying_inspector)
+    def get_inspector(self) -> InspectorProtocol:
+        """Return a Noteable InspectorProtocol instance from this Connection"""
+        return self.conn.get_inspector()
 
 
 class SchemasCommand(MetaCommand):
@@ -246,7 +228,7 @@ class ViewsCommand(MetaCommand):
 
 
 def relation_names(
-    inspector: SchemaStrippingInspector,
+    inspector: InspectorProtocol,
     argument: str,
     include_tables=True,
     include_views=True,
@@ -268,6 +250,7 @@ def relation_names(
         '*foo' -> Find all relations in default schema whose name ends with 'foo.'
         'foo??' -> Find all relations in default schema whose names start with 'foo' and only has two following letters in name.
     """
+
     schema_name_glob, relation_name_glob = parse_schema_and_relation_glob(inspector, argument)
 
     schema_name_filter = convert_relation_glob_to_regex(schema_name_glob)
@@ -283,18 +266,14 @@ def relation_names(
         relation_types: List[str] = []
 
     for schema in schemas:
-        # Some dialects return views as tables (and then also as views), so distict-ify via a set.
-        relations = set()
-        if include_tables:
-            relations.update(inspector.get_table_names(schema))
+        relations: List[str] = []
 
-        view_names = inspector.get_view_names(schema)
+        if include_tables:
+            relations.extend(inspector.get_table_names(schema))
+
         if include_views:
-            relations.update(view_names)
-        else:
-            # Because some dialects may have already included view names in get_table_names(), need
-            # to explicitly remove the definite view names. Thanks, guys.
-            relations.difference_update(view_names)
+            view_names = set(inspector.get_view_names(schema))
+            relations.extend(view_names)
 
         # Filter, sort, append schema, relname and possibly the kind onto respective lists.
         for relname in sorted(r for r in relations if relation_name_filter.match(r)):
@@ -326,7 +305,7 @@ def relation_names(
 
 
 def parse_schema_and_relation_glob(
-    inspector: SchemaStrippingInspector, schema_and_possible_relation: str
+    inspector: InspectorProtocol, schema_and_possible_relation: str
 ) -> Tuple[str, str]:
     """Return tuple of schema name glob, table glob given a single string
     like '*', 'public.*', 'foo???', ...
@@ -336,6 +315,9 @@ def parse_schema_and_relation_glob(
 
     Expects to be driven with at least a single character string.
     """
+
+    # TODO: Because some dialects support three-tier nomenclatures (database.schema.relation), this
+    # might well need to move into per-Connection and/or InspectorProtocol implementation. But not today.
 
     if schema_and_possible_relation == '.':
         # Degenerate value. Treat like they meant wildcard
@@ -429,17 +411,10 @@ class SingleRelationCommand(MetaCommand):
 
         for col in column_dicts:
             names.append(col['name'])
-
-            # Convert the possibly db-centric TypeEngine instance to a sqla-generic type string
-            type_name = determine_column_type_name(col['type'])
-
-            types.append(type_name)
+            types.append(col['type'])
             nullables.append(col['nullable'])
             defaults.append(col['default'])
-            if 'comment' in col:
-                # Dialect may not return this attribute at all. If supported by dialect,
-                # but not present on this column, should be the empty string.
-                comments.append(col['comment'])
+            comments.append(col['comment'])
 
         # Assemble dataframe out of data, conditionally skipping columns if inappropriate
         # or zero-value.
@@ -525,16 +500,6 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     include_in_help = False
 
-    # How many threads to use to introspect individual tables or views.
-    MAX_INTROSPECTION_THREADS = 10
-
-    # Schemas to never introspect into. Will need to augment / research for each
-    # new datasource type supported.
-    # Clickhouse spells it as 'INFORMATION_SCHEMA' (all caps), rest as 'information_schema' (all lowercase)
-    # Clickhouse also has a 'system' schema, but we don't want to avoid introspecting that
-    # at the risk of excluding user-created 'system' schemas in other datasources.
-    AVOID_SCHEMAS = {'information_schema', 'INFORMATION_SCHEMA', 'pg_catalog', 'crdb_internal'}
-
     def run(self, invoked_as: str, args: List[str]) -> None:
         """Drive introspecting whole database, POSTing results back to Gate for storage.
 
@@ -587,9 +552,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
             # Introspect each relation concurrently.
             # TODO: Take minimum concurrency as a param?
-            with ThreadPoolExecutor(
-                max_workers=self.get_max_threadpool_workers(inspector)
-            ) as executor:
+            with ThreadPoolExecutor(max_workers=inspector.max_concurrency) as executor:
                 future_to_relation = {
                     executor.submit(
                         self.fully_introspect, inspector, schema_name, relation_name, kind
@@ -613,39 +576,16 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
     ###
 
     @classmethod
-    def get_max_threadpool_workers(cls, inspector: SchemaStrippingInspector) -> int:
-        """Determine max concurrency for introspecting this sort of database.
-
-        BigQuery, in particular, seems to be not totally threadsafe, ENG-5808
-        """
-
-        if inspector.engine.driver == 'bigquery':
-            return 1
-        else:
-            return cls.MAX_INTROSPECTION_THREADS
-
-    @classmethod
-    def all_table_and_views(cls, inspector) -> List[Tuple[str, str, str]]:
+    def all_table_and_views(cls, inspector: InspectorProtocol) -> List[Tuple[str, str, str]]:
         """Returns list of (schema name, relation name, table-or-view) tuples"""
 
         results = []
 
-        default_schema = inspector.default_schema_name
-        all_schemas = set(inspector.get_schema_names())
-        all_schemas.difference_update(cls.AVOID_SCHEMAS)
-        if default_schema and default_schema not in all_schemas:
-            all_schemas.add(default_schema)
+        all_schemas = inspector.get_schema_names()
 
         for schema_name in sorted(all_schemas):
-            table_names = set(inspector.get_table_names(schema_name))
+            table_names = inspector.get_table_names(schema_name)
             view_names = inspector.get_view_names(schema_name)
-
-            # Some dialects (lookin' at you, cockroach) return view names as both view
-            # names and table names. Sigh. We'd like to only return the counts of
-            # the definite tables, though, so ...
-            if view_names:
-                # Remove any view names from our pristeen list of table names.
-                table_names.difference_update(view_names)
 
             for table_name in table_names:
                 results.append((schema_name, table_name, 'table'))
@@ -657,7 +597,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     @classmethod
     def fully_introspect(
-        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str, kind: str
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str, kind: str
     ) -> RelationStructureDescription:
         """Drive introspecting into this single relation, making all the necessary Introspector API
         calls to learn all of the relation's sub-structures.
@@ -711,7 +651,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     @classmethod
     def introspect_foreign_keys(
-        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str
     ) -> List[ForeignKeysModel]:
         """Introspect all foreign keys for a table, describing the results as a List[ForeignKeysModel]"""
 
@@ -743,7 +683,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     @classmethod
     def introspect_check_constraints(
-        cls, inspector, schema_name, relation_name
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str
     ) -> List[CheckConstraintModel]:
         """Introspect all check constraints for a table, describing the results as a List[CheckConstraintModel]"""
 
@@ -762,7 +702,7 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     @classmethod
     def introspect_unique_constraints(
-        cls, inspector, schema_name, relation_name
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str
     ) -> List[UniqueConstraintModel]:
         """Introspect all unique constraints for a table, describing the results as a List[UniqueConstraintModel]"""
 
@@ -780,8 +720,11 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
         return constraints
 
     @classmethod
-    def introspect_indexes(cls, inspector, schema_name, relation_name) -> List[IndexModel]:
+    def introspect_indexes(
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str
+    ) -> List[IndexModel]:
         """Introspect all indexes for a table or materialized view, describing the results as a List[IndexModel]"""
+
         indexes = []
 
         index_dicts = inspector.get_indexes(relation_name, schema_name)
@@ -799,48 +742,38 @@ class IntrospectAndStoreDatabaseCommand(MetaCommand):
 
     @classmethod
     def introspect_primary_key(
-        cls, inspector: SchemaStrippingInspector, relation_name: str, schema_name: str
+        cls, inspector: InspectorProtocol, relation_name: str, schema_name: str
     ) -> Tuple[Optional[str], List[str]]:
         """Introspect the primary key of a table, returning the pkey name and list of columns in the primary key (if any).
 
         If no primary key index is defined, will return None for name, empty list for columns.
         """
+
         primary_index_dict = inspector.get_pk_constraint(relation_name, schema_name)
 
-        # Athena dialect returns ... an empty _list_ instead of a dict, contrary to what
-        # https://docs.sqlalchemy.org/en/14/core/reflection.html#sqlalchemy.engine.reflection.Inspector.get_pk_constraint
-        # specifies for the return result from inspector.get_pk_constraint().
-        if isinstance(primary_index_dict, dict):
-            # MySQL at least can have unnamed primary keys. The returned dict will have 'name' -> None.
-            # Sigh.
-            pkey_name = primary_index_dict.get('name') or '(unnamed primary key)'
-
+        if primary_index_dict:
             if primary_index_dict['constrained_columns']:
-                return pkey_name, primary_index_dict['constrained_columns']
+                return primary_index_dict['name'], primary_index_dict['constrained_columns']
 
         # No primary key to be returned.
         return None, []
 
     @classmethod
     def introspect_columns(
-        cls, inspector: SchemaStrippingInspector, schema_name: str, relation_name: str
+        cls, inspector: InspectorProtocol, schema_name: str, relation_name: str
     ) -> List[ColumnModel]:
         column_dicts = inspector.get_columns(relation_name, schema=schema_name)
 
         retlist = []
 
         for col in column_dicts:
-            comment = col.get('comment')  # Some dialects do not return.
-
-            type_name = determine_column_type_name(col['type'])
-
             retlist.append(
                 ColumnModel(
                     name=col['name'],
                     is_nullable=col['nullable'],
-                    data_type=type_name,
+                    data_type=col['type'],
                     default_expression=col['default'],
-                    comment=comment,
+                    comment=col.get('comment'),  # Some dialects do not return this member at all.
                 )
             )
 
@@ -972,7 +905,7 @@ class RelationStructureMessager:
 
 
 def constraints_dataframe(
-    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+    inspector: InspectorProtocol, table_name: str, schema: Optional[str]
 ) -> DataFrame:
     """Transform results from inspector.get_check_constraints() into a single dataframe for display() purposes"""
 
@@ -996,7 +929,7 @@ def constraints_dataframe(
 
 
 def foreignkeys_dataframe(
-    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+    inspector: InspectorProtocol, table_name: str, schema: Optional[str]
 ) -> DataFrame:
     """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
 
@@ -1032,7 +965,7 @@ def foreignkeys_dataframe(
 
 
 def index_dataframe(
-    inspector: SchemaStrippingInspector, table_name: str, schema: Optional[str]
+    inspector: InspectorProtocol, table_name: str, schema: Optional[str]
 ) -> DataFrame:
     """Transform results from inspector.get_indexes() into a single dataframe for display() purposes"""
 
@@ -1226,105 +1159,6 @@ def run_meta_command(
     instance.do_run(invoker, args)
 
 
-def handle_not_implemented(default: Any = None, default_factory: Callable[[], Any] = None):
-    """Decorator to catch NotImplementedError, return either default constant or
-    whatever  default_factory() returns."""
-    assert default or default_factory, 'must provide one of default or default_factory'
-    assert not (
-        default and default_factory
-    ), 'only provide one of either default or default_factory'
-
-    def wrapper(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except NotImplementedError:
-                if default_factory:
-                    return default_factory()
-                else:
-                    return default
-
-        return wrapped
-
-    return wrapper
-
-
-class SchemaStrippingInspector:
-    """Proxy implementation that removes 'schema.' prefixing from results of underlying
-    get_table_names() and get_view_names(). BigQuery dialect inspector seems to include
-    the schema (dataset) name in those return results, unlike other dialects.
-    """
-
-    def __init__(self, underlying_inspector: Inspector):
-        self.underlying_inspector = underlying_inspector
-
-    # Direct passthrough attributes / methods
-    @property
-    def default_schema_name(self) -> Optional[str]:
-        # BigQuery, Trino dialects may end up returning None.
-        return self.underlying_inspector.default_schema_name
-
-    @property
-    def engine(self) -> Engine:
-        return self.underlying_inspector.engine
-
-    # Value-added properties
-    @property
-    def is_bigquery(self) -> bool:
-        return self.engine.driver == 'bigquery'
-
-    def get_schema_names(self) -> List[str]:
-        return self.underlying_inspector.get_schema_names()
-
-    def get_columns(self, relation_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_columns(relation_name, schema=schema)
-
-    @handle_not_implemented('(unobtainable)')
-    def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
-        if self.is_bigquery:
-            # Sigh. Have to explicitly interpolate schema into view name, else
-            # underlying driver code complains. Not even joking.
-            view_name = f'{schema}.{view_name}'
-
-        return self.underlying_inspector.get_view_definition(view_name, schema=schema)
-
-    def get_pk_constraint(self, table_name: str, schema: Optional[str] = None) -> dict:
-        return self.underlying_inspector.get_pk_constraint(table_name, schema=schema)
-
-    def get_foreign_keys(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_foreign_keys(table_name, schema=schema)
-
-    @handle_not_implemented(default_factory=list)
-    def get_check_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_check_constraints(table_name, schema=schema)
-
-    def get_indexes(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_indexes(table_name, schema=schema)
-
-    @handle_not_implemented(default_factory=list)
-    def get_unique_constraints(self, table_name: str, schema: Optional[str] = None) -> List[dict]:
-        return self.underlying_inspector.get_unique_constraints(table_name, schema=schema)
-
-    # Now the value-adding filtering methods.
-    def get_table_names(self, schema: Optional[str] = None) -> List[str]:
-        names = self.underlying_inspector.get_table_names(schema)
-        return self._strip_schema(names, schema)
-
-    def get_view_names(self, schema: Optional[str] = None) -> List[str]:
-        names = self.underlying_inspector.get_view_names(schema)
-        return self._strip_schema(names, schema)
-
-    def _strip_schema(self, names: List[str], schema: Optional[str] = None) -> List[str]:
-        if not schema:
-            return names
-
-        prefix = f'{schema}.'
-        # Remove "schema." from the start of each name if starts with.
-        # (name[False:] is equiv to name[0:], 'cause python bools are subclasses of ints)
-        return [name[name.startswith(prefix) and len(prefix) :] for name in names]
-
-
 def _raise_from_no_such_table(schema: str, relation_name: str):
     """Raise a MetaCommandException when eaten a NoSuchTableException"""
     if schema:
@@ -1332,19 +1166,6 @@ def _raise_from_no_such_table(schema: str, relation_name: str):
     else:
         msg = f'Relation {relation_name} does not exist'
     raise MetaCommandException(msg)
-
-
-def determine_column_type_name(sqla_column_type_object: TypeEngine) -> str:
-    """Convert the possibly db-centric TypeEngine instance to a sqla-generic type string"""
-    try:
-        type_name = str(sqla_column_type_object.as_generic()).lower()
-    except (NotImplementedError, AssertionError):
-        # ENG-5268: More esoteric types like UUID do not implement .as_generic()
-        # ENG-5808: Some Databricks types are not fully implemented and fail
-        # assertions within .as_generic()
-        type_name = str(sqla_column_type_object).replace('()', '').lower()
-
-    return type_name
 
 
 def make_introspection_error_human_presentable(exception: Exception) -> str:
