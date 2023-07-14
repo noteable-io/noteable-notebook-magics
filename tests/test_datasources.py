@@ -11,6 +11,7 @@ import certifi
 import pkg_resources
 import pytest
 import structlog
+from sqlalchemy import text
 from structlog.testing import LogCapture
 
 from noteable import datasources
@@ -21,9 +22,11 @@ from noteable.sql.sqlalchemy import (
     ClickhouseConnection,
     DatabricksConnection,
     MsSqlConnection,
+    RedshiftConnection,
     SnowflakeConnection,
     SQLAlchemyConnection,
     SQLiteConnection,
+    WrappedInspector,
 )
 from tests.conftest import DatasourceJSONs
 
@@ -616,7 +619,9 @@ class TestBootstrapDatasource:
 
     def test_connection_class_failure_happens_every_time(self, datasource_id, mocker):
         snowflake_details = SampleData.get_sample("snowflake-with-empty-db-and-schema")
-        mocker.patch("noteable.sql.sqlalchemy.SnowflakeConnection.__init__", side_effect=ValueError("boom"))
+        mocker.patch(
+            "noteable.sql.sqlalchemy.SnowflakeConnection.__init__", side_effect=ValueError("boom")
+        )
 
         with pytest.raises(ValueError, match="boom"):
             datasources.bootstrap_datasource(
@@ -993,6 +998,40 @@ class TestIsPackageInstalled:
 
     def test_yes(self):
         assert datasources.is_package_installed('pip')
+
+
+class TestRedshiftConnection:
+    def test_get_view_definition_returns_str_when_given_text_obj(self, mocker):
+        """Ensure that Redshift's Inspector implementation returns strings from get_view_definition()"""
+
+        from sqlalchemy.sql.elements import TextClause  # Return type from sqlalchemy.text()
+
+        # Setup mock underlying inspector that will return a text() object from get_view_definition
+        mocked_inspector_from_redshift = mocker.Mock(WrappedInspector)
+        mocked_inspector_from_redshift.get_view_definition = mocker.Mock()
+        expected_str = 'select id from foo where bar=12'
+        mocked_inspector_from_redshift.get_view_definition.return_value = text(expected_str)
+        assert isinstance(mocked_inspector_from_redshift.get_view_definition('foo'), TextClause)
+
+        redshift_inspector_class = RedshiftConnection.inspector_class
+        redshift_inspector = redshift_inspector_class(mocked_inspector_from_redshift)
+        defn = redshift_inspector.get_view_definition("foo")
+
+        # Voila! Downgraded from TextClause to str.
+        assert isinstance(defn, str) and defn == expected_str
+
+    def test_get_view_definition_returns_empty_string_when_given_none(self, mocker):
+        # Setup mock underlying inspector that will return a text() object from get_view_definition
+        mocked_inspector_from_redshift = mocker.Mock(WrappedInspector)
+        mocked_inspector_from_redshift.get_view_definition = mocker.Mock()
+        mocked_inspector_from_redshift.get_view_definition.return_value = None
+
+        redshift_inspector_class = RedshiftConnection.inspector_class
+        redshift_inspector = redshift_inspector_class(mocked_inspector_from_redshift)
+        defn = redshift_inspector.get_view_definition("foo")
+
+        # None -> ''
+        assert isinstance(defn, str) and defn == ''
 
 
 class TestSQLite:
