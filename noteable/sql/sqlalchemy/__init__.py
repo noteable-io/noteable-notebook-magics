@@ -29,6 +29,7 @@ from .utils import (
     BigQueryInspector,
     CockroachDBInspector,
     MySQLInspector,
+    RedshiftInspector,
     SQLAlchemyResult,
     WrappedInspector,
 )
@@ -489,7 +490,9 @@ class PostgreSQLConnection(BasePostgreSQLConnection):
 
 
 @connection_class('redshift+redshift_connector')
-class Redshift(IntrospectableSQLAlchemyConnection):
+class RedshiftConnection(IntrospectableSQLAlchemyConnection):
+    inspector_class = RedshiftInspector
+
     needs_explicit_commit: bool = True
 
 

@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable, List, Optional, Tuple
 import structlog
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.sql.elements import TextClause
 from sqlalchemy.types import TypeEngine
 
 from noteable.sql import ResultSet
@@ -223,6 +224,17 @@ class MySQLInspector(WrappedInspector):
             pk_constraint['name'] = '(unnamed primary key)'
 
         return pk_constraint
+
+
+class RedshiftInspector(WrappedInspector):
+    def get_view_definition(self, view_name: str, schema: Optional[str] = None) -> str:
+        """Redshift dialect's get_view_definition() returns text() for some strange reason. Downcast to str."""
+        underlying_result = self.underlying_inspector.get_view_definition(view_name, schema=schema)
+        if underlying_result is not None and isinstance(underlying_result, TextClause):
+            return str(underlying_result)
+
+        # Most degenerate
+        return ''
 
 
 def _determine_column_type_name(sqla_column_type_object: TypeEngine) -> str:
