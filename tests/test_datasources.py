@@ -27,6 +27,7 @@ from noteable.sql.sqlalchemy import (
     SQLAlchemyConnection,
     SQLiteConnection,
     WrappedInspector,
+    SingleStoreDBConnection,
 )
 from tests.conftest import DatasourceJSONs
 
@@ -1277,3 +1278,11 @@ def test_postprocess_clickhouse_raises_on_bad_secure_connection():
 def test_postprocess_mssql_pyodbc(input_create_engine_dict, expected_connect_args_dict):
     MsSqlConnection.preprocess_configuration(None, None, input_create_engine_dict)
     assert input_create_engine_dict['connect_args'] == expected_connect_args_dict
+
+
+def test_postprocess_singlestoredb(mocker):
+    create_engine_kwargs = {}
+    SingleStoreDBConnection.preprocess_configuration(None, None, create_engine_kwargs)
+    assert create_engine_kwargs["connect_args"] == {
+        "conn_attrs": {"program_name": "noteable", "program_version": mocker.ANY}
+    }
