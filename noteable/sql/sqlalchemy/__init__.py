@@ -465,7 +465,7 @@ class SingleStoreDBConnection(IntrospectableSQLAlchemyConnection):
             # Used by SingleStore to identify details about connections made to customers' SingleStore instances,
             # track the health of the integration and join customers.
             "conn_attrs": {
-                    "program_name": "noteable",
+                "program_name": "noteable",
                 "program_version": __version__,
             }
         }
