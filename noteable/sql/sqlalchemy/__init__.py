@@ -16,6 +16,7 @@ import structlog
 from sqlalchemy import inspect
 from sqlalchemy.engine import URL, Dialect
 
+from noteable import __version__
 from noteable.sql.connection import (
     BaseConnection,
     InspectorProtocol,
@@ -23,7 +24,6 @@ from noteable.sql.connection import (
     ResultSet,
     connection_class,
 )
-from noteable import __version__
 
 from .utils import (
     AthenaInspector,

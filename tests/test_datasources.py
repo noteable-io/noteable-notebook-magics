@@ -23,11 +23,11 @@ from noteable.sql.sqlalchemy import (
     DatabricksConnection,
     MsSqlConnection,
     RedshiftConnection,
+    SingleStoreDBConnection,
     SnowflakeConnection,
     SQLAlchemyConnection,
     SQLiteConnection,
     WrappedInspector,
-    SingleStoreDBConnection,
 )
 from tests.conftest import DatasourceJSONs
 
