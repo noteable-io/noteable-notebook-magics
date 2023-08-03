@@ -16,6 +16,7 @@ import structlog
 from sqlalchemy import inspect
 from sqlalchemy.engine import URL, Dialect
 
+from noteable import __version__
 from noteable.sql.connection import (
     BaseConnection,
     InspectorProtocol,
@@ -443,12 +444,32 @@ class DuckDBConnection(IntrospectableSQLAlchemyConnection):
 
 @connection_class('mysql+pymysql')
 @connection_class('mysql+mysqldb')
-@connection_class('singlestoredb')
 class MySQLFamilyConnection(IntrospectableSQLAlchemyConnection):
     """Base class for all SQLAlchemy-based Connection implementations"""
 
     inspector_class = MySQLInspector
     needs_explicit_commit: bool = False
+
+
+@connection_class('singlestoredb')
+class SingleStoreDBConnection(IntrospectableSQLAlchemyConnection):
+    inspector_class = MySQLInspector
+    needs_explicit_commit: bool = False
+
+    @classmethod
+    def preprocess_configuration(
+        cls, datasource_id: str, dsn_dict: Dict[str, Any], create_engine_kwargs: Dict[str, Any]
+    ) -> None:
+        connect_args = {
+            # SingleStore client understands this key, and will add it to the connection attributes.
+            # Used by SingleStore to identify details about connections made to customers' SingleStore instances,
+            # track the health of the integration and join customers.
+            "conn_attrs": {
+                "program_name": "noteable",
+                "program_version": __version__,
+            }
+        }
+        create_engine_kwargs.update({"connect_args": connect_args})
 
 
 @connection_class('mssql+pyodbc')
