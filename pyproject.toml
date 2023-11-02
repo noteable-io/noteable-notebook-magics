@@ -21,8 +21,8 @@ prettytable = "^3.3.0"
 structlog = "^23.2.0"
 # One or more datasource drivers are not ready for SQLA 2.0.
 SQLAlchemy = "<=2.0.0"
-# snowflake 1.4.4 demands "please install a version that adheres to: 'pyarrow<8.1.0,>=8.0.0; extra == "pandas"'"
-#pyarrow = {extras = ["pandas"], version = ">=8.0.0,<8.1.0" } # TODO: come back to this if needed?
+# snowflake 1.5.0 demands "please install a version that adheres to: 'pyarrow>=10.0.0,<10.1.0; extra == "pandas"'"
+pyarrow = {extras = ["pandas"], version = ">=10.0.0,<10.1.0" }
 sqlparse = "^0.4.4"
 # Alternative build of JinjaSQL that's Jinja3 compatible. Up until
 # https://github.com/sripathikrishnan/jinjasql/pull/53 gets merged, anyway
