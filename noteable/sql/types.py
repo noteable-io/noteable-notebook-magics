@@ -1,7 +1,7 @@
 import enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import field_validator, ConfigDict, BaseModel, Field, model_validator
 
 """
 Pydantic Types used for neutrally describing structures within SQL databases
@@ -14,9 +14,7 @@ class RelationKind(str, enum.Enum):
 
     table = "table"
     view = "view"
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ColumnModel(BaseModel):
@@ -27,9 +25,7 @@ class ColumnModel(BaseModel):
     data_type: str
     default_expression: Optional[str] = None
     comment: Optional[str] = None
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class IndexModel(BaseModel):
@@ -38,9 +34,7 @@ class IndexModel(BaseModel):
     name: str
     is_unique: bool
     columns: List[str]
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class UniqueConstraintModel(BaseModel):
@@ -48,9 +42,7 @@ class UniqueConstraintModel(BaseModel):
 
     name: str
     columns: List[str]
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class CheckConstraintModel(BaseModel):
@@ -58,9 +50,7 @@ class CheckConstraintModel(BaseModel):
 
     name: str
     expression: str
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ForeignKeysModel(BaseModel):
@@ -68,12 +58,13 @@ class ForeignKeysModel(BaseModel):
 
     name: str
     # `referenced_schema` Can be constructed with None, but will be promoted to empty string.
-    referenced_schema: Optional[str]
+    referenced_schema: Optional[str] = None
     referenced_relation: str
     columns: List[str]
     referenced_columns: List[str]
 
-    @validator('referenced_schema')
+    @field_validator('referenced_schema')
+    @classmethod
     def validate_schema_name(cls, v):
         """Promote from None to empty string"""
         if v is None:
@@ -81,18 +72,14 @@ class ForeignKeysModel(BaseModel):
 
         return v
 
-    @root_validator
-    def check_lists_same_length(cls, values):
-        if not ("columns" in values and "referenced_columns" in values):
-            raise ValueError("columns and referenced_columns required")
-
-        if len(values["columns"]) != len(values["referenced_columns"]):
+    @model_validator(mode="after")
+    def check_lists_same_length(self):
+        if len(self.columns) != len(self.referenced_columns):
             raise ValueError("columns and referenced_columns must be same length")
 
-        return values
+        return self
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class RelationStructureDescription(BaseModel):
@@ -100,14 +87,17 @@ class RelationStructureDescription(BaseModel):
 
     # First, the singular fields.
     schema_name: Optional[str] = Field(
-        description="Name of schema containing the relation. Empty string for degenerate value."
+        None,
+        description="Name of schema containing the relation. Empty string for degenerate value.",
     )
     relation_name: str = Field(description="Name of the table or view")
     kind: RelationKind = Field(description="Relation type: table or a view")
-    relation_comment: Optional[str] = Field(description="Optional comment describing the relation.")
-    view_definition: Optional[str] = Field(description="Definition of the view if kind=view")
+    relation_comment: Optional[str] = Field(
+        None, description="Optional comment describing the relation."
+    )
+    view_definition: Optional[str] = Field(None, description="Definition of the view if kind=view")
     primary_key_name: Optional[str] = Field(
-        description="Name of the primary key constraint, if any"
+        None, description="Name of the primary key constraint, if any"
     )
 
     # Now the plural fields.
@@ -124,7 +114,8 @@ class RelationStructureDescription(BaseModel):
     )
     foreign_keys: List[ForeignKeysModel] = Field(description="List of foreign key definitions")
 
-    @validator('schema_name')
+    @field_validator('schema_name')
+    @classmethod
     def validate_schema_name(cls, v):
         """Promote from None to empty string"""
         if v is None:
@@ -132,31 +123,25 @@ class RelationStructureDescription(BaseModel):
 
         return v
 
-    @root_validator
-    def view_definition_vs_kind(cls, values):
+    @model_validator(mode="after")
+    def view_definition_vs_kind(self):
         """Fail if a tring to describe a view with None for the view definition. At worst
         empty string is allowed.
 
         Likewise, if describing a table, then view definition _must_ be None.
         """
-        if not (values.get("view_definition") is None) == (
-            values.get("kind") == RelationKind.table
-        ):
+        if not (self.view_definition is None) == (self.kind == RelationKind.table):
             raise ValueError("Views require definitions; tables must not have view definition")
 
-        return values
+        return self
 
-    @root_validator
-    def pkey_name_only_if_has_pkey_columns(cls, values):
-        if len(values.get("primary_key_columns")) > 0 and not values.get('primary_key_name'):
+    @model_validator(mode="after")
+    def pkey_name_only_if_has_pkey_columns(self):
+        if len(self.primary_key_columns) > 0 and not self.primary_key_name:
             raise ValueError("primary_key_columns requires nonempty primary_key_name")
-        elif (
-            len(values.get("primary_key_columns")) == 0
-            and values.get('primary_key_name') is not None
-        ):
+        elif len(self.primary_key_columns) == 0 and self.primary_key_name is not None:
             raise ValueError("No primary_key_columns requires primary_key_name = None")
 
-        return values
+        return self
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")

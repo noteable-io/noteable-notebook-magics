@@ -4,7 +4,6 @@ from enum import Enum, auto
 from typing import Generic, List, TypeVar
 
 from pydantic import BaseModel, Field
-from pydantic.generics import GenericModel
 
 
 class UserMessage(BaseModel):
@@ -97,7 +96,7 @@ class StreamHeader(BaseModel):
 StreamMessageContentT = TypeVar("StreamMessageContentT")
 
 
-class StreamMessage(GenericModel, Generic[StreamMessageContentT]):
+class StreamMessage(BaseModel, Generic[StreamMessageContentT]):
     header: StreamHeader
     content: StreamMessageContentT
 
