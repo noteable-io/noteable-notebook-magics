@@ -35,7 +35,7 @@ def test_datasets_push(input_path, expected_path, runner, context):
     response = MockResponse(
         FileProgressUpdateMessage(
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
-        ).json(),
+        ).model_dump(),
         200,
     )
 
@@ -63,7 +63,7 @@ def test_datasets_pull(input_path, expected_path, runner, context):
     response = MockResponse(
         FileProgressUpdateMessage(
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
-        ).json(),
+        ).model_dump(),
         200,
     )
 

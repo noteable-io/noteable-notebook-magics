@@ -13,6 +13,7 @@ import requests
 from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import HTML, display
 from pandas import DataFrame
+
 # Will be good when this layer of code doesn't import anything sqlalchemy
 from sqlalchemy.exc import NoSuchTableError
 
@@ -859,7 +860,7 @@ class RelationStructureMessager:
         if self._relations:
             # Assemble buffered relation descriptions into a single bulk upload payload
             jsonable_message = [
-                relation_description.dict() for relation_description in self._relations
+                relation_description.model_dump() for relation_description in self._relations
             ]
 
             # Upload in a single message.

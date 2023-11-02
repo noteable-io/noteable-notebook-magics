@@ -13,7 +13,7 @@ class OutputModel(abc.ABC, BaseModel):
 
     def get_js_readable_output(self, **kwargs) -> str:
         """The output of this method should be parseable by javascript, generally JSON"""
-        return self.json(**kwargs)
+        return self.model_dump_json(**kwargs)
 
 
 class NTBLCommand(Command):

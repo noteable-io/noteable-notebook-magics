@@ -136,23 +136,23 @@ class FileSystemAPI:
 
     def pull(self, path: str, **kwargs) -> UserMessage:
         resp = self._api.post(f"{self._url_prefix}/{path}/pull", "pull files", **kwargs)
-        return UserMessage.parse_obj(resp)
+        return UserMessage.model_validate(resp)
 
     def push(self, path: str, **kwargs) -> UserMessage:
         resp = self._api.post(f"{self._url_prefix}/{path}/push", "push files", **kwargs)
-        return UserMessage.parse_obj(resp)
+        return UserMessage.model_validate(resp)
 
     def delete(self, path: str, **kwargs) -> UserMessage:
         resp = self._api.delete(f"{self._url_prefix}/{path}", "delete files", **kwargs)
-        return UserMessage.parse_obj(resp)
+        return UserMessage.model_validate(resp)
 
     def move(self, path: str, **kwargs) -> UserMessage:
         resp = self._api.post(f"{self._url_prefix}/{path}/move", "move files", **kwargs)
-        return UserMessage.parse_obj(resp)
+        return UserMessage.model_validate(resp)
 
     def get_remote_status(self, path: str, **kwargs) -> RemoteStatus:
         resp = self._api.get(f"{self._url_prefix}/{path}/status", "get file status", **kwargs)
-        return RemoteStatus.parse_obj(resp)
+        return RemoteStatus.model_validate(resp)
 
 
 class DatasetFileSystemAPI:
@@ -210,5 +210,5 @@ class DatasetOperationStream:
             pass
 
         parsed_line = json.loads(line)
-        header = StreamHeader.parse_obj(parsed_line["header"])
-        return self._msg_type_lookup[header.type].parse_obj(parsed_line)
+        header = StreamHeader.model_validate(parsed_line["header"])
+        return self._msg_type_lookup[header.type].model_validate(parsed_line)

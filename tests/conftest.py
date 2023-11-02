@@ -1,6 +1,6 @@
 import json
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from uuid import UUID, uuid4
@@ -102,7 +102,7 @@ def mock_dataset_stream():
     return MockResponse(
         FileProgressUpdateMessage(
             content=FileProgressUpdateContent(file_name="foo/bar", percent_complete=1.0)
-        ).json(),
+        ).model_dump_json(),
         200,
     ).stream()
 
@@ -358,7 +358,7 @@ def bad_port_number_cockroach_connection(
     BAD_PORT_COCKROACH_UUID = UUID('badccccc-0000-cccc-0000-cccccccccccc')
     BAD_COCKROACH_HANDLE = f"@{BAD_PORT_COCKROACH_UUID.hex}"
 
-    as_dict = managed_cockroach.dict()
+    as_dict = asdict(managed_cockroach)
     as_dict['sql_port'] = 999  # definitely wrong port.
 
     bad_cockroach_details = CockroachDetails(**as_dict)
