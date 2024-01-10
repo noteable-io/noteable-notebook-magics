@@ -5,7 +5,7 @@ name = "noteable"
 version = "2.0.0"
 
 [tool.poetry.dependencies]
-GitPython = "^3.1.30"
+GitPython = "^3.1.41"
 httpx = { extras = ["http2"], version = "^0.23.0" }
 backoff = "^2.2.1"
 click = "^8.0.4"                                       # pinned until black is updated to not use internal module that was removed by click in 8.1.0; https://github.com/psf/black/issues/2964
